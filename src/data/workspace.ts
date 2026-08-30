@@ -6,6 +6,7 @@
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { readDir, readTextFile, writeTextFile, stat } from '@tauri-apps/plugin-fs'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import type { CloseRequestedEvent } from '@tauri-apps/api/window'
 import { joinPath, sortDirEntries } from './paths'
 
 /** One entry in a directory listing, as `FileTree` and `EditorController` consume it. */
@@ -99,4 +100,29 @@ export async function writeFileText(path: string, text: string): Promise<void> {
  */
 export async function setWindowTitle(title: string): Promise<void> {
   return getCurrentWindow().setTitle(title)
+}
+
+/**
+ * Requests the app's single window close. Routed through the same
+ * close-request lifecycle as the title-bar ✕, so a listener registered via
+ * {@link onCloseRequested} sees this call too — there is exactly one place
+ * that decides whether a close actually proceeds.
+ */
+export async function closeWindow(): Promise<void> {
+  return getCurrentWindow().close()
+}
+
+/**
+ * Registers `handler` to run whenever the window is asked to close — the
+ * title-bar ✕, an OS-level quit, or {@link closeWindow} itself, all of
+ * which raise the same event. Returning `false` vetoes the close.
+ *
+ * @param handler - Called before the window closes; return `false` to veto it.
+ */
+export function onCloseRequested(handler: () => Promise<boolean>): void {
+  void getCurrentWindow().onCloseRequested(async (event: CloseRequestedEvent) => {
+    if (!(await handler())) {
+      event.preventDefault()
+    }
+  })
 }

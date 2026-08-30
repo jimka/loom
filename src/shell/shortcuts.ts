@@ -21,6 +21,7 @@ export const SAVE_AS_SHORTCUT = 'Ctrl/Cmd+Shift+S'
 export const CLOSE_FILE_SHORTCUT = 'Ctrl/Cmd+W'
 export const FORMAT_SHORTCUT = 'Alt+Shift+F'
 export const TOGGLE_EXPLORER_SHORTCUT = 'Ctrl/Cmd+B'
+export const EXIT_SHORTCUT = 'Ctrl/Cmd+Q'
 
 /**
  * Whether a keydown is a `Ctrl/Cmd(+Shift)+<key>` chord with no other
@@ -72,6 +73,11 @@ export function isToggleExplorerChord(event: KeyboardEvent): boolean {
   return isCtrlChord(event, 'b')
 }
 
+/** Whether a keydown is the Exit chord (Ctrl/Cmd+Q). */
+export function isExitChord(event: KeyboardEvent): boolean {
+  return isCtrlChord(event, 'q')
+}
+
 /** The accelerator callbacks `installAccelerators` dispatches each chord to. */
 export interface AcceleratorActions {
   /** Ctrl/Cmd+O — shows the native folder picker. */
@@ -86,6 +92,8 @@ export interface AcceleratorActions {
   onFormat: () => void
   /** Ctrl/Cmd+B — collapses/expands the explorer pane. */
   onToggleExplorer: () => void
+  /** Ctrl/Cmd+Q — requests the window close. */
+  onExit: () => void
 }
 
 /**
@@ -112,6 +120,8 @@ export function installAccelerators(actions: AcceleratorActions): void {
       actions.onFormat()
     } else if (isToggleExplorerChord(event)) {
       actions.onToggleExplorer()
+    } else if (isExitChord(event)) {
+      actions.onExit()
     } else {
       matched = false
     }

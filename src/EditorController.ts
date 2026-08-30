@@ -6,7 +6,7 @@ import type { TabCloseController } from '@jimka/typescript-ui/layout'
 import { FileEditor } from './editor/FileEditor'
 import { languageForPath } from './editor/languages'
 import { baseName } from './data/paths'
-import { readFileText, writeFileText, pickProjectFolder, pickSaveTarget, setWindowTitle } from './data/workspace'
+import { readFileText, writeFileText, pickProjectFolder, pickSaveTarget, setWindowTitle, closeWindow, onCloseRequested } from './data/workspace'
 import { promptUnsavedChanges } from './shell/unsavedPrompt'
 import { APP_NAME } from './appIdentity'
 
@@ -47,6 +47,8 @@ class EditorController {
     this.tabs.getTab().on('beforetabclose', this.handleBeforeTabClose)
     this.tabs.getTab().on('tabclose', this.handleTabClose)
     this.tabs.getTab().on('activate', this.handleActivate)
+
+    onCloseRequested(this.confirmExit)
   }
 
   /**
@@ -221,6 +223,16 @@ class EditorController {
     }
   }
 
+  /**
+   * Requests the window close. Routed through {@link closeWindow}, which
+   * raises the same close-request event the title-bar ✕ does — so this and
+   * a direct ✕ click both land on {@link confirmExit}, and neither can
+   * bypass it.
+   */
+  async exitApp(): Promise<void> {
+    await closeWindow()
+  }
+
   /** The active tab's content, typed — `null` when the strip is empty. */
   private getActiveFile(): FileEditor | null {
     const content = this.tabs.getTab().getActiveContent()
@@ -284,6 +296,24 @@ class EditorController {
   /** `"activate"`: a genuine tab switch resyncs the title/status bar. */
   private handleActivate = (): void => {
     this.syncActive()
+  }
+
+  /**
+   * `onCloseRequested`: whether the window may actually close right now.
+   * With no dirty files this resolves `true` immediately; otherwise it asks
+   * once, covering every open file at once rather than the per-file prompt
+   * an individual tab close uses — sequencing a save across several files
+   * on exit is the same deferred bulk-close case `"beforetabclose"`'s own
+   * veto already leaves for later.
+   */
+  private confirmExit = async (): Promise<boolean> => {
+    const anyDirty = Array.from(this._openFiles.values()).some(file => file.isDirty())
+
+    if (!anyDirty) {
+      return true
+    }
+
+    return Dialog.confirm('Unsaved changes', 'You have unsaved changes. Exit without saving?')
   }
 
   /** Sets the window title and the status bar's language text from the active file. */

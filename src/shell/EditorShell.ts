@@ -6,7 +6,7 @@ import { FileTree } from '../explorer/FileTree'
 import type { EditorController } from '../EditorController'
 import {
   OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
-  FORMAT_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, installAccelerators,
+  FORMAT_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, installAccelerators,
 } from './shortcuts'
 import type { AcceleratorActions } from './shortcuts'
 
@@ -50,6 +50,7 @@ class EditorShell extends Container {
       onCloseFile: () => controller.closeActive(),
       onFormat: () => { void controller.formatActive() },
       onToggleExplorer: () => split.setPaneCollapsed(EXPLORER_PANE_INDEX, !split.isPaneCollapsed(EXPLORER_PANE_INDEX)),
+      onExit: () => { void controller.exitApp() },
       hasActiveFile: () => controller.hasActiveFile(),
       isActiveDirty: () => controller.isActiveDirty(),
     }
@@ -88,6 +89,8 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
         { text: 'Save', glyph: 'floppy-disk', shortcut: SAVE_SHORTCUT, enabled: actions.hasActiveFile() && actions.isActiveDirty(), action: actions.onSave },
         { text: 'Save As…', glyph: 'floppy-disk', shortcut: SAVE_AS_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onSaveAs },
         { text: 'Close File', glyph: 'times', shortcut: CLOSE_FILE_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onCloseFile },
+        { separator: true },
+        { text: 'Exit', glyph: 'right-from-bracket', shortcut: EXIT_SHORTCUT, action: actions.onExit },
       ] },
       { label: 'Edit', glyph: 'code', items: () => [
         { text: 'Format Document', glyph: 'pen-to-square', shortcut: FORMAT_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onFormat },
