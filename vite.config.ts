@@ -17,4 +17,20 @@ export default defineConfig({
       },
     },
   },
+  server: {
+    port: 1420,
+    strictPort: true,
+    fs: { strict: false },
+  },
+  resolve: {
+    dedupe: [
+      '@jimka/typescript-ui',
+      '@codemirror/state',
+      '@codemirror/view',
+      '@codemirror/language',
+    ],
+  },
+  optimizeDeps: {
+    exclude: ['@jimka/typescript-ui'],
+  },
 })
