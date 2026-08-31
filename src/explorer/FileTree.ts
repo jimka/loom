@@ -24,7 +24,7 @@ class FileTree extends Tree {
   private readonly _onOpenFile: (path: string) => void
 
   constructor(params: FileTreeParams) {
-    super({ expandTrigger: 'click', rowOverflow: 'scroll' })
+    super({ expandTrigger: 'click', rowOverflow: 'scroll', backgroundColor: 'rgb(245, 245, 245)' })
 
     this._onOpenFile = params.onOpenFile
 
