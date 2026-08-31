@@ -87,3 +87,32 @@ nothing below has a plan yet.
   ruling out a code-level cause. WebKitGTK has a known history of not
   repainting the cursor promptly (or at all) on script-driven style changes.
   No fix planned; recorded so it isn't mistaken for a regression later.
+
+## Notes
+
+- **Native menus, dialogs, and other OS chrome are available via Tauri**, not
+  just the library's own components. VSCode itself is a native/custom hybrid
+  on Electron: a real native menu bar on macOS, native open/save dialogs and
+  clipboard access, but a custom HTML-rendered menu bar and context menus on
+  Windows/Linux for consistent theming. Tauri's equivalents, if ever wanted:
+  - `tauri::menu` (core, `@tauri-apps/api/menu`) — a real native menu bar and
+    native popup context menus; the direct swap-in for the library's `Menu`
+    component, at the cost of losing its theming and needing IPC plumbing per
+    menu action.
+  - `plugin-window-state` — persists/restores window size and position
+    automatically; only covers geometry, not the rest of session state.
+  - `plugin-clipboard-manager`, `plugin-notification`, `plugin-global-shortcut`,
+    `plugin-os`, `plugin-shell` (open-with-default-app / run commands).
+  - `plugin-updater` — relevant to the code signing/auto-update item, above.
+  - Native OS drag-and-drop (`onDragDropEvent`) — relevant to the
+    drag-and-drop-to-open item, above.
+  - No official plugin exists for OS file-type icons — relevant to the file
+    type icons item, above; would need a custom Rust crate.
+- **Frontend hot reload today is a full page reload, not a state-preserving
+  one** — the library has no HMR accept boundary (it isn't React, so there's
+  no fast-refresh mechanism), so any source edit during `tauri:dev` drops the
+  open tree/tabs, same as a full restart. Session persistence (above) would
+  fix this as a side effect: a Vite-triggered reload is a page reload within
+  the same webview, not a process restart, so anything persisted to
+  `localStorage`/disk survives it exactly like a real restart would. It
+  wouldn't cover unsaved buffer contents unless those are persisted too.
