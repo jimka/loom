@@ -263,7 +263,7 @@ class EditorController {
 
   /** Awaits the unsaved-changes prompt, then finishes (or abandons) the close. */
   private async confirmThenClose(file: FileEditor): Promise<void> {
-    const choice = await promptUnsavedChanges(file.getLabel())
+    const choice = await promptUnsavedChanges(baseName(file.getPath()))
 
     if (choice === 'cancel') {
       return
