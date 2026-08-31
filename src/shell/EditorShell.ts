@@ -13,13 +13,6 @@ import type { AcceleratorActions } from './shortcuts'
 /** The tree pane's index in the shell's `Split` — 0, the only other pane being the editor tabs. */
 const EXPLORER_PANE_INDEX = 0
 
-/**
- * Minimum width the explorer pane keeps when the gutter is dragged, in
- * pixels — narrow enough to stay out of the editor's way, wide enough that
- * a typical file/folder name doesn't truncate immediately.
- */
-const EXPLORER_MIN_WIDTH = 160
-
 /** The menu-bar action callbacks the shell wires to the controller and the split. */
 interface MenuBarActions extends AcceleratorActions {
   /** Whether a file is currently active — greys out the per-file items when not. */
@@ -65,8 +58,6 @@ class EditorShell extends Container {
         { component: controller.statusBar, constraints: { placement: Placement.SOUTH } },
       ],
     })
-
-    tree.setMinSize({ width: EXPLORER_MIN_WIDTH, height: 0 })
 
     controller.setProjectRootListener(root => { void tree.setProjectRoot(root) })
     installAccelerators(actions)
