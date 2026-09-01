@@ -17,7 +17,6 @@ nothing below has a plan yet.
 - **File-type breadcrumbs** just above the code editor.
 - **Hidden-file / `.gitignore`-aware filtering** — the tree currently shows
   every entry `readDir` returns.
-- **Welcome screen** (no project open / no files open state).
 - **Library `component-dirty-state` support** — a generic dirty-flag
   propagation mechanism on `Component` itself, so a parent can expose "a
   descendant has unsaved changes" without every consumer hand-rolling it the
