@@ -5,7 +5,7 @@ import { Dialog } from '@jimka/typescript-ui/overlay'
 import type { TabCloseController } from '@jimka/typescript-ui/layout'
 import { FileEditor } from './editor/FileEditor'
 import { languageForPath } from './editor/languages'
-import { baseName } from './data/paths'
+import { baseName, joinPath } from './data/paths'
 import { readFileText, writeFileText, pickProjectFolder, pickSaveTarget, setWindowTitle, closeWindow, onCloseRequested } from './data/workspace'
 import { promptUnsavedChanges } from './shell/unsavedPrompt'
 import { APP_NAME } from './appIdentity'
@@ -32,10 +32,12 @@ class EditorController {
   readonly tabs: TabPanel
   readonly statusBar: StatusBar
 
-  private readonly _openFiles = new Map<string, FileEditor>()
+  private readonly _openFiles: FileEditor[] = []
   private readonly _languageText: Text
   private _recentProjects: string[] = []
   private _recentFiles: string[] = []
+  private _projectRoot: string | null = null
+  private _untitledCount = 0
   private _projectRootListener: ((root: string) => void) | null = null
   private _beforeExitListener: (() => Promise<void>) | null = null
   private _emptyStateListener: ((empty: boolean) => void) | null = null
@@ -76,7 +78,7 @@ class EditorController {
    */
   setEmptyStateListener(fn: (empty: boolean) => void): void {
     this._emptyStateListener = fn
-    fn(this._openFiles.size === 0)
+    fn(this._openFiles.length === 0)
   }
 
   /**
@@ -108,25 +110,32 @@ class EditorController {
     return this.getActiveFile() !== null
   }
 
-  /** Whether the active file has unsaved changes — read by the File menu's Save item. */
-  isActiveDirty(): boolean {
-    return this.getActiveFile()?.isDirty() ?? false
+  /** Whether the active file needs saving — read by the File menu's Save item. */
+  canSaveActive(): boolean {
+    return this.getActiveFile()?.needsSave() ?? false
   }
 
   /**
-   * The open files' paths, in tab order. Sorted by `indexOfContent` rather
-   * than `_openFiles`' own insertion order — insertion order is the order
-   * files were *opened*, not the order a drag-reordered strip shows them in.
+   * The open, saved files' paths, in tab order. A path-less (untitled)
+   * buffer is omitted — it has nothing to reopen from, and persisting
+   * untitled buffers across restarts is out of scope (see the plan's
+   * Non-Goals). Sorted by `indexOfContent` rather than `_openFiles`' own
+   * insertion order — insertion order is the order files were *opened*, not
+   * the order a drag-reordered strip shows them in.
    */
   getOpenFilePaths(): string[] {
     const tab = this.tabs.getTab()
 
-    return Array.from(this._openFiles.values())
+    return [...this._openFiles]
       .sort((a, b) => tab.indexOfContent(a) - tab.indexOfContent(b))
       .map(file => file.getPath())
+      .filter((path): path is string => path !== null)
   }
 
-  /** The active tab's file path, or `null` when the strip is empty. */
+  /**
+   * The active tab's file path, or `null` when the strip is empty *or* the
+   * active tab is a path-less (untitled) buffer.
+   */
   getActiveFilePath(): string | null {
     return this.getActiveFile()?.getPath() ?? null
   }
@@ -147,6 +156,7 @@ class EditorController {
 
     if (root !== null) {
       this.recordRecentProject(root)
+      this._projectRoot = root
       this._projectRootListener?.(root)
     }
   }
@@ -160,7 +170,40 @@ class EditorController {
    */
   openRecentProject(root: string): void {
     this.recordRecentProject(root)
+    this._projectRoot = root
     this._projectRootListener?.(root)
+  }
+
+  /**
+   * Records `root` as the current project root without picking one or
+   * notifying the shell — the counterpart to {@link openProjectFolder} and
+   * {@link openRecentProject} for session restore, which points the tree at
+   * its saved root directly (`applySession`) rather than through either of
+   * those. {@link EditorController} still needs to know the root so
+   * {@link defaultSaveTarget} defaults an untitled save into it after a
+   * restored launch, not just after a live *Open Folder…* or *Open Recent*.
+   *
+   * @param root - The project folder the tree was just pointed at.
+   */
+  setProjectRoot(root: string): void {
+    this._projectRoot = root
+  }
+
+  /** Opens an empty untitled buffer in a new tab and activates it. */
+  newFile(): void {
+    this._untitledCount += 1
+
+    const file = FileEditor({
+      path: null,
+      name: `Untitled-${this._untitledCount}`,
+      text: '',
+      onDirtyChange: this.handleDirtyChange,
+    })
+
+    this.tabs.addTab(file, file.getLabel(), { closeable: true })
+    this._openFiles.push(file)
+    this.tabs.getTab().setActiveContent(file)
+    this.syncActive()
   }
 
   /**
@@ -172,7 +215,7 @@ class EditorController {
    * @param path - The file to open.
    */
   async openFile(path: string): Promise<void> {
-    const existing = this._openFiles.get(path)
+    const existing = this._openFiles.find(candidate => candidate.getPath() === path)
 
     if (existing) {
       this.recordRecentFile(path)
@@ -210,10 +253,10 @@ class EditorController {
    * @returns The new tab's `FileEditor`.
    */
   private addFileTab(path: string, text: string): FileEditor {
-    const file = FileEditor({ path, text, onDirtyChange: this.handleDirtyChange })
+    const file = FileEditor({ path, name: baseName(path), text, onDirtyChange: this.handleDirtyChange })
 
     this.tabs.addTab(file, file.getLabel(), { closeable: true })
-    this._openFiles.set(path, file)
+    this._openFiles.push(file)
 
     return file
   }
@@ -241,7 +284,7 @@ class EditorController {
     let firstOpened: FileEditor | null = null
 
     for (const path of paths) {
-      if (this._openFiles.has(path)) {
+      if (this._openFiles.some(candidate => candidate.getPath() === path)) {
         continue
       }
 
@@ -260,7 +303,7 @@ class EditorController {
       firstOpened ??= file
     }
 
-    const activeFile = activePath !== null ? this._openFiles.get(activePath) : undefined
+    const activeFile = activePath !== null ? this._openFiles.find(candidate => candidate.getPath() === activePath) : undefined
     const toActivate = activeFile ?? firstOpened
 
     if (toActivate) {
@@ -270,11 +313,11 @@ class EditorController {
     this.syncActive()
   }
 
-  /** Saves the active file, if it has unsaved changes. A no-op on a clean file. */
+  /** Saves the active file, if it needs saving. A no-op on a clean, already-saved file. */
   async saveActive(): Promise<void> {
     const file = this.getActiveFile()
 
-    if (file && file.isDirty()) {
+    if (file?.needsSave()) {
       await this.save(file)
     }
   }
@@ -295,48 +338,54 @@ class EditorController {
    * leaves `file` dirty.
    *
    * @param file - The file to save to a new path.
+   * @returns Whether the write succeeded.
    */
-  async saveAs(file: FileEditor): Promise<void> {
-    const target = await pickSaveTarget(file.getPath())
+  async saveAs(file: FileEditor): Promise<boolean> {
+    const target = await pickSaveTarget(file.getPath() ?? this.defaultSaveTarget(file))
 
     if (target === null) {
-      return
+      return false
     }
 
-    if (target !== file.getPath() && this._openFiles.has(target)) {
+    if (this._openFiles.some(other => other !== file && other.getPath() === target)) {
       await Dialog.error('Cannot save here', 'That file is already open in another tab. Close it first.')
 
-      return
+      return false
     }
-
-    const oldPath = file.getPath()
 
     try {
       await writeFileText(target, file.getEditor().getValue())
     } catch (error) {
       await Dialog.error('Could not save file', messageOf(error))
 
-      return
+      return false
     }
 
-    this._openFiles.delete(oldPath)
     file.setPath(target)
-    this._openFiles.set(target, file)
     file.markClean()
     this.tabs.getTab().setTabName(file, file.getLabel())
+    this.statusBar.setMessage(`Saved ${file.getLabel()}`, SAVE_MESSAGE_DURATION_MS)
     this.syncActive()
+
+    return true
   }
 
   /**
-   * Writes `file` to its own path. A failed write shows a `Dialog.error`
-   * and leaves the file dirty.
+   * Writes `file` to its own path, or runs {@link saveAs} when it has none.
+   * A failed write shows a `Dialog.error` and leaves the file dirty.
    *
    * @param file - The file to save.
    * @returns Whether the write succeeded.
    */
   async save(file: FileEditor): Promise<boolean> {
+    const path = file.getPath()
+
+    if (path === null) {
+      return this.saveAs(file)
+    }
+
     try {
-      await writeFileText(file.getPath(), file.getEditor().getValue())
+      await writeFileText(path, file.getEditor().getValue())
     } catch (error) {
       await Dialog.error('Could not save file', messageOf(error))
 
@@ -347,6 +396,18 @@ class EditorController {
     this.statusBar.setMessage(`Saved ${file.getLabel()}`, SAVE_MESSAGE_DURATION_MS)
 
     return true
+  }
+
+  /**
+   * The path the save dialog opens to for a file that has none — the
+   * buffer's untitled name inside the open project folder, or `null` when
+   * no folder is open, leaving the dialog to choose its own directory.
+   *
+   * @param file - The path-less file about to be saved.
+   * @returns The default save path, or `null`.
+   */
+  private defaultSaveTarget(file: FileEditor): string | null {
+    return this._projectRoot === null ? null : joinPath(this._projectRoot, file.getName())
   }
 
   /**
@@ -418,7 +479,7 @@ class EditorController {
 
   /** Awaits the unsaved-changes prompt, then finishes (or abandons) the close. */
   private async confirmThenClose(file: FileEditor): Promise<void> {
-    const choice = await promptUnsavedChanges(baseName(file.getPath()))
+    const choice = await promptUnsavedChanges(file.getName())
 
     if (choice === 'cancel') {
       return
@@ -443,8 +504,12 @@ class EditorController {
    */
   private handleTabClose = (content: Component): void => {
     const file = content as FileEditor
+    const index = this._openFiles.indexOf(file)
 
-    this._openFiles.delete(file.getPath())
+    if (index !== -1) {
+      this._openFiles.splice(index, 1)
+    }
+
     queueMicrotask(() => this.syncActive())
   }
 
@@ -462,7 +527,7 @@ class EditorController {
    * veto already leaves for later.
    */
   private confirmExit = async (): Promise<boolean> => {
-    const anyDirty = Array.from(this._openFiles.values()).some(file => file.isDirty())
+    const anyDirty = this._openFiles.some(file => file.isDirty())
 
     if (anyDirty && !(await Dialog.confirm('Unsaved changes', 'You have unsaved changes. Exit without saving?'))) {
       return false
@@ -475,7 +540,7 @@ class EditorController {
 
   /** Sets the window title and the status bar's language text from the active file. */
   private syncActive(): void {
-    this._emptyStateListener?.(this._openFiles.size === 0)
+    this._emptyStateListener?.(this._openFiles.length === 0)
 
     const file = this.getActiveFile()
 
@@ -486,7 +551,7 @@ class EditorController {
       return
     }
 
-    const name = baseName(file.getPath())
+    const name = file.getName()
     const title = file.isDirty() ? `• ${name} — ${APP_NAME}` : `${name} — ${APP_NAME}`
 
     void setWindowTitle(title)

@@ -56,4 +56,8 @@ describe('languageForPath', () => {
   it('resolves .py to the app-registered python', () => {
     expect(languageForPath('/p/f.py')).toBe('python')
   })
+
+  it('resolves a null path to null', () => {
+    expect(languageForPath(null)).toBeNull()
+  })
 })

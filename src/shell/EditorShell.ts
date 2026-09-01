@@ -12,7 +12,7 @@ import type { SessionAutosave } from './session'
 import { applySession, installSessionAutosave, loadWorkspaceState } from './session'
 import { projectName, baseName } from '../data/paths'
 import {
-  OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
+  NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
   FORMAT_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, installAccelerators,
 } from './shortcuts'
 import type { AcceleratorActions } from './shortcuts'
@@ -28,8 +28,8 @@ const WELCOME_PAGE_ID = 'welcome-screen'
 interface MenuBarActions extends AcceleratorActions {
   /** Whether a file is currently active — greys out the per-file items when not. */
   hasActiveFile: () => boolean
-  /** Whether the active file has unsaved changes — the Save item is greyed out when not. */
-  isActiveDirty: () => boolean
+  /** Whether the active file needs saving — the Save item is greyed out when not. */
+  canSaveActive: () => boolean
   /** Recently opened project folders, most-recent first — read by the Open Recent submenu. */
   getRecentProjects: () => string[]
   /** Recently opened files, most-recent first — read by the Open Recent submenu. */
@@ -77,6 +77,7 @@ class EditorShell extends Container {
     splitBody.addComponent(deck, { weight: 1 })
 
     const actions: MenuBarActions = {
+      onNewFile: () => controller.newFile(),
       onOpenFolder: openFolder,
       onSave: () => { void controller.saveActive() },
       onSaveAs: () => { void controller.saveActiveAs() },
@@ -85,7 +86,7 @@ class EditorShell extends Container {
       onToggleExplorer: () => split.setPaneCollapsed(EXPLORER_PANE_INDEX, !split.isPaneCollapsed(EXPLORER_PANE_INDEX)),
       onExit: () => { void controller.exitApp() },
       hasActiveFile: () => controller.hasActiveFile(),
-      isActiveDirty: () => controller.isActiveDirty(),
+      canSaveActive: () => controller.canSaveActive(),
       getRecentProjects: () => controller.getRecentProjects(),
       getRecentFiles: () => controller.getRecentFiles(),
       onOpenRecentProject: (path: string) => controller.openRecentProject(path),
@@ -226,6 +227,7 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
   return MenuBar({
     menus: [
       { label: 'File', glyph: 'folder', items: () => [
+        { text: 'New File', glyph: 'file-circle-plus', shortcut: NEW_FILE_SHORTCUT, action: actions.onNewFile },
         { text: 'Open Folder…', glyph: 'folder', shortcut: OPEN_FOLDER_SHORTCUT, action: actions.onOpenFolder },
         {
           text: 'Open Recent',
@@ -234,7 +236,7 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
           submenu: { label: 'Open Recent', items: () => buildRecentItems(actions) },
         },
         { separator: true },
-        { text: 'Save', glyph: 'floppy-disk', shortcut: SAVE_SHORTCUT, enabled: actions.hasActiveFile() && actions.isActiveDirty(), action: actions.onSave },
+        { text: 'Save', glyph: 'floppy-disk', shortcut: SAVE_SHORTCUT, enabled: actions.canSaveActive(), action: actions.onSave },
         { text: 'Save As…', glyph: 'floppy-disk', shortcut: SAVE_AS_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onSaveAs },
         { text: 'Close File', glyph: 'times', shortcut: CLOSE_FILE_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onCloseFile },
         { separator: true },

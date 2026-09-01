@@ -27,12 +27,17 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
 
 /**
  * Resolves the CodeEditor language id for a file, from its extension. A file
- * with no extension, or one that maps to no known language, has none.
+ * with no extension, or one that maps to no known language, has none — nor
+ * does a path-less buffer that has never been saved.
  *
- * @param path - The file path.
- * @returns The language id, or `null` when the extension is unrecognised.
+ * @param path - The file path, or `null` for a buffer with no path yet.
+ * @returns The language id, or `null` when the extension is unrecognised or `path` is `null`.
  */
-export function languageForPath(path: string): string | null {
+export function languageForPath(path: string | null): string | null {
+  if (path === null) {
+    return null
+  }
+
   return EXTENSION_TO_LANGUAGE[extensionOf(path)] ?? null
 }
 

@@ -60,14 +60,16 @@ export async function pickProjectFolder(): Promise<string | null> {
 }
 
 /**
- * Shows the native save dialog, defaulted to `defaultPath`, and resolves to
- * the chosen target path, or `null` if the user cancelled.
+ * Shows the native save dialog, defaulted to `defaultPath` when one is
+ * given, and resolves to the chosen target path, or `null` if the user
+ * cancelled.
  *
- * @param defaultPath - The path the dialog opens to.
+ * @param defaultPath - The path the dialog opens to, or `null` to let the
+ *   dialog pick its own starting directory.
  * @returns The chosen path, or `null`.
  */
-export async function pickSaveTarget(defaultPath: string): Promise<string | null> {
-  return save({ defaultPath })
+export async function pickSaveTarget(defaultPath: string | null): Promise<string | null> {
+  return save({ defaultPath: defaultPath ?? undefined })
 }
 
 /**

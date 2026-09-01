@@ -81,9 +81,11 @@ export async function applySession(state: SessionState, targets: SessionTargets)
     try {
       await targets.tree.setProjectRoot(state.projectRoot)
       await targets.tree.expandPaths(state.expandedDirs)
+      targets.controller.setProjectRoot(state.projectRoot)
     } catch {
       // A moved or deleted project folder leaves the tree empty; the rest of
-      // the restore (the open files below) still proceeds.
+      // the restore (the open files below) still proceeds. The controller's
+      // own project root is left unset in that case too, matching the tree.
     }
   }
 
