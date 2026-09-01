@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { baseName, extensionOf, joinPath, sortDirEntries, isUnderRoot, projectName } from '../src/data/paths'
+import { baseName, extensionOf, joinPath, sortDirEntries, isUnderRoot, projectName, pathSegments, relativeTo } from '../src/data/paths'
 
 describe('baseName', () => {
   it('takes the last segment of a forward-slash path', () => {
@@ -118,5 +118,57 @@ describe('isUnderRoot', () => {
 
   it('accepts a backslash path inside root', () => {
     expect(isUnderRoot('C:\\p', 'C:\\p\\src\\a.ts')).toBe(true)
+  })
+})
+
+describe('pathSegments', () => {
+  it('splits a forward-slash absolute path into its segments', () => {
+    expect(pathSegments('/p/src/main.ts')).toEqual(['p', 'src', 'main.ts'])
+  })
+
+  it('splits a forward-slash relative path into its segments', () => {
+    expect(pathSegments('src/main.ts')).toEqual(['src', 'main.ts'])
+  })
+
+  it('splits a backslash path into its segments', () => {
+    expect(pathSegments('C:\\p\\main.ts')).toEqual(['C:', 'p', 'main.ts'])
+  })
+
+  it('drops repeated and trailing separators', () => {
+    expect(pathSegments('/p//src/')).toEqual(['p', 'src'])
+  })
+
+  it('returns an empty array for an empty string', () => {
+    expect(pathSegments('')).toEqual([])
+  })
+})
+
+describe('relativeTo', () => {
+  it('rewrites a path below the root as the part below it', () => {
+    expect(relativeTo('/p', '/p/src/main.ts')).toBe('src/main.ts')
+  })
+
+  it('does not double a trailing separator on the root', () => {
+    expect(relativeTo('/p/', '/p/src/main.ts')).toBe('src/main.ts')
+  })
+
+  it('returns null for a same-prefix sibling that is not really below the root', () => {
+    expect(relativeTo('/p', '/project/a.ts')).toBeNull()
+  })
+
+  it('returns null for the root path itself', () => {
+    expect(relativeTo('/p', '/p')).toBeNull()
+  })
+
+  it('picks the backslash separator when the root contains one', () => {
+    expect(relativeTo('C:\\p', 'C:\\p\\src\\main.ts')).toBe('src\\main.ts')
+  })
+
+  it('returns null when no project folder is open', () => {
+    expect(relativeTo(null, '/p/src/main.ts')).toBeNull()
+  })
+
+  it('returns an empty string for the root plus a bare trailing separator', () => {
+    expect(relativeTo('/p', '/p/')).toBe('')
   })
 })

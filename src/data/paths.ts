@@ -97,6 +97,35 @@ export function sortDirEntries<T extends SortableEntry>(items: T[]): T[] {
 }
 
 /**
+ * Every non-empty segment of `path`, split on both `/` and `\`.
+ *
+ * @param path - A file or directory path, absolute or relative.
+ * @returns The segments, leading/trailing/repeated separators dropped.
+ */
+export function pathSegments(path: string): string[] {
+  return path.split(/[/\\]/).filter(segment => segment.length > 0)
+}
+
+/**
+ * `path` rewritten relative to `root`, or `null` when `path` does not sit
+ * strictly below `root`.
+ *
+ * @param root - The directory to measure against, or `null` when none is open.
+ * @param path - The path to rewrite.
+ * @returns The portion of `path` below `root`, or `null`.
+ */
+export function relativeTo(root: string | null, path: string): string | null {
+  if (root === null) {
+    return null
+  }
+
+  const sep = root.includes('\\') ? '\\' : '/'
+  const prefix = root.endsWith(sep) ? root : root + sep
+
+  return path.startsWith(prefix) ? path.slice(prefix.length) : null
+}
+
+/**
  * Whether `path` is `root` itself or lives anywhere under it, comparing path
  * segments so a same-prefix sibling (`/p2` under `/p`) is never mistaken for
  * being inside it.

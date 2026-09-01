@@ -174,6 +174,7 @@ class EditorController {
 
     this.recordRecentProject(root)
     this._projectRoot = root
+    this.pushProjectRoot(root)
   }
 
   /**
@@ -189,6 +190,7 @@ class EditorController {
   openRecentProject(root: string): void {
     this.recordRecentProject(root)
     this._projectRoot = root
+    this.pushProjectRoot(root)
     void this._projectRootListener?.(root)
   }
 
@@ -215,6 +217,7 @@ class EditorController {
       path: null,
       name: `Untitled-${this._untitledCount}`,
       text: '',
+      projectRoot: this._projectRoot,
       onDirtyChange: this.handleDirtyChange,
     })
 
@@ -271,12 +274,26 @@ class EditorController {
    * @returns The new tab's `FileEditor`.
    */
   private addFileTab(path: string, text: string): FileEditor {
-    const file = FileEditor({ path, name: baseName(path), text, onDirtyChange: this.handleDirtyChange })
+    const file = FileEditor({ path, name: baseName(path), text, projectRoot: this._projectRoot, onDirtyChange: this.handleDirtyChange })
 
     this.tabs.addTab(file, file.getLabel(), { closeable: true, glyph: glyphNameForPath(path) })
     this._openFiles.push(file)
 
     return file
+  }
+
+  /**
+   * Repoints every already-open file's breadcrumb band at `root`, so a live
+   * project-folder switch re-shortens paths that were showing relative to
+   * the previous one (or the previous one's full path, if they fell outside
+   * it).
+   *
+   * @param root - The newly chosen project folder.
+   */
+  private pushProjectRoot(root: string): void {
+    for (const file of this._openFiles) {
+      file.setProjectRoot(root)
+    }
   }
 
   /** Records `root` at the front of the recent-projects list. */
