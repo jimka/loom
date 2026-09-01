@@ -51,12 +51,15 @@ const WORKSPACE_GITIGNORE_CONTENTS = '*\n'
 
 /**
  * Shows the native directory picker and resolves to the chosen folder, or
- * `null` if the user cancelled.
+ * `null` if the user cancelled. Passes `recursive: true` so Tauri grants
+ * filesystem access to the whole subtree under the chosen folder rather than
+ * its immediate children only — the runtime grant that lets a folder outside
+ * `$HOME` be browsed to any depth.
  *
  * @returns The chosen folder's path, or `null`.
  */
 export async function pickProjectFolder(): Promise<string | null> {
-  return open({ directory: true, multiple: false })
+  return open({ directory: true, multiple: false, recursive: true })
 }
 
 /**

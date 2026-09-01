@@ -38,7 +38,7 @@ class EditorController {
   private _recentFiles: string[] = []
   private _projectRoot: string | null = null
   private _untitledCount = 0
-  private _projectRootListener: ((root: string) => void) | null = null
+  private _projectRootListener: ((root: string) => Promise<void>) | null = null
   private _beforeExitListener: (() => Promise<void>) | null = null
   private _emptyStateListener: ((empty: boolean) => void) | null = null
 
@@ -62,9 +62,10 @@ class EditorController {
    * Injects the shell's tree-refresh callback, invoked from
    * {@link openProjectFolder} once a folder is chosen.
    *
-   * @param fn - Called with the chosen project root.
+   * @param fn - Called with the chosen project root; resolves once the tree
+   *   has loaded the folder.
    */
-  setProjectRootListener(fn: (root: string) => void): void {
+  setProjectRootListener(fn: (root: string) => Promise<void>): void {
     this._projectRootListener = fn
   }
 
@@ -150,28 +151,44 @@ class EditorController {
     return [...this._recentFiles]
   }
 
-  /** Shows the native folder picker and points the tree at the chosen folder. */
+  /**
+   * Shows the native folder picker and points the tree at the chosen folder.
+   * A folder the app cannot list shows a `Dialog.error` and leaves the tree
+   * as it was.
+   */
   async openProjectFolder(): Promise<void> {
     const root = await pickProjectFolder()
 
-    if (root !== null) {
-      this.recordRecentProject(root)
-      this._projectRoot = root
-      this._projectRootListener?.(root)
+    if (root === null) {
+      return
     }
+
+    try {
+      await this._projectRootListener?.(root)
+    } catch (error) {
+      await Dialog.error('Could not open folder', messageOf(error))
+
+      return
+    }
+
+    this.recordRecentProject(root)
+    this._projectRoot = root
   }
 
   /**
    * Points the tree at `root` without the native picker — the counterpart
    * to {@link openProjectFolder} for a path already known, e.g. a Recent
-   * Projects entry.
+   * Projects entry. Unlike {@link openProjectFolder}, a failed listing here
+   * is not caught: `root` already came from a previous successful open, so
+   * this mirrors that method's pre-existing behaviour rather than the new
+   * error-reporting path, which the plan scoped to the picker flow only.
    *
    * @param root - The project folder to open.
    */
   openRecentProject(root: string): void {
     this.recordRecentProject(root)
     this._projectRoot = root
-    this._projectRootListener?.(root)
+    void this._projectRootListener?.(root)
   }
 
   /**
