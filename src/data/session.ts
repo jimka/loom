@@ -21,6 +21,30 @@ export interface SessionState {
   paneSizes: LayoutSize[]
   /** Indices of the collapsed panes. */
   collapsedPanes: number[]
+  /** Recently opened project folders, most-recent first. */
+  recentProjects: string[]
+  /** Recently opened files, most-recent first, independent of which project (if any) they were opened from. */
+  recentFiles: string[]
+}
+
+/**
+ * The most recent-projects or recent-files entries kept, oldest dropped
+ * first — long enough to be useful, short enough that the File-menu
+ * submenu never needs to scroll (matching the length most editors cap an
+ * in-menu recent list at).
+ */
+export const MAX_RECENT_ENTRIES = 10
+
+/**
+ * Returns a new list with `path` moved to the front, any earlier occurrence
+ * removed, capped at {@link MAX_RECENT_ENTRIES}. Leaves `list` unmutated.
+ *
+ * @param list - The current most-recent-first list.
+ * @param path - The path to move (or add) to the front.
+ * @returns The new list.
+ */
+export function withRecent(list: string[], path: string): string[] {
+  return [path, ...list.filter(entry => entry !== path)].slice(0, MAX_RECENT_ENTRIES)
 }
 
 /** A fresh, empty session — what a first launch (or an unusable file) gets. */
@@ -33,6 +57,8 @@ export function emptySession(): SessionState {
     activeFile: null,
     paneSizes: [],
     collapsedPanes: [],
+    recentProjects: [],
+    recentFiles: [],
   }
 }
 
@@ -65,6 +91,8 @@ export function parseSession(text: string): SessionState {
     activeFile: readOptionalString(doc.activeFile) ?? empty.activeFile,
     paneSizes: readLayoutSizeArray(doc.paneSizes) ?? empty.paneSizes,
     collapsedPanes: readNumberArray(doc.collapsedPanes) ?? empty.collapsedPanes,
+    recentProjects: (readStringArray(doc.recentProjects) ?? empty.recentProjects).slice(0, MAX_RECENT_ENTRIES),
+    recentFiles: (readStringArray(doc.recentFiles) ?? empty.recentFiles).slice(0, MAX_RECENT_ENTRIES),
   }
 }
 

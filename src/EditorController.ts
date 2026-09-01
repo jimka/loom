@@ -9,6 +9,7 @@ import { baseName } from './data/paths'
 import { readFileText, writeFileText, pickProjectFolder, pickSaveTarget, setWindowTitle, closeWindow, onCloseRequested } from './data/workspace'
 import { promptUnsavedChanges } from './shell/unsavedPrompt'
 import { APP_NAME } from './appIdentity'
+import { withRecent } from './data/session'
 
 /** Turns a caught value into a display-safe message for a `Dialog.error` call. */
 function messageOf(error: unknown): string {
@@ -33,6 +34,8 @@ class EditorController {
 
   private readonly _openFiles = new Map<string, FileEditor>()
   private readonly _languageText: Text
+  private _recentProjects: string[] = []
+  private _recentFiles: string[] = []
   private _projectRootListener: ((root: string) => void) | null = null
   private _beforeExitListener: (() => Promise<void>) | null = null
   private _emptyStateListener: ((empty: boolean) => void) | null = null
@@ -87,6 +90,19 @@ class EditorController {
     this._beforeExitListener = fn
   }
 
+  /**
+   * Seeds the in-memory recent-projects/recent-files lists from a loaded
+   * session. Call once, right after construction, before any command that
+   * might record into them.
+   *
+   * @param projects - The recent-projects list to start from, most-recent first.
+   * @param files - The recent-files list to start from, most-recent first.
+   */
+  seedRecents(projects: string[], files: string[]): void {
+    this._recentProjects = projects
+    this._recentFiles = files
+  }
+
   /** Whether a file is currently active — read by the File/Edit menu providers. */
   hasActiveFile(): boolean {
     return this.getActiveFile() !== null
@@ -115,13 +131,36 @@ class EditorController {
     return this.getActiveFile()?.getPath() ?? null
   }
 
+  /** Recently opened project folders, most-recent first. */
+  getRecentProjects(): string[] {
+    return [...this._recentProjects]
+  }
+
+  /** Recently opened files, most-recent first. */
+  getRecentFiles(): string[] {
+    return [...this._recentFiles]
+  }
+
   /** Shows the native folder picker and points the tree at the chosen folder. */
   async openProjectFolder(): Promise<void> {
     const root = await pickProjectFolder()
 
     if (root !== null) {
+      this.recordRecentProject(root)
       this._projectRootListener?.(root)
     }
+  }
+
+  /**
+   * Points the tree at `root` without the native picker — the counterpart
+   * to {@link openProjectFolder} for a path already known, e.g. a Recent
+   * Projects entry.
+   *
+   * @param root - The project folder to open.
+   */
+  openRecentProject(root: string): void {
+    this.recordRecentProject(root)
+    this._projectRootListener?.(root)
   }
 
   /**
@@ -136,6 +175,7 @@ class EditorController {
     const existing = this._openFiles.get(path)
 
     if (existing) {
+      this.recordRecentFile(path)
       this.tabs.getTab().setActiveContent(existing)
 
       return
@@ -150,6 +190,8 @@ class EditorController {
 
       return
     }
+
+    this.recordRecentFile(path)
 
     const file = this.addFileTab(path, text)
 
@@ -174,6 +216,16 @@ class EditorController {
     this._openFiles.set(path, file)
 
     return file
+  }
+
+  /** Records `root` at the front of the recent-projects list. */
+  private recordRecentProject(root: string): void {
+    this._recentProjects = withRecent(this._recentProjects, root)
+  }
+
+  /** Records `path` at the front of the recent-files list. */
+  private recordRecentFile(path: string): void {
+    this._recentFiles = withRecent(this._recentFiles, path)
   }
 
   /**

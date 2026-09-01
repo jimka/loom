@@ -3,12 +3,14 @@ import type { Component } from '@jimka/typescript-ui/core'
 import { Placement } from '@jimka/typescript-ui/primitive'
 import { Border as BorderLayout, Card, Split } from '@jimka/typescript-ui/layout'
 import { MenuBar } from '@jimka/typescript-ui/component/menubar'
+import type { MenuItemConfig } from '@jimka/typescript-ui/component/container'
 import { FileTree } from '../explorer/FileTree'
 import { WelcomeScreen } from './WelcomeScreen'
 import type { EditorController } from '../EditorController'
 import type { SessionState } from '../data/session'
 import type { SessionAutosave } from './session'
 import { applySession, installSessionAutosave, loadWorkspaceState } from './session'
+import { projectName, baseName } from '../data/paths'
 import {
   OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
   FORMAT_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, installAccelerators,
@@ -28,6 +30,14 @@ interface MenuBarActions extends AcceleratorActions {
   hasActiveFile: () => boolean
   /** Whether the active file has unsaved changes — the Save item is greyed out when not. */
   isActiveDirty: () => boolean
+  /** Recently opened project folders, most-recent first — read by the Open Recent submenu. */
+  getRecentProjects: () => string[]
+  /** Recently opened files, most-recent first — read by the Open Recent submenu. */
+  getRecentFiles: () => string[]
+  /** Reopens a recent project's root, bypassing the native picker. */
+  onOpenRecentProject: (path: string) => void
+  /** Reopens a recent file — the same action a tree click runs. */
+  onOpenRecentFile: (path: string) => void
 }
 
 /**
@@ -50,7 +60,11 @@ class EditorShell extends Container {
   constructor(controller: EditorController, session: SessionState) {
     const openFolder = (): void => { void controller.openProjectFolder() }
     const tree = FileTree({ onOpenFile: (path: string) => { void controller.openFile(path) } })
-    const welcome = WelcomeScreen({ onOpenFolder: openFolder })
+    const welcome = WelcomeScreen({
+      onOpenFolder: openFolder,
+      recentProjects: controller.getRecentProjects(),
+      onOpenRecentProject: (path: string) => controller.openRecentProject(path),
+    })
     const deck = buildEditorDeck(controller, welcome)
     const split = new Split({
       orientation: 'horizontal',
@@ -72,6 +86,10 @@ class EditorShell extends Container {
       onExit: () => { void controller.exitApp() },
       hasActiveFile: () => controller.hasActiveFile(),
       isActiveDirty: () => controller.isActiveDirty(),
+      getRecentProjects: () => controller.getRecentProjects(),
+      getRecentFiles: () => controller.getRecentFiles(),
+      onOpenRecentProject: (path: string) => controller.openRecentProject(path),
+      onOpenRecentFile: (path: string) => { void controller.openFile(path) },
     }
 
     const menuBar = buildMenuBar(actions)
@@ -92,6 +110,7 @@ class EditorShell extends Container {
     controller.setProjectRootListener(root => {
       void this.openProjectRoot(root)
       welcome.setProjectRoot(root)
+      welcome.setRecentProjects(controller.getRecentProjects())
     })
     installAccelerators(actions)
   }
@@ -168,6 +187,35 @@ function buildEditorDeck(controller: EditorController, welcome: WelcomeScreen): 
 }
 
 /**
+ * Builds the Open Recent submenu's items: every recent project, then a
+ * separator (when both lists are non-empty), then every recent file.
+ *
+ * @param actions - Supplies the recent-projects/recent-files lists and their open handlers.
+ * @returns The submenu's item list.
+ */
+function buildRecentItems(actions: MenuBarActions): MenuItemConfig[] {
+  const projects = actions.getRecentProjects()
+  const files = actions.getRecentFiles()
+  const items: MenuItemConfig[] = projects.map(root => ({
+    text: projectName(root),
+    glyph: 'folder',
+    action: () => actions.onOpenRecentProject(root),
+  }))
+
+  if (projects.length > 0 && files.length > 0) {
+    items.push({ separator: true })
+  }
+
+  items.push(...files.map(path => ({
+    text: baseName(path),
+    glyph: 'file-code',
+    action: () => actions.onOpenRecentFile(path),
+  })))
+
+  return items
+}
+
+/**
  * The File, Edit, and View menus. Each menu's `items` is a provider
  * function, so enablement is recomputed every time the menu opens.
  *
@@ -179,6 +227,12 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
     menus: [
       { label: 'File', glyph: 'folder', items: () => [
         { text: 'Open Folder…', glyph: 'folder', shortcut: OPEN_FOLDER_SHORTCUT, action: actions.onOpenFolder },
+        {
+          text: 'Open Recent',
+          glyph: 'clock-rotate-left',
+          enabled: actions.getRecentProjects().length > 0 || actions.getRecentFiles().length > 0,
+          submenu: { label: 'Open Recent', items: () => buildRecentItems(actions) },
+        },
         { separator: true },
         { text: 'Save', glyph: 'floppy-disk', shortcut: SAVE_SHORTCUT, enabled: actions.hasActiveFile() && actions.isActiveDirty(), action: actions.onSave },
         { text: 'Save As…', glyph: 'floppy-disk', shortcut: SAVE_AS_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onSaveAs },
