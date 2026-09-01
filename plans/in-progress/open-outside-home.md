@@ -362,3 +362,123 @@ being exercised only exists inside a running Tauri process.
     currently has none; catching in `EditorShell` would put logic into a file
     that is otherwise pure composition. The cost is turning the listener into a
     promise-returning function, which is one type change and one call site.
+
+---
+
+## Implementation Notes
+
+**Codebase drift beyond line numbers.** The plan was drafted before the
+recent-projects and workspace-session-persistence plans landed, and both
+reshaped the code this plan touches:
+
+- `EditorController` had grown `openRecentProject` (recent-projects.md), a
+  second call site of `_projectRootListener` alongside `openProjectFolder`,
+  and `openProjectFolder` itself had grown `recordRecentProject`/
+  `_projectRoot` assignment that ran unconditionally *before* invoking the
+  listener. The plan's step 3 snippet, written against the pre-recent-projects
+  code, no longer matched. Resolution: `openProjectFolder` now mirrors
+  `openFile`'s cited precedent exactly — `recordRecentProject`/`_projectRoot`
+  only run *after* the listener resolves, so a folder that fails to list is
+  not recorded as recently opened and does not become the new save-target
+  default. `openRecentProject` was left behaviourally unchanged (it still
+  records and assigns before firing the listener) and only got a `void`
+  marker on the now-promise-returning call — this plan's *Report a failed
+  folder listing from `EditorController`* architecture decision explicitly
+  scoped error reporting to the picker flow (mirroring `openFile`), not to
+  every path that can point the tree at a root, so extending try/catch
+  there would have been unauthorised scope creep rather than a drift
+  adaptation. Concretely this means: reopening a folder from Recent
+  Projects when it has since become unreadable still leaves the earlier
+  unhandled-rejection behaviour in place (no regression — it was never
+  caught before this plan either), while a *freshly picked* folder that
+  fails to list now shows `Dialog.error` and changes nothing else.
+- `EditorShell`'s `setProjectRootListener` registration had grown into
+  `root => { void this.openProjectRoot(root); welcome.setProjectRoot(root);
+  welcome.setRecentProjects(...) }` (workspace-session-persistence.md +
+  recent-projects.md), not the plan's one-line
+  `root => tree.setProjectRoot(root)`. Adapted by making the callback
+  `async` and `await`-ing `this.openProjectRoot(root)` last (after the two
+  synchronous welcome-screen updates, preserving their original
+  unconditional/immediate timing), so a listing failure now propagates
+  through the callback's returned promise into
+  `EditorController.openProjectFolder`'s `catch` instead of the
+  previously-documented permanent unhandled rejection. `openProjectRoot`'s
+  own doc comment (which explicitly said "a failed listing keeps exactly
+  the unhandled rejection it has today") was updated to describe the new
+  propagation instead of leaving a comment that this plan made incorrect.
+
+**Verification-grep drift.** Step 5's `grep -rn 'setProjectRootListener'
+src/` still returns exactly the three hits the plan predicts. The
+Verification section's `grep -n 'recursive: true' src/data/workspace.ts`
+no longer returns exactly one hit — `writeSessionText`/
+`writeWorkspaceStateText` (session-persistence.md,
+workspace-session-persistence.md) added two unrelated
+`mkdir(dir, { recursive: true })` calls after this plan was drafted, and
+this plan's own JSDoc addition to `pickProjectFolder` mentions the string
+in prose. Confirmed by inspection that the picker call itself is still
+the only *code* use of the dialog's `recursive` option; the grep's "exactly
+one hit" framing is simply stale, not a sign of a real duplication.
+
+**Dev environment.** As in every prior phase's Implementation Notes, this
+worktree's `npm install` pulled the published `@jimka/typescript-ui@0.8.0`,
+which predates `TabCloseController`/`Tab.setTabName`/`"beforetabclose"`;
+`node_modules/@jimka/typescript-ui` was re-pointed at the sibling
+`typescript-ui` checkout (`/home/jika/typescript/typescript-ui/packages/lib`)
+to fix the resulting typecheck errors, same as every earlier phase recorded.
+
+**Manual verification.** Ran against a real `npm run tauri:dev` process
+(Linux/WSL2, DISPLAY forwarded to a Windows host via WSLg), reusing the main
+tree's Cargo build cache (`CARGO_TARGET_DIR` pointed at
+`/home/jika/typescript/loom/src-tauri/target`), screenshotted with Pillow's
+`ImageGrab` and driven with `pyautogui`; window focus was set explicitly via
+`python-xlib` (`set_input_focus`/`configure(stack_mode=Above)`) before each
+new window's first interaction, matching prior phases' recorded workaround.
+The native GTK folder/save dialogs proved considerably harder to drive than
+the webview itself: the location-bar's inline path completion
+(triggered by Ctrl+L) auto-extends into any unambiguous single child on
+`Enter`, so typing an exact target directory and pressing `Enter` does not
+reliably select it — the dialog needs the *parent* folder navigated to
+(inline completion doesn't fire past an ambiguous multi-child directory)
+and the *target* row single-clicked or double-clicked directly from the
+visible list, which is the technique all seven cases below ended up using.
+The window also occasionally repositions itself between dialog opens, so
+click coordinates were recomputed from a fresh `query_tree()`/`get_geometry()`
+call immediately before each interaction rather than reused across dialog
+instances.
+
+Confirmed by screenshot and on-disk file contents, using a scratch project
+directory under this session's scratchpad (outside `$HOME`) with a
+`src/nested/deep.txt` two levels down, a `.gitignore` at its root, a
+`chmod 000` unreadable directory, and `/root` as a second unreadable-folder
+case:
+
+1. **Folder outside `$HOME` opens to full depth.** Picking the scratch
+   project opened a tree whose nested `deep.txt` (two directories down)
+   opened and displayed its contents correctly — refused outright before
+   this plan's `recursive: true` change.
+2. **Folder inside `$HOME` still opens to full depth.** Picking this
+   repository's own main worktree (`~/typescript/loom`) showed a multi-level
+   tree (`src-tauri` expanded on click into `capabilities`/`gen`/`icons`/
+   `src`/`target`), unchanged from today.
+3. **Cancelling the picker does nothing.** Clicking the dialog's Cancel
+   button closed it with the tree and open tabs exactly as they were; no
+   dialog appeared.
+4. **An unreadable folder reports itself.** Picking `/root` (not running as
+   root) produced a `Could not open folder` dialog reading `failed to read
+   directory at path: /root with error: Permission denied (os error 13)`,
+   and the previously-open tree stayed on screen behind it, unchanged.
+5. **Save still works inside a folder opened from outside `$HOME`.** Editing
+   the nested `deep.txt` and pressing Ctrl+S cleared its dirty marker and
+   updated the file's on-disk contents to match.
+6. **Save As to a path outside the opened folder still works.** Ctrl+Shift+S
+   to a sibling scratch directory (outside the opened project root) wrote
+   the file and retargeted the tab to the new name; content on disk matched.
+7. **A dotfile still refuses to open.** Clicking `.gitignore` in the scratch
+   project's tree (opened at its true root this time, so `.gitignore` was
+   visible) produced a `Could not open file` dialog with a `forbidden path`
+   message — the pre-existing limitation this plan records in `TODO.md`,
+   unchanged.
+
+All test artefacts (the scratch project, the unreadable directory, the
+save-as target) were removed from the scratchpad after verification; the
+`tauri:dev`/`cargo run` processes were stopped.
