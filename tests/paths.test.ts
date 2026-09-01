@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { baseName, extensionOf, joinPath, sortDirEntries } from '../src/data/paths'
+import { baseName, extensionOf, joinPath, sortDirEntries, isUnderRoot } from '../src/data/paths'
 
 describe('baseName', () => {
   it('takes the last segment of a forward-slash path', () => {
@@ -78,5 +78,27 @@ describe('sortDirEntries', () => {
     ]
 
     expect(sortDirEntries(input).map(e => e.name)).toEqual(['Test', 'test'])
+  })
+})
+
+describe('isUnderRoot', () => {
+  it('accepts a path inside root', () => {
+    expect(isUnderRoot('/p', '/p/src/a.ts')).toBe(true)
+  })
+
+  it('accepts the root itself', () => {
+    expect(isUnderRoot('/p', '/p')).toBe(true)
+  })
+
+  it('rejects a same-prefix sibling', () => {
+    expect(isUnderRoot('/p', '/p2/a.ts')).toBe(false)
+  })
+
+  it('rejects a same-prefix sibling one level deeper', () => {
+    expect(isUnderRoot('/p/src', '/p/src2/a.ts')).toBe(false)
+  })
+
+  it('accepts a backslash path inside root', () => {
+    expect(isUnderRoot('C:\\p', 'C:\\p\\src\\a.ts')).toBe(true)
   })
 })

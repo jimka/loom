@@ -6,7 +6,10 @@ import type { EditorController } from '../EditorController'
 import type { FileTree } from '../explorer/FileTree'
 import type { SessionState } from '../data/session'
 import { parseSession, serializeSession } from '../data/session'
-import { readSessionText, writeSessionText } from '../data/workspace'
+import type { WorkspaceState } from '../data/workspaceState'
+import { parseWorkspaceState, serializeWorkspaceState, workspaceStateFromSession } from '../data/workspaceState'
+import { readSessionText, writeSessionText, readWorkspaceStateText, writeWorkspaceStateText } from '../data/workspace'
+import { isUnderRoot } from '../data/paths'
 
 /**
  * How long a session change waits before it is written, in milliseconds.
@@ -34,6 +37,18 @@ export interface SessionAutosave {
 /** Reads and parses the stored session. */
 export async function loadSession(): Promise<SessionState> {
   return parseSession((await readSessionText()) ?? '')
+}
+
+/**
+ * Reads and parses `root`'s workspace state file.
+ *
+ * @param root - The project folder to read the workspace state from.
+ * @returns The parsed workspace state, or `null` when it is absent or unusable.
+ */
+export async function loadWorkspaceState(root: string): Promise<WorkspaceState | null> {
+  const text = await readWorkspaceStateText(root)
+
+  return text === null ? null : parseWorkspaceState(text)
 }
 
 /** The current state of the tree, tabs, and split. */
@@ -87,7 +102,13 @@ export function installSessionAutosave(targets: SessionTargets): SessionAutosave
 
   const writeSnapshot = async (): Promise<void> => {
     try {
-      await writeSessionText(serializeSession(captureSession(targets)))
+      const session = captureSession(targets)
+
+      await writeSessionText(serializeSession(session))
+
+      if (session.projectRoot !== null && openFilesBelongToRoot(session.projectRoot, session.openFiles)) {
+        await writeWorkspaceStateText(session.projectRoot, serializeWorkspaceState(workspaceStateFromSession(session)))
+      }
     } catch {
       // A failed session write must never interrupt editing.
     }
@@ -118,4 +139,29 @@ export function installSessionAutosave(targets: SessionTargets): SessionAutosave
   targets.split.on('panecollapse', schedule)
 
   return { schedule, flush }
+}
+
+/**
+ * Whether every one of `openFiles` sits under `root` — the signal that the
+ * live tab strip genuinely belongs to the current project, safe to write
+ * into its own `.loom/workspace.json`.
+ *
+ * A live *Open Folder…* switch changes the tree's root without touching the
+ * open tabs (`EditorShell.openProjectRoot` deliberately leaves them alone),
+ * so immediately after a switch the tabs still belong to the *previous*
+ * project. Restoring the new root's saved tree expansion still fires the
+ * `tree`'s `"expand"` events this module listens on, which would otherwise
+ * write the previous project's stale tabs and pane sizes into the new
+ * root's own workspace file, silently overwriting whatever it had already
+ * saved. Skipping the write while any tab is foreign leaves that file
+ * untouched until the mismatch resolves on its own — the user closes the
+ * leftover tabs, or opens a file under the new root — at which point the
+ * write resumes and captures the new root's own, genuine state.
+ *
+ * @param root - The project root to check against.
+ * @param openFiles - The live tab strip's open file paths.
+ * @returns Whether every open file is under `root`.
+ */
+function openFilesBelongToRoot(root: string, openFiles: string[]): boolean {
+  return openFiles.every(path => isUnderRoot(root, path))
 }

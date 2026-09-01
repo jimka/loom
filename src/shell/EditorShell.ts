@@ -6,7 +6,7 @@ import { FileTree } from '../explorer/FileTree'
 import type { EditorController } from '../EditorController'
 import type { SessionState } from '../data/session'
 import type { SessionAutosave } from './session'
-import { applySession, installSessionAutosave } from './session'
+import { applySession, installSessionAutosave, loadWorkspaceState } from './session'
 import {
   OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
   FORMAT_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, installAccelerators,
@@ -103,14 +103,26 @@ class EditorShell extends Container {
   }
 
   /**
-   * `setProjectRootListener`'s callback: points the tree at the newly chosen
-   * folder, then schedules a session save. No `catch` here — a failed
-   * listing keeps exactly the unhandled rejection it has today.
+   * `setProjectRootListener`'s callback: flushes the outgoing project's own
+   * pending autosave, points the tree at the newly chosen folder, restores
+   * that folder's saved tree expansion (if it has any), then schedules a
+   * session save. No `catch` around the listing itself — a failed listing
+   * keeps exactly the unhandled rejection it has today. Tabs, the active
+   * file, and the split are deliberately left untouched by a live switch —
+   * only tree expansion restores outside a cold start.
    *
    * @param root - The newly chosen project folder.
    */
   private async openProjectRoot(root: string): Promise<void> {
+    await this._autosave?.flush()
     await this._tree.setProjectRoot(root)
+
+    const workspace = await loadWorkspaceState(root)
+
+    if (workspace) {
+      await this._tree.expandPaths(workspace.expandedDirs)
+    }
+
     this._autosave?.schedule()
   }
 }
