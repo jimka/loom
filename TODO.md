@@ -15,8 +15,6 @@ nothing below has a plan yet.
   them. The `plugins.fs.requireLiteralLeadingDot` setting in
   `src-tauri/tauri.conf.json` only relaxes the capability grant, not the
   picker's, so a fix has to cover both.
-- **Hidden-file / `.gitignore`-aware filtering** — the tree currently shows
-  every entry `readDir` returns.
 - **Library `component-dirty-state` support** — a generic dirty-flag
   propagation mechanism on `Component` itself, so a parent can expose "a
   descendant has unsaved changes" without every consumer hand-rolling it the
@@ -33,7 +31,10 @@ nothing below has a plan yet.
 - **In-file or cross-file search.**
 - **Git integration**, including a dirty-vs-committed indicator in the tree.
 - **Filesystem watching** — the tree does not react to changes made outside
-  the app; there is not even a manual refresh today.
+  the app; there is not even a manual refresh today. A refresh must re-run
+  the tree's hidden/`.gitignore` filter, not just relist; a changed
+  `.gitignore` invalidates the whole subtree below its own directory, not
+  just the directory it sits in.
 - **Temp tabs.** When browsing files (single-click / tree navigation), reuse
   one transient tab instead of opening a new permanent one; a tab becomes
   permanent once the user edits the file or double-clicks it. (The common

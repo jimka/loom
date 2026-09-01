@@ -16,7 +16,10 @@ known limitations are tracked in [`TODO.md`](TODO.md).
 
 - **File tree** — open a project folder, browse it, lazily loading each
   directory as it's expanded; each row shows a per-file-type icon — see
-  [`src/fileIcons.ts`](src/fileIcons.ts) for the icon map.
+  [`src/fileIcons.ts`](src/fileIcons.ts) for the icon map. Hidden (leading-dot)
+  and `.gitignore`-ignored entries are filtered out by default; the View
+  menu's **Show Hidden Files** and **Show Ignored Files** toggles bring each
+  class back independently.
 - **Welcome screen** — shown in place of the tab strip whenever no file is
   open, offering *Open Folder…* and naming the current project once one is.
 - **Tabbed editing** — open several files at once, each tab carrying the
