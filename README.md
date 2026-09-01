@@ -18,6 +18,8 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   directory as it's expanded.
 - **Tabbed editing** — open several files at once; a dirty-indicator dot
   marks unsaved changes per tab.
+- **Session restore** — the last project folder, expanded tree directories,
+  open tabs, and the explorer width all come back on the next launch.
 - **Save / Save As**, with an unsaved-changes prompt on closing a modified
   file or exiting with modified files open.
 - **Syntax highlighting** for JavaScript/TypeScript (and their JSX/module
