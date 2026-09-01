@@ -583,3 +583,53 @@ Two repo docs change:
     content columns to a fixed 350px width and had to add an unbounded flex
     `Spacer` to compensate; Loom's centred column needs no fixed width, so the
     problem does not arise.
+
+---
+
+## Implementation Notes
+
+The worktree's `node_modules/@jimka/typescript-ui` needed re-pointing at the
+sibling `typescript-ui` checkout (`ln -s ../../../typescript-ui/packages/lib`,
+mirroring the main tree's own symlink) after `npm install` replaced it with
+the older published `0.8.0` package — the published build predates
+`TabCloseController`/`Tab.setTabName`/`"beforetabclose"`, which
+session-persistence's already-merged `EditorController.ts` depends on. This
+isn't a plan defect, just dev-environment setup the worktree doesn't inherit
+automatically; recorded here in case a later phase's worker hits the same
+`tsc` errors in a fresh worktree.
+
+Step 11's wiring extends `controller.setProjectRootListener`'s actual current
+body (`void this.openProjectRoot(root)`, added by
+`workspace-session-persistence`) rather than the plan's illustrative
+`void tree.setProjectRoot(root)` snippet, which predates that refactor. The
+instruction — "add `welcome.setProjectRoot(root)` alongside the existing
+project-root handling" — is followed exactly; only the surrounding line
+differs from the snippet shown.
+
+Manual verification ran against a real `npm run tauri:dev` process (Linux/
+WSL2, DISPLAY forwarded to a Windows host via WSLg), screenshotted with
+Pillow's `ImageGrab` and driven with `pyautogui`, since no project skill for
+launching Loom exists yet and a plain-browser `npm run dev` load crashes
+before render (`@tauri-apps/plugin-os`'s `platform()`, read at
+`workspace.ts` module-load time, throws outside a real Tauri IPC bridge).
+Confirmed by screenshot: cold start showing "Welcome to Loom" / the
+open-a-folder hint / the Open Folder… button captioned `Ctrl/Cmd+O` with no
+tab strip; clicking that button raising the same native folder picker File >
+Open Folder… uses; picking a folder (`/home/jika/typescript/loom`) filling
+the tree while the welcome screen stayed visible and switched to the
+project-open copy (heading `loom`, the file-select hint); opening a file
+swapping to the tab strip and editor; closing the only open tab returning the
+welcome screen with the project-open copy; and Toggle Explorer (Ctrl/Cmd+B)
+with the welcome screen showing collapsing the tree while the welcome screen
+filled the window, still centred, then restoring cleanly. Not conclusively
+exercised: dragging the split gutter with the welcome screen showing — the
+gutter's hit target proved too narrow to land reliably with synthetic
+pointer input (one attempt landed inside the tree and drag-selected several
+rows instead), so this fell back on the code-level confirmation already in
+`## Potential Challenges`: `WelcomeScreen.ts` sets no `maxSize` anywhere,
+which is the documented fix for the leak-into-the-gutter failure mode.
+Cancelling the picker, closing two tabs in sequence, the dirty-file-cancel
+case, Save As, and switching projects with files open were not exercised
+live; each exercises only wiring this plan left untouched (`Dialog`,
+`FileEditor`, `saveAs`, `openProjectRoot`), not the new deck/listener code
+path.
