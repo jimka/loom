@@ -76,6 +76,19 @@ nothing below has a plan yet.
   this project's history: making `Dock`'s tear-off spawn a real Tauri OS
   window instead of an in-page floating one — relevant now that an app
   which could use it actually exists.
+- **Merge the menu bar into the window's title bar** (VS Code/Discord-style,
+  Windows/Linux only). Today the native OS title bar and Loom's own
+  `MenuBar` (built in `EditorShell.ts`, NORTH of the content) render as two
+  separate rows, since `src-tauri/tauri.conf.json` doesn't set
+  `decorations`. Merging them means going decorationless
+  (`"decorations": false`) and hand-building the header: a
+  `data-tauri-drag-region` wrapper around the menu row for window
+  dragging/double-click-to-maximize, plus custom minimize/maximize/close
+  buttons via `@tauri-apps/api/window`. macOS is a separate case — the OS
+  convention keeps File/Edit/View in the global top-of-screen menu bar, not
+  the window itself, so a true merge doesn't apply there; at most a
+  `titleBarStyle: "overlay"` treatment to extend content under the traffic
+  lights.
 
 ## Known issues / loose ends
 
