@@ -684,3 +684,108 @@ does not repeat.
     project's own `.gitignore` by hand. A `.gitignore` file's rules apply
     whether or not the `.gitignore` file itself is tracked, so `*` also
     correctly hides itself.
+
+---
+
+## Implementation Notes
+
+Every unit-testable behaviour in `## Expected Behaviour` — *Path
+containment* and *Parsing, extraction, and overlay* — is covered by a test
+written before its implementation; all 28 new/updated cases pass alongside
+the existing suite (72 total).
+
+This sandboxed session has no `xdotool`/`scrot`/`maim`/`gnome-screenshot`
+(or equivalent) to drive the app's window or capture it, and no
+passwordless `sudo` to install any — unlike `session-persistence.md`'s own
+verification pass, which had a human at the screen. The mouse/keyboard
+*Session lifecycle* checklist (folder picker clicks, tab drag, live
+mid-session interaction) therefore could not be walked by hand and should
+still be, by a human or a session with GUI-automation tooling, before this
+is relied on for anything beyond what is verified below.
+
+In place of that, two rounds of a real `npm run tauri:dev` (reusing the
+main worktree's Cargo build cache) were used to verify the actual Tauri
+file-I/O this plan adds, without needing mouse/keyboard interaction:
+
+- **Round 1 (compile + boot smoke test).** The Rust side compiled clean and
+  the app launched under the sandbox's software-rendered WebKitGTK exactly
+  as `session-persistence.md`'s own Implementation Notes describe (WSL2, X
+  forwarded to a Windows host, no window manager) — no exception or
+  rejected promise surfaced. This round is what an independent audit
+  correctly flagged as insufficient: a silently-swallowed `PathForbidden`
+  from a missing capability grant would look identical to success here,
+  and one was in fact present (below).
+- **Round 2 (instrumented, targeted).** After the audit below found a real
+  capability-scope bug, `src/data/workspace.ts`'s two new functions were
+  temporarily instrumented to write their outcome to a debug file under
+  `$HOME` (an already-granted, uncontested scope), and `src/main.ts` was
+  temporarily given one direct `writeWorkspaceStateText` call — both purely
+  to observe the real IPC result without a GUI. A scratch project folder
+  under `$HOME` was seeded with its own `.loom/workspace.json`, `session.json`
+  was pointed at it, and the app was launched for real. The debug file
+  showed `WRITE-OK`; `.loom/workspace.json` and `.loom/.gitignore` were both
+  present on disk afterward with real content, confirming `mkdir`, `exists`,
+  and `writeTextFile` all resolved against the fixed `fs:scope` grant with no
+  `PathForbidden`. This also incidentally exercised the *real*
+  `installSessionAutosave` write path end to end for the ordinary
+  (non-switch) case. The instrumentation and scratch files were then
+  reverted/deleted — none of it is part of the shipped diff.
+
+**Findings from the independent audit, and how they were addressed:**
+
+1. **BLOCKING — `$HOME/**` does not reach `.loom/`.** Tauri's fs scope
+   defaults `require_literal_leading_dot` to `true` on Linux/macOS (dotfiles
+   are not exposed by a wildcard unless a pattern spells them out literally
+   — confirmed by reading `tauri-2.11.5/src/scope/fs.rs` and
+   `tauri-plugin-fs-2.5.1`, and reproduced directly against the exact `glob
+   0.3.4` crate Tauri itself uses: `$HOME/**` matches
+   `$HOME/proj/src/main.ts` but not `$HOME/proj/.loom/workspace.json`).
+   `readWorkspaceStateText`/`writeWorkspaceStateText` therefore threw
+   `PathForbidden` on every call, silently swallowed by their own
+   try/catch, so the whole feature was a silent no-op — exactly the failure
+   mode Round 1's boot-only smoke test could not have caught.
+   `src-tauri/capabilities/default.json`'s `fs:scope` gained three more
+   entries mirroring the literal-dot handling `session-persistence.md`
+   already uses for `$CONFIG/loom`: `$HOME/**/.loom` (the directory itself,
+   for `mkdir`), `$HOME/**/.loom/*` (`workspace.json`), and
+   `$HOME/**/.loom/.gitignore` (the dot-prefixed ignore file needs its own
+   entry — `*` doesn't match a leading dot either, confirmed with the same
+   `glob` crate test). Verified against the real crate sources rather than
+   assumed, and confirmed working end to end by Round 2 above.
+2. **BLOCKING — a live *Open Folder…* switch could clobber the newly-opened
+   project's own workspace file.** Restoring the new root's saved tree
+   expansion inside `EditorShell.openProjectRoot` fires the tree's
+   `"expand"` events `installSessionAutosave` already listens on — even
+   without the method's own explicit `schedule()` call — so a debounced
+   write could fire while `SessionTargets` still held the *previous*
+   project's open tabs and pane sizes (deliberately left untouched by a
+   live switch, per `## Non-Goals`). `workspaceStateFromSession` would then
+   filter those foreign tabs down to `openFiles: []`/`activeFile: null` and
+   copy the previous project's `paneSizes` verbatim, and write that into the
+   *new* root's `.loom/workspace.json` — silently destroying whatever real
+   state that project had already saved. Fixed with a small guard in
+   `src/shell/session.ts`'s `writeSnapshot`: the per-project write is now
+   skipped whenever any live open file sits outside the current
+   `projectRoot` (`openFilesBelongToRoot`, using the same `isUnderRoot` this
+   plan already added). This is deliberately not a suppression flag on
+   `SessionAutosave` — `session-persistence.md`'s own `restoreSession` doc
+   comment rules that out for its own restore path ("there is no
+   suppression flag anywhere in this design, and none should be added"),
+   and `SessionAutosave`'s exported shape is unchanged here too. The
+   app-wide `session.json` write is unaffected by the guard — it has no
+   analogous per-project ownership question, so it keeps writing on every
+   schedule/flush exactly as `session-persistence.md` designed it. One
+   residual, accepted imprecision: once the guard clears (the user closes
+   every leftover foreign tab, or opens a file under the new root),
+   `paneSizes` may still reflect whatever the split honestly looks like at
+   that moment, which can still be the previous project's leftover width —
+   this is the same live-switch/pane-size tension `## Architecture
+   Decisions` already accepts (split geometry doesn't restore live), not
+   new destructive behaviour.
+3. **The manual-verify checklist gap itself** — judged by the audit as
+   honestly documented but insufficient on its own, since it is the only
+   coverage of the mechanism the two findings above were hiding in. Round 2
+   above is the direct response: real Tauri IPC calls, under the real fixed
+   capability grant, with real file-system evidence, rather than a
+   boot-only smoke test. The mouse/keyboard checklist itself remains
+   unwalked for the reason given at the top of this section.
