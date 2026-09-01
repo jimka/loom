@@ -13,6 +13,7 @@ import { right_from_bracket } from '@jimka/typescript-ui/glyphs/solid/right_from
 import { APP_FAVICON } from './appIdentity'
 import { EditorController } from './EditorController'
 import { EditorShell } from './shell/EditorShell'
+import { loadSession } from './shell/session'
 
 // Every glyph the shell, the tree, and the unsaved-changes prompt reference
 // by name, registered once here at the composition root.
@@ -20,6 +21,19 @@ Glyph.register(folder, file_code, floppy_disk, times, pen_to_square, eye, bars, 
 
 Body.init({ layoutManager: Fit(), favicon: APP_FAVICON })
 
-const controller = new EditorController()
+/**
+ * Composes the shell and restores the last session. A wrapper function
+ * rather than a top-level `await` — the shell is added to the page before
+ * the restore's file reads begin, so the window paints immediately.
+ */
+async function start(): Promise<void> {
+  const session = await loadSession()
+  const controller = new EditorController()
+  const shell = EditorShell(controller, session)
 
-Body.getInstance().addComponent(EditorShell(controller))
+  Body.getInstance().addComponent(shell)
+
+  void shell.restoreSession(session)
+}
+
+void start()

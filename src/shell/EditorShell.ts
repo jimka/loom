@@ -4,6 +4,9 @@ import { Border as BorderLayout, Split } from '@jimka/typescript-ui/layout'
 import { MenuBar } from '@jimka/typescript-ui/component/menubar'
 import { FileTree } from '../explorer/FileTree'
 import type { EditorController } from '../EditorController'
+import type { SessionState } from '../data/session'
+import type { SessionAutosave } from './session'
+import { applySession, installSessionAutosave } from './session'
 import {
   OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
   FORMAT_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, installAccelerators,
@@ -28,9 +31,22 @@ interface MenuBarActions extends AcceleratorActions {
  * `../../sqladmin/frontend/src/shell/SqlAdminShell.ts`.
  */
 class EditorShell extends Container {
-  constructor(controller: EditorController) {
+  private readonly _tree: FileTree
+  private readonly _split: Split
+  private readonly _controller: EditorController
+  private _autosave: SessionAutosave | null = null
+
+  /**
+   * @param controller - Owns the tab strip, the status bar, and every editor command.
+   * @param session - The stored session; its split entries seed the `Split`.
+   */
+  constructor(controller: EditorController, session: SessionState) {
     const tree = FileTree({ onOpenFile: (path: string) => { void controller.openFile(path) } })
-    const split = new Split({ orientation: 'horizontal' })
+    const split = new Split({
+      orientation: 'horizontal',
+      paneSizes: session.paneSizes,
+      collapsedPanes: session.collapsedPanes,
+    })
     const splitBody = Container({ layoutManager: split })
 
     splitBody.addComponent(tree, { weight: 0 })
@@ -59,8 +75,43 @@ class EditorShell extends Container {
       ],
     })
 
-    controller.setProjectRootListener(root => { void tree.setProjectRoot(root) })
+    this._tree = tree
+    this._split = split
+    this._controller = controller
+
+    controller.setProjectRootListener(root => { void this.openProjectRoot(root) })
     installAccelerators(actions)
+  }
+
+  /**
+   * Replays `state` into the tree and tabs, then starts autosaving. Installing
+   * the autosave listeners **after** the restore is what stops the restore
+   * from saving its own half-finished state — there is no suppression flag
+   * anywhere in this design, and none should be added.
+   *
+   * @param state - The session to restore.
+   */
+  async restoreSession(state: SessionState): Promise<void> {
+    const targets = { controller: this._controller, tree: this._tree, split: this._split }
+
+    await applySession(state, targets)
+
+    const autosave = installSessionAutosave(targets)
+
+    this._autosave = autosave
+    this._controller.setBeforeExitListener(() => autosave.flush())
+  }
+
+  /**
+   * `setProjectRootListener`'s callback: points the tree at the newly chosen
+   * folder, then schedules a session save. No `catch` here — a failed
+   * listing keeps exactly the unhandled rejection it has today.
+   *
+   * @param root - The newly chosen project folder.
+   */
+  private async openProjectRoot(root: string): Promise<void> {
+    await this._tree.setProjectRoot(root)
+    this._autosave?.schedule()
   }
 }
 
