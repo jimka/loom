@@ -25,6 +25,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   project has been saved to once, its own tree expansion, open tabs, and
   split geometry travel with the project folder itself (in
   `.loom/workspace.json`) rather than only living in the app-wide file.
+- **Recent Projects & Files** — reopen a recently-used project folder or
+  file from the File menu's *Open Recent* submenu, or a recent project from
+  the welcome screen.
 - **Save / Save As**, with an unsaved-changes prompt on closing a modified
   file or exiting with modified files open.
 - **Syntax highlighting** for JavaScript/TypeScript (and their JSX/module
