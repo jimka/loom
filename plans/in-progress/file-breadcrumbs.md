@@ -500,6 +500,130 @@ cannot exercise — the same reason
 
 ---
 
+## Implementation Notes
+
+**`FileEditor`'s path is nullable.** The plan was drafted before the
+untitled-files plan landed, which reworked `FileEditorParams.path` from
+`string` to `string | null` (a path-less buffer opened via *File > New
+File*). `FileBreadcrumbsParams` follows suit: `path: string | null` plus a
+new `name: string` field (the same `Untitled-N` display name `FileEditor`
+already tracks), and the band shows that name in place of a path trail while
+`path` is `null`. Saving such a buffer for the first time calls the existing
+`setPath(path: string)`, at which point the band switches from the name to a
+real (possibly root-relative) path trail — verified live in the manual
+check below. `FileEditor`'s constructor forwards both `path` and `name` to
+`FileBreadcrumbs` accordingly.
+
+**`Container`/`Component` already reserves the name `render`.** The plan's
+`FileBreadcrumbs.render()` collides with `Component`'s own `render(): Handle`
+lifecycle method (`protected`, `Component.ts:7239`) — `tsc` rejects
+narrowing a protected `() => Handle` to a private `() => void`. Renamed to
+`updateTrail()`; behaviour and call sites are otherwise exactly as the plan
+describes.
+
+**`TRAIL_GLYPH`'s doc comment mis-cited its precedent.** The plan's own
+comment for this constant ("the same one `FileTree` draws on every file
+row") was already stale by the time this phase was dispatched — the
+already-landed file-type-icons phase gave every tree row its own
+per-extension glyph (`glyphNameForPath`), so there is no single glyph
+`FileTree` "draws on every row" any more. The first draft of this file
+reworded the comment to say `file-code` is the file tree's fallback for an
+unrecognised type, which is also wrong: the tree's actual fallback is the
+plain `file` glyph (`DEFAULT_GLYPH` in `src/fileIcons.ts`); `file-code` is
+only `fileIcons.ts`'s glyph for the `json`/`xml` extensions specifically.
+Caught by audit; fixed by rewording the comment to state the real reason
+`file-code` needs no registration of its own here — it already rides into
+`main.ts`'s `Glyph.register(...FILE_ICON_GLYPHS)` call via that
+extension-map entry — without claiming a "the tree's fallback" precedent
+that no longer exists.
+
+**`EditorController._projectRoot` already existed.** The open-outside-home
+and recent-projects plans (landed earlier in this batch) had already added
+`_projectRoot: string | null` and used it for `defaultSaveTarget`, so this
+plan's step 6 (add the field, rewrite `openProjectFolder`) reduced to: reuse
+the existing field, and add a `pushProjectRoot(root)` helper that calls
+`file.setProjectRoot(root)` over `_openFiles`, invoked once the root is
+actually committed. The plan's own snippet — rewriting `openProjectFolder`'s
+`if (root !== null) { … }` into an early return — was itself already stale;
+`openProjectFolder` had already gained a `try`/`catch` around the listener
+(open-outside-home), so `pushProjectRoot` is called after that `try` block
+succeeds, alongside the existing `this._projectRoot = root` write, not
+before it — a failed folder listing still leaves both the root and the open
+files' bands unchanged.
+
+`openRecentProject` — the *Open Recent* submenu's picker-free entry point —
+didn't exist when this plan was drafted (it arrived with recent-projects.md)
+and so isn't mentioned by any Ordered Implementation Step. It sets
+`_projectRoot` exactly like `openProjectFolder` does, so it needed the same
+`pushProjectRoot` call for the *"A new project folder re-shortens open
+files"* manual-verify bullet to hold regardless of which of the two live
+entry points reopened the folder; leaving it out would have made the
+behaviour depend on how the user re-opened the project. `setProjectRoot`
+(the third, session-restore setter) was left untouched — its one caller
+(`applySession`) always runs before any file is opened, so `_openFiles` is
+still empty every time it fires and a push there would be inert.
+
+**Manual verification substitute.** `npm run tauri:dev` needs a native
+WebKitGTK window (`src/data/workspace.ts` — "every branch needs a real Tauri
+runtime to exercise"), and this sandbox has a display (WSLg) but no window
+screenshot utility (`scrot`/`import`/`gnome-screenshot` all absent), so the
+window can be launched but not captured. Substituted a throwaway harness
+(`scratch-verify.html`/`.ts`, deleted afterwards, never committed) that
+mounted several real `FileEditor` instances directly — bypassing only the
+Tauri-dependent parts of the app (Open Folder's native picker, disk I/O) —
+inside a plain Vite page, driven with a real Chrome instance
+(`chrome-devtools` MCP tools). This exercised the actual shipped
+`FileBreadcrumbs`/`FileEditor` code, not a reimplementation, and confirmed
+every bullet under *Manual verification* above: the nested-path, root-level,
+outside-root, and untitled trails all rendered their expected text; the
+band's computed height was exactly 22px (`STATUS_BAR_HEIGHT`) with the
+`rgb(245, 245, 245)`/`rgb(60, 60, 60)` fallback colours and a glyph `<svg>`
+present; a 140px-wide band showed `overflow: hidden` / `text-overflow:
+ellipsis` on its trail (DOM text intact, visually truncated) while the band
+itself still spanned the full width of its container in both the wide and
+narrow cases (never pushing the editor sideways); and calling `setPath` and
+`setProjectRoot` on live instances through the browser console redrew the
+trail immediately, matching the Save-As and project-folder-switch bullets.
+The one thing this substitute cannot reach is the native *Open Folder*/*Save
+As* dialogs themselves — those are unchanged by this plan and remain covered
+by the app's existing Tauri-runtime manual-verify practice, not by this
+change.
+
+**The plan's `TODO.md:21` citations were already stale.** `## Overview`,
+step 9 of `## Ordered Implementation Steps`, and `## Documentation Impact`
+all cite the *File-type breadcrumbs* bullet at line 21, directly below a
+*File type icons* bullet. On this batch's actual start point
+(`feature/file-type-icons`), that bullet is at line 18, with no *File type
+icons* bullet above it — the file-type-icons phase itself had already
+removed that neighbour by the time this phase was dispatched. Caught by
+audit's second round. No functional consequence: the actual `TODO.md` edit
+(`## Documentation Impact`'s step) matched the bullet's text, not its line
+number, and the post-edit check the plan itself specifies —
+`grep -rn 'File-type breadcrumbs' TODO.md` — passes with zero matches
+regardless of which line it started on.
+
+**The plan's other line-number citations were computed against `main`, not
+this batch's actual dispatch point.** Every citation below was written
+against the pre-batch codebase and had already drifted by the time this
+phase started on `feature/file-type-icons`'s tip; each was still followed by
+reading the cited *file* and its surrounding code (per this skill's step 3,
+_Check the codebase for incompatibilities_), never by trusting the line
+number blindly, so none produced an implementation defect — this note exists
+because an undocumented stale citation is itself a finding (caught by
+audit's third round), not because any of them misled the implementation.
+Verified against `git show feature/file-type-icons:<file>`:
+
+| Plan citation | Cited as | Actual location on `feature/file-type-icons` |
+| --- | --- | --- |
+| `src/editor/FileEditor.ts#L32` | the `super(...)` call being replaced | line 35 |
+| `src/editor/FileEditor.ts#L91` | the `callable()` export triple to copy | line 104 |
+| `src/shell/EditorShell.ts:53` (cited 3×) | the `Border`+`Placement` precedent | line 100 |
+| `src/EditorController.ts` lines 75–81 | `openProjectFolder`, to be rewritten | starts at line 160 |
+| `src/data/paths.ts#L44` | `joinPath`'s separator-choice precedent | line 58 |
+| `TODO.md:40` | where symbol breadcrumbs are deferred | line 33 |
+
+---
+
 ## Notes
 
 [^interpretation]: `TODO.md`'s wording, "File-type breadcrumbs", is read as
