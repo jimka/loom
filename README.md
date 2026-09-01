@@ -15,11 +15,13 @@ known limitations are tracked in [`TODO.md`](TODO.md).
 ## Highlights
 
 - **File tree** — open a project folder, browse it, lazily loading each
-  directory as it's expanded.
+  directory as it's expanded; each row shows a per-file-type icon — see
+  [`src/fileIcons.ts`](src/fileIcons.ts) for the icon map.
 - **Welcome screen** — shown in place of the tab strip whenever no file is
   open, offering *Open Folder…* and naming the current project once one is.
-- **Tabbed editing** — open several files at once; a dirty-indicator dot
-  marks unsaved changes per tab.
+- **Tabbed editing** — open several files at once, each tab carrying the
+  same per-file-type icon the tree shows; a dirty-indicator dot marks
+  unsaved changes per tab.
 - **Session restore** — the last project folder, expanded tree directories,
   open tabs, and the explorer width all come back on the next launch. Once a
   project has been saved to once, its own tree expansion, open tabs, and
