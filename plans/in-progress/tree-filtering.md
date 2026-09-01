@@ -389,6 +389,107 @@ There is no docs site or export barrel to update; `src/data/gitignore.ts` is app
 
 ---
 
+## Implementation Notes
+
+**`isVisible` collides with `Component`'s own inherited method.** The plan's
+private `FileTree.isVisible(item, chain)` (`## Internal Structure`) narrows
+`Component.isVisible(): boolean | null` — a component's own on-screen
+visibility, unrelated to per-entry filtering — which `Tree` inherits.
+`tsc` rejects the override (`TS2416`), and the resulting private/public
+mismatch also broke `FileTree`'s structural match against `Component`
+wherever it's passed as one (`EditorShell.ts`'s `splitBody.addComponent(tree,
+…)`). Renamed to `isEntryVisible`; behaviour, callers, and every other name
+in `## Public API` are exactly as the plan describes. The same class of
+collision (`FileBreadcrumbs.render()` vs. `Component.render()`) was already
+recorded in `file-breadcrumbs.md`'s own Implementation Notes on this branch's
+start point.
+
+**`relativePath` is implemented in terms of the pre-existing `relativeTo`.**
+The plan (drafted before this branch's start point) specifies `relativePath`
+in `src/data/paths.ts` without knowing that `relativeTo(root: string | null,
+path: string): string | null` already exists there, added by an earlier
+phase on this batch's stack. Both share the same prefix-and-sibling-rejection
+logic; `relativePath` differs only in normalising `\` to `/` (required by the
+`ignore` package, its sole caller) and taking a non-nullable `parent`. Rather
+than duplicate that logic, `relativePath` delegates to `relativeTo` and
+normalises its result — every case in `## Expected Behaviour`'s
+`relativePath` table still passes verbatim; `relativeTo` itself is untouched.
+One divergence needed its own fix: `relativeTo(parent, parent + sep)`
+resolves `''` rather than `null` (pinned by the pre-existing
+`tests/paths.test.ts`'s `relativeTo` suite), which is a real path
+`Ignore.test` throws a `TypeError` on. `relativePath` now folds that case
+into `null` too — the plan's own contract is "`null` when `path` does not sit
+strictly below `parent`", and the bare-trailing-separator spelling of
+`parent` itself is exactly that — pinned by a new test in both
+`tests/paths.test.ts` and `tests/gitignore.test.ts`. Caught by audit's first
+round.
+
+**`setProjectRoot` keeps its pre-existing atomicity, diverging from the
+plan's literal step order.** Plan step 6 specifies "`setProjectRoot` stores
+`root`, awaits `buildRootIgnoreChain(...)`, then awaits a new private
+`reload()`" — writing `_root` first. Implemented literally, a failed
+`loadDirectory` (a restored project folder later moved or deleted) left
+`_root` pointing at the dead path: the next autosave (`session.ts`'s
+`captureSession`) would persist it, and `EditorController.openProjectFolder`
+deliberately leaves its own `_projectRoot` unset on such a failure, so tree
+and controller would disagree. The base implementation's own doc comment
+already named this invariant ("The root is recorded only once the listing
+succeeds"). `setProjectRoot` now computes the chain and the listing into
+locals and assigns `_root`/`_rootChain` only after both succeed; `reload()`
+itself, and its use by `setShowHidden`/`setShowIgnored`, are unchanged from
+the plan. Caught by audit's first round.
+
+**`buildRootIgnoreChain`'s "opened folder is the repository root" test only
+pinned a count, not an identity.** `tests/gitignore.test.ts`'s single-layer
+case asserted `chain.length === 1` but never which file that one layer came
+from, even though `## Expected Behaviour`'s contract for this case is two
+claims: one layer, **the exclude file** — never the opened folder's own
+`.gitignore`, which `loadDirectory` reads instead. Gave the two fixture
+files conflicting content and asserted the resulting precedence via
+`isIgnoredByChain`, so the wrong file landing in that one slot now fails the
+test; verified by temporarily mutating `buildRootIgnoreChain` two ways (both
+reverted after) — reading the `.gitignore` path into the exclude slot, and
+dropping the `root === repoRoot` special case entirely — and confirming
+each breaks the test. Caught by audit's second round.
+
+**Manual verification substitute.** `npm run tauri:dev` cannot launch in this
+environment: its `beforeDevCommand` is `npm run dev` = `tsc --noEmit && vite`,
+and `tsc --noEmit` fails on four pre-existing errors in
+`src/EditorController.ts` (`TabCloseController`, a `"beforetabclose"` event
+overload, and two `Tab.setTabName` calls) that are absent from the currently
+published `@jimka/typescript-ui@0.8.0` on the npm registry. This is
+reproducible with a clean `npm ci` at this branch's own start point
+(`feature/file-breadcrumbs`'s tip, before any commit on this branch),
+unrelated to this plan's file set, and blocks `npm run build` and
+`npm run tauri:dev` identically on every branch in this batch until the
+library's `0.8.0` publish is fixed upstream — not something this plan's
+scope can or should fix.
+
+With the live app unreachable, the plan's "Tree behaviour" manual-verify
+bullets were substituted with a throwaway vitest file (never committed,
+deleted immediately after) that called the real (not faked)
+`buildRootIgnoreChain`/`extendIgnoreChain`/`isIgnoredByChain`/`isHiddenName`
+from `src/data/gitignore.ts` against the real Loom repo tree on disk via
+plain `node:fs`, replicating `FileTree.loadDirectory`/`isEntryVisible`'s
+exact decision sequence, plus a real temporary git repository for the
+walk-up case. It confirmed: the repo root's listing with both toggles off
+matches the plan's expected set (`node_modules`, `dist`, `.git`,
+`.gitignore`, `.claude`, `.codegraph`, `.worktrees` all absent; `src`,
+`src-tauri`, `tests`, and the tracked top-level files all present);
+`src-tauri`'s nested `.gitignore` correctly hides `target` and itself, via
+the same layer that this worktree's `src-tauri/gen` — never generated here,
+since it's produced by a `cargo tauri build` this same blocker prevents —
+could not itself be exercised; Show Hidden and Show Ignored each reveal only
+their own class of entry independently; both together return every entry;
+and a real scratch git repository confirms the upward walk finds a `.git`
+above the opened folder and applies its `.gitignore`. Not exercised by this
+substitute: the `CheckboxMenuRow` click/keymap behaviour and the menu panel
+staying open across a toggle — both are the same `MenuItemConfig.row` +
+`CheckboxMenuRow` shape already live at `Split.ts`'s gutter menu, not new
+behaviour this plan introduces.
+
+---
+
 ## Notes
 
 [^filter-in-filetree]: [src/data/workspace.ts:1](src/data/workspace.ts#L1) states in its header that it is not unit-tested because "it has no logic of its own beyond the size guard", and every branch would need a real Tauri runtime. Putting a filter there would move real decision logic behind that untestable boundary. The domain shaping already sits outside it: `listDirectory` hands raw entries to [`sortDirEntries`](src/data/paths.ts#L64) and `FileTree.toNodes`. Filtering is one more shaping step in the same place.
