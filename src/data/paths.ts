@@ -61,6 +61,51 @@ export function joinPath(parent: string, name: string): string {
   return parent.endsWith(sep) ? parent + name : parent + sep + name
 }
 
+/**
+ * The directory containing `path`. A path with no parent above it (the
+ * filesystem root, or a bare Windows drive) returns itself, which is the
+ * upward-walk stop signal callers rely on.
+ *
+ * @param path - A file or directory path.
+ * @returns `path`'s parent directory, or `path` itself when there is none.
+ */
+export function parentDir(path: string): string {
+  const sep = path.includes('\\') ? '\\' : '/'
+  const trimmed = path.endsWith(sep) && path.length > sep.length ? path.slice(0, -sep.length) : path
+  const cut = trimmed.lastIndexOf(sep)
+
+  if (cut < 0) {
+    return path
+  }
+
+  // A cut at index 0 is the filesystem root ("/a" → "/"); a cut past index 0
+  // is an ordinary parent ("/p/a" → "/p"). A Windows drive root ("C:") has no
+  // separator at all, so it never reaches this branch — it returns via the
+  // `cut < 0` case above.
+  return cut === 0 ? trimmed.slice(0, cut + 1) : trimmed.slice(0, cut)
+}
+
+/**
+ * `path` rewritten relative to `parent`, with separators normalised to `/`,
+ * or `null` when `path` does not sit strictly below `parent` — which
+ * includes `path` naming `parent` itself, however it's spelled: `relativeTo`
+ * returns `''` rather than `null` for a bare-trailing-separator spelling
+ * (`relativePath('/p', '/p/')`), but that's the same directory as `path`
+ * omitting the separator (`null`), so both collapse to `null` here too.
+ * Unlike {@link relativeTo}, this always normalises to forward slashes —
+ * required by the `ignore` package's matcher, which is the sole caller —
+ * and takes a non-nullable `parent`.
+ *
+ * @param parent - The directory to measure against.
+ * @param path - The path to rewrite.
+ * @returns The portion of `path` below `parent`, `/`-separated, or `null`.
+ */
+export function relativePath(parent: string, path: string): string | null {
+  const relative = relativeTo(parent, path)
+
+  return relative === null || relative === '' ? null : relative.replace(/\\/g, '/')
+}
+
 /** A directory-listing item shaped enough to sort — carries no path of its own. */
 export interface SortableEntry {
   name: string

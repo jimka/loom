@@ -1,10 +1,15 @@
 import { callable } from '@jimka/typescript-ui/core'
 import { Tree, IconLabelTreeNodeRenderer } from '@jimka/typescript-ui/component/tree'
 import type { TreeNode } from '@jimka/typescript-ui/component/tree'
-import { listDirectory } from '../data/workspace'
+import { listDirectory, tryReadTextFile, pathExists } from '../data/workspace'
 import type { DirectoryItem } from '../data/workspace'
 import { expansionOrder } from '../data/session'
 import { glyphNameForPath } from '../fileIcons'
+import { joinPath } from '../data/paths'
+import {
+  GITIGNORE_NAME, EMPTY_IGNORE_CHAIN, isHiddenName, extendIgnoreChain, isIgnoredByChain, buildRootIgnoreChain,
+} from '../data/gitignore'
+import type { IgnoreChain } from '../data/gitignore'
 
 /** Domain payload `FileTree` attaches to every node via `TreeNode.data`. */
 interface FileTreeNodeData {
@@ -25,6 +30,9 @@ export interface FileTreeParams {
 class FileTree extends Tree {
   private readonly _onOpenFile: (path: string) => void
   private _root: string | null = null
+  private _rootChain: IgnoreChain = EMPTY_IGNORE_CHAIN
+  private _showHidden = false
+  private _showIgnored = false
 
   constructor(params: FileTreeParams) {
     super({
@@ -58,22 +66,70 @@ class FileTree extends Tree {
   }
 
   /**
-   * Replaces the tree with `root`'s immediate children, directories first.
-   * The root is recorded only once the listing succeeds, so a failed listing
-   * leaves the previous root in place.
+   * Points the tree at `root`: seeds the ignore chain governing everything
+   * above it (walking up for a `.git`, per {@link buildRootIgnoreChain}),
+   * then loads from it. `_root`/`_rootChain` are recorded only once that
+   * listing succeeds, preserving the previous behaviour's invariant — a
+   * failed open (a restored project folder that was since moved or deleted)
+   * leaves the previous root in place rather than corrupting session state
+   * with a dead one.
    *
    * @param root - The project folder to show.
    */
   async setProjectRoot(root: string): Promise<void> {
-    const items = await listDirectory(root)
+    const chain = await buildRootIgnoreChain(root, tryReadTextFile, pathExists)
+    const nodes = await this.loadDirectory(root, chain)
 
-    this.setNodes(this.toNodes(items))
+    this.setNodes(nodes)
     this._root = root
+    this._rootChain = chain
   }
 
-  /** The folder {@link setProjectRoot} last loaded successfully, or `null` when it never has. */
+  /** The folder {@link setProjectRoot} last pointed the tree at, or `null` when it never has. */
   getProjectRoot(): string | null {
     return this._root
+  }
+
+  /** Whether hidden (leading-dot) entries are currently shown. */
+  isShowingHidden(): boolean {
+    return this._showHidden
+  }
+
+  /**
+   * Sets whether hidden entries are shown, and reloads the tree from its
+   * root to apply the change — which collapses every expansion (see the
+   * plan's `## Potential Challenges`).
+   *
+   * @param value - Whether to show hidden entries.
+   */
+  setShowHidden(value: boolean): void {
+    this._showHidden = value
+    void this.reload()
+  }
+
+  /** Whether `.gitignore`-ignored entries are currently shown. */
+  isShowingIgnored(): boolean {
+    return this._showIgnored
+  }
+
+  /**
+   * Sets whether ignored entries are shown, and reloads the tree from its
+   * root to apply the change.
+   *
+   * @param value - Whether to show ignored entries.
+   */
+  setShowIgnored(value: boolean): void {
+    this._showIgnored = value
+    void this.reload()
+  }
+
+  /** Reloads the tree from `_root` using `_rootChain`; a no-op before any root is set. */
+  private async reload(): Promise<void> {
+    if (this._root === null) {
+      return
+    }
+
+    this.setNodes(await this.loadDirectory(this._root, this._rootChain))
   }
 
   /** The absolute paths of the currently expanded directory nodes. */
@@ -128,18 +184,60 @@ class FileTree extends Tree {
     return search(this.getNodes())
   }
 
-  /** `loadChildren` for a lazily-expanded directory node. */
-  private async loadInto(path: string): Promise<TreeNode[]> {
-    return this.toNodes(await listDirectory(path))
+  /**
+   * Lists `dir`, extends `parentChain` with `dir`'s own `.gitignore` when it
+   * has one, and maps the entries the current toggles don't exclude into
+   * `TreeNode` literals. `dir`'s listing is checked for a `.gitignore` entry
+   * before issuing the extra read — a directory without one costs nothing —
+   * and that check runs before filtering, so a hidden `.gitignore` is never
+   * dropped before its own rules are read (see the plan's architecture
+   * decisions).
+   *
+   * @param dir - The directory to list.
+   * @param parentChain - The ignore chain governing `dir` from above.
+   * @returns `dir`'s visible children as tree nodes.
+   */
+  private async loadDirectory(dir: string, parentChain: IgnoreChain): Promise<TreeNode[]> {
+    const items = await listDirectory(dir)
+    const chain = items.some(item => !item.isDir && item.name === GITIGNORE_NAME)
+      ? extendIgnoreChain(parentChain, dir, await tryReadTextFile(joinPath(dir, GITIGNORE_NAME)))
+      : parentChain
+
+    return this.toNodes(items.filter(item => this.isEntryVisible(item, chain)), chain)
   }
 
-  /** Maps a directory listing into `TreeNode` literals. */
-  private toNodes(items: DirectoryItem[]): TreeNode[] {
+  /**
+   * Whether `item` should be shown under the current toggles: a hidden entry
+   * is dropped unless {@link _showHidden} is set, and an ignored entry is
+   * dropped unless {@link _showIgnored} is set — independently, so either
+   * toggle alone reveals only its own class of entry. Named distinctly from
+   * `Component.isVisible` (this component's own on-screen visibility, an
+   * unrelated inherited member) to avoid overriding it.
+   *
+   * @param item - The directory entry to test.
+   * @param chain - The ignore chain governing `item`'s directory.
+   * @returns Whether `item` should appear in the tree.
+   */
+  private isEntryVisible(item: DirectoryItem, chain: IgnoreChain): boolean {
+    if (!this._showHidden && isHiddenName(item.name)) {
+      return false
+    }
+
+    return this._showIgnored || !isIgnoredByChain(chain, item.path, item.isDir)
+  }
+
+  /**
+   * Maps a directory listing into `TreeNode` literals. A directory node's
+   * `loadChildren` closure receives `chain` unchanged, not the child's own
+   * extended chain — the child extends it with its own `.gitignore` when
+   * {@link loadDirectory} lists it.
+   */
+  private toNodes(items: DirectoryItem[], chain: IgnoreChain): TreeNode[] {
     return items.map(item => item.isDir
       ? {
           label: item.name,
           hasChildren: true,
-          loadChildren: () => this.loadInto(item.path),
+          loadChildren: () => this.loadDirectory(item.path, chain),
           data: { path: item.path, isDir: true } as FileTreeNodeData,
         }
       : {
