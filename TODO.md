@@ -8,9 +8,6 @@ nothing below has a plan yet.
 
 ## High
 
-- **New / untitled files.** Every open file currently has a real path
-  (`FileEditor.getPath()` is non-nullable); *Save As* only covers saving a
-  copy of an existing file.
 - **Opening folders outside `$HOME`** — currently excluded by the `fs:scope`
   capability grant in `src-tauri/capabilities/default.json`.
 - **File type icons** in the tree and tab strip.
