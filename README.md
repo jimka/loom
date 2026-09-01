@@ -19,7 +19,10 @@ known limitations are tracked in [`TODO.md`](TODO.md).
 - **Tabbed editing** — open several files at once; a dirty-indicator dot
   marks unsaved changes per tab.
 - **Session restore** — the last project folder, expanded tree directories,
-  open tabs, and the explorer width all come back on the next launch.
+  open tabs, and the explorer width all come back on the next launch. Once a
+  project has been saved to once, its own tree expansion, open tabs, and
+  split geometry travel with the project folder itself (in
+  `.loom/workspace.json`) rather than only living in the app-wide file.
 - **Save / Save As**, with an unsaved-changes prompt on closing a modified
   file or exiting with modified files open.
 - **Syntax highlighting** for JavaScript/TypeScript (and their JSX/module
