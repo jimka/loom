@@ -1,8 +1,10 @@
 import { Container, callable } from '@jimka/typescript-ui/core'
+import type { Component } from '@jimka/typescript-ui/core'
 import { Placement } from '@jimka/typescript-ui/primitive'
-import { Border as BorderLayout, Split } from '@jimka/typescript-ui/layout'
+import { Border as BorderLayout, Card, Split } from '@jimka/typescript-ui/layout'
 import { MenuBar } from '@jimka/typescript-ui/component/menubar'
 import { FileTree } from '../explorer/FileTree'
+import { WelcomeScreen } from './WelcomeScreen'
 import type { EditorController } from '../EditorController'
 import type { SessionState } from '../data/session'
 import type { SessionAutosave } from './session'
@@ -13,8 +15,12 @@ import {
 } from './shortcuts'
 import type { AcceleratorActions } from './shortcuts'
 
-/** The tree pane's index in the shell's `Split` — 0, the only other pane being the editor tabs. */
+/** The tree pane's index in the shell's `Split` — 0, the other pane being the editor deck (tab strip plus welcome screen). */
 const EXPLORER_PANE_INDEX = 0
+
+/** The `Card` deck page ids the editor pane switches between. */
+const EDITOR_PAGE_ID = 'editor-tabs'
+const WELCOME_PAGE_ID = 'welcome-screen'
 
 /** The menu-bar action callbacks the shell wires to the controller and the split. */
 interface MenuBarActions extends AcceleratorActions {
@@ -26,8 +32,9 @@ interface MenuBarActions extends AcceleratorActions {
 
 /**
  * The app shell: a `Border`-laid `Container` with the menu bar NORTH, a
- * horizontal `Split` (explorer tree beside the editor tabs) CENTER, and the
- * status bar SOUTH — the same shape as
+ * horizontal `Split` (explorer tree beside the editor deck — the tab strip
+ * and the welcome screen, one visible at a time) CENTER, and the status bar
+ * SOUTH — the same shape as
  * `../../sqladmin/frontend/src/shell/SqlAdminShell.ts`.
  */
 class EditorShell extends Container {
@@ -41,7 +48,10 @@ class EditorShell extends Container {
    * @param session - The stored session; its split entries seed the `Split`.
    */
   constructor(controller: EditorController, session: SessionState) {
+    const openFolder = (): void => { void controller.openProjectFolder() }
     const tree = FileTree({ onOpenFile: (path: string) => { void controller.openFile(path) } })
+    const welcome = WelcomeScreen({ onOpenFolder: openFolder })
+    const deck = buildEditorDeck(controller, welcome)
     const split = new Split({
       orientation: 'horizontal',
       paneSizes: session.paneSizes,
@@ -50,10 +60,10 @@ class EditorShell extends Container {
     const splitBody = Container({ layoutManager: split })
 
     splitBody.addComponent(tree, { weight: 0 })
-    splitBody.addComponent(controller.tabs, { weight: 1 })
+    splitBody.addComponent(deck, { weight: 1 })
 
     const actions: MenuBarActions = {
-      onOpenFolder: () => { void controller.openProjectFolder() },
+      onOpenFolder: openFolder,
       onSave: () => { void controller.saveActive() },
       onSaveAs: () => { void controller.saveActiveAs() },
       onCloseFile: () => controller.closeActive(),
@@ -79,7 +89,10 @@ class EditorShell extends Container {
     this._split = split
     this._controller = controller
 
-    controller.setProjectRootListener(root => { void this.openProjectRoot(root) })
+    controller.setProjectRootListener(root => {
+      void this.openProjectRoot(root)
+      welcome.setProjectRoot(root)
+    })
     installAccelerators(actions)
   }
 
@@ -125,6 +138,33 @@ class EditorShell extends Container {
 
     this._autosave?.schedule()
   }
+}
+
+/**
+ * The editor pane's `Card` deck: the tab strip and the welcome screen, one
+ * visible at a time. `controller.setEmptyStateListener` reports the current
+ * state as it registers, which picks the page the deck opens on — no
+ * separate seeding call is needed.
+ *
+ * @param controller - Supplies the empty-state signal that drives the toggle.
+ * @param welcome - The welcome screen page.
+ * @returns The deck component to place in the split's editor pane.
+ */
+function buildEditorDeck(controller: EditorController, welcome: WelcomeScreen): Component {
+  const card = new Card()
+  const deck = Container({ layoutManager: card })
+
+  controller.tabs.setId(EDITOR_PAGE_ID)
+  welcome.setId(WELCOME_PAGE_ID)
+
+  deck.addComponent(controller.tabs)
+  deck.addComponent(welcome)
+
+  controller.setEmptyStateListener(empty => {
+    card.setVisibleComponentId(empty ? WELCOME_PAGE_ID : EDITOR_PAGE_ID)
+  })
+
+  return deck
 }
 
 /**

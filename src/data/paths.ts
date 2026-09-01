@@ -14,6 +14,20 @@ export function baseName(path: string): string {
 }
 
 /**
+ * A project folder's display name: its last path segment, ignoring a
+ * trailing separator.
+ *
+ * @param root - A project folder path.
+ * @returns The folder's own name, or `root` itself when trimming a trailing
+ *   separator leaves nothing (e.g. the filesystem root `/`).
+ */
+export function projectName(root: string): string {
+  const trimmed = root.replace(/[/\\]+$/, '')
+
+  return trimmed === '' ? root : baseName(trimmed)
+}
+
+/**
  * The lowercased extension of `path`'s base name — everything after its
  * *last* dot. A base name whose only dot is its first character (a dotfile
  * like `.gitignore`) and one with no dot at all both have no extension.
