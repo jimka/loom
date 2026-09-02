@@ -774,3 +774,52 @@ checked by hand.
     child container rather than the whole page, since the heading and hint
     are still just two fixed labels that don't need re-disposing every time
     the recent-projects list changes.
+
+---
+
+## Implementation Notes
+
+The worktree's `node_modules/@jimka/typescript-ui` again needed re-pointing
+at the sibling `typescript-ui` checkout after `npm install`, for the same
+reason `welcome-screen.md`'s own Implementation Notes already record
+(`TabCloseController`/`Tab.setTabName`/`"beforetabclose"` predate the
+published `0.8.0` package) — not a new finding, just confirming the same
+dev-environment setup was needed again in this fresh worktree.
+
+Adding `recentProjects`/`recentFiles` as required `SessionState` fields
+broke `tests/workspaceState.test.ts`, which is not in this plan's own
+"Files to Create/Modify/Delete" table: two of its `applyWorkspaceOverlay`
+cases build a full `SessionState` object literal (rather than spreading
+`emptySession()`) and assert on a full literal `toEqual` result, so both
+needed the two new fields added once `SessionState` grew them. This is the
+same "a change in a shared shape affects more than the call site that
+surfaced the request" sweep `worker.md`'s Post-edit verification calls for;
+`applyWorkspaceOverlay` itself needed no change, since its `...session`
+spread already carries the two new fields through unchanged.
+
+Manual verification ran against a real `npm run tauri:dev` process (Linux/
+WSL2, DISPLAY forwarded to a Windows host via WSLg), screenshotted with
+Pillow's `ImageGrab` and driven with `pyautogui`, matching
+`welcome-screen.md`'s own approach. Confirmed by screenshot: cold start
+with a pre-existing `session.json` (no `recentProjects`/`recentFiles`
+fields, so both default to empty) showing no Recent Projects section on the
+welcome screen; opening a tree file recording it into `recentFiles` and
+surfacing it (with the correct glyph, no stray separator) in a newly-enabled
+File > Open Recent submenu; closing that tab returning to the welcome
+screen with Recent Projects still absent (recording a file never touches
+the welcome screen's project list); opening a second and third project
+folder through the native picker each recording into `recentProjects` and
+populating the welcome screen's Recent Projects section, most-recent
+first; clicking a welcome-screen Recent Projects button switching to that
+project and moving it to the front of the list; File > Open Recent showing
+both projects (most-recent first) then a separator then the recent file,
+and clicking the file entry opening it correctly even while a *different*
+project was the active tree root, confirming recent files are genuinely
+project-independent; and clicking a recent-project entry from the File
+menu itself (as opposed to the welcome screen's own button) switching
+projects the same way. Not separately exercised: a recent project or file
+whose path no longer exists, and the quit/relaunch persistence round trip
+— both replay `session-persistence.md`'s own already-verified
+`readFileText`/`pickProjectFolder` failure paths and `session.json`
+read/write, wired here through `recordRecentFile`/`recordRecentProject`
+rather than exercising any new failure-handling code of this plan's own.

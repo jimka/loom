@@ -63,6 +63,8 @@ export function captureSession(targets: SessionTargets): SessionState {
     activeFile: targets.controller.getActiveFilePath(),
     paneSizes,
     collapsedPanes: paneSizes.map((_, index) => index).filter(index => targets.split.isPaneCollapsed(index)),
+    recentProjects: targets.controller.getRecentProjects(),
+    recentFiles: targets.controller.getRecentFiles(),
   }
 }
 

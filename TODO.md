@@ -22,9 +22,6 @@ nothing below has a plan yet.
   descendant has unsaved changes" without every consumer hand-rolling it the
   way `FileEditor`/`EditorController` currently do. Already drafted (not
   implemented) at `typescript-ui`'s `plans/component-dirty-state.md`.
-- **Recent projects / recent files list** — reopen a recently-used folder or
-  file without the native picker. Pairs naturally with session persistence,
-  above.
 
 ## Medium
 

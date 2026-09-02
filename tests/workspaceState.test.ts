@@ -174,6 +174,8 @@ describe('applyWorkspaceOverlay', () => {
       activeFile: '/p/old.ts',
       paneSizes: [{ unit: 'px', value: 100 }],
       collapsedPanes: [],
+      recentProjects: [],
+      recentFiles: [],
     }
     const workspace: WorkspaceState = {
       version: 1,
@@ -192,6 +194,8 @@ describe('applyWorkspaceOverlay', () => {
       activeFile: '/p/a.ts',
       paneSizes: [{ unit: 'px', value: 300 }, { unit: 'ratio', value: 1 }],
       collapsedPanes: [0],
+      recentProjects: [],
+      recentFiles: [],
     })
   })
 

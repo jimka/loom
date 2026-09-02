@@ -10,6 +10,7 @@ import { eye } from '@jimka/typescript-ui/glyphs/solid/eye'
 import { bars } from '@jimka/typescript-ui/glyphs/solid/bars'
 import { code } from '@jimka/typescript-ui/glyphs/solid/code'
 import { right_from_bracket } from '@jimka/typescript-ui/glyphs/solid/right_from_bracket'
+import { clock_rotate_left } from '@jimka/typescript-ui/glyphs/solid/clock_rotate_left'
 import { APP_FAVICON } from './appIdentity'
 import { EditorController } from './EditorController'
 import { EditorShell } from './shell/EditorShell'
@@ -18,7 +19,7 @@ import { applyWorkspaceOverlay } from './data/workspaceState'
 
 // Every glyph the shell, the tree, and the unsaved-changes prompt reference
 // by name, registered once here at the composition root.
-Glyph.register(folder, file_code, floppy_disk, times, pen_to_square, eye, bars, code, right_from_bracket)
+Glyph.register(folder, file_code, floppy_disk, times, pen_to_square, eye, bars, code, right_from_bracket, clock_rotate_left)
 
 Body.init({ layoutManager: Fit(), favicon: APP_FAVICON })
 
@@ -32,6 +33,9 @@ async function start(): Promise<void> {
   const workspace = appSession.projectRoot !== null ? await loadWorkspaceState(appSession.projectRoot) : null
   const session = applyWorkspaceOverlay(appSession, workspace)
   const controller = new EditorController()
+
+  controller.seedRecents(session.recentProjects, session.recentFiles)
+
   const shell = EditorShell(controller, session)
 
   Body.getInstance().addComponent(shell)
