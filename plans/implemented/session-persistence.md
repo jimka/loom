@@ -878,3 +878,51 @@ so everything below is verified by hand.
     there is nothing for the autosave to subscribe to. Making the exit flush
     unconditional closes the gap without a library change; the residual exposure is
     a reorder followed by a kill that never reaches the close handler.
+
+---
+
+## Implementation Notes
+
+All nine *Session lifecycle* manual-verify cases were run live against a real
+`npm run tauri:dev` process (Linux/WSL2, X forwarded to a Windows host, no
+window manager, software-rendered WebKitGTK): cold start with no session
+file; a full round trip (folder, two-level tree expansion, three open tabs,
+a non-default active tab, a dragged split width, quit, relaunch); the
+collapsed-explorer/pane-width round trip; a corrupted `session.json`
+degrading to a clean launch and being overwritten by the next change; a
+project folder renamed outside the app between runs (tree comes back empty,
+no dialog); a deleted/moved open file being silently skipped on restore
+with the fallback-to-first-opened active tab; a drag-reordered tab strip
+surviving a *graceful* exit (`Ctrl+Q`, not a process kill — the reorder
+carries no event, so this is the one case that depends on the unconditional
+exit flush actually running); and a Vite dev-server page reload preserving
+the tree, tabs, and split exactly as TODO.md's updated note predicts.
+
+The one case not visually confirmed: declining the unsaved-changes prompt
+via `Escape` left the process alive and wrote nothing to `session.json`
+(both correct), but the dialog itself never became visible on screen to
+click its buttons directly — the sandbox's software-rendered WebKitGTK
+already has a standing, documented repaint quirk (TODO.md's *Known
+issues*), and forcing a resize-driven repaint (which fixed an identical
+symptom during the very first cold-start screenshot) did not surface it a
+second time. `Dialog.confirm`/`confirmExit`'s dirty-check itself predates
+this plan; the only line this plan added to that method
+(`await this._beforeExitListener?.()`) is the same line the graceful
+reorder-tab exit above already exercised on every successful run, so the
+accept path is covered by that case even though this one couldn't be
+watched directly.
+
+**Root cause of the "forbidden path" error hit while testing inside this
+worktree.** Opening `/home/jika/typescript/loom/.worktrees/session-persistence`
+itself (or any folder under a dot-directory) as the project root let
+`readDir` succeed — the folder picker grants its own one-level scope — but
+`readFileText`'s `stat` call failed: Tauri's `$HOME/**` glob matches with
+`require_literal_leading_dot: true` by default, so it excludes any path
+containing a dot-directory component, `.worktrees` included. This is
+unrelated to this plan's diff (`fs:allow-stat` and `$HOME/**` are both
+untouched; the four new `$CONFIG/{loom,Loom}` scope entries are additive and
+plugin-global scope is a straight union of grants) — every check above ran
+against a scratch project directly under `$HOME` instead, which sidesteps
+the glob entirely. Worth folding into `TODO.md`'s existing *Opening folders
+outside `$HOME`* bullet as a follow-up, since a dot-directory anywhere in a
+project's path hits the same wall a non-`$HOME` folder does today.

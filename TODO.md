@@ -11,8 +11,6 @@ nothing below has a plan yet.
 - **New / untitled files.** Every open file currently has a real path
   (`FileEditor.getPath()` is non-nullable); *Save As* only covers saving a
   copy of an existing file.
-- **Session persistence across restarts** — open tabs, expanded tree nodes,
-  the split ratio, the last project folder.
 - **Per-workspace session persistence** (save to a workspace settings file,
   distinct from the app-wide restart persistence above).
 - **Opening folders outside `$HOME`** — currently excluded by the `fs:scope`
@@ -124,8 +122,8 @@ nothing below has a plan yet.
 - **Frontend hot reload today is a full page reload, not a state-preserving
   one** — the library has no HMR accept boundary (it isn't React, so there's
   no fast-refresh mechanism), so any source edit during `tauri:dev` drops the
-  open tree/tabs, same as a full restart. Session persistence (above) would
-  fix this as a side effect: a Vite-triggered reload is a page reload within
-  the same webview, not a process restart, so anything persisted to
-  `localStorage`/disk survives it exactly like a real restart would. It
-  wouldn't cover unsaved buffer contents unless those are persisted too.
+  open tree/tabs, same as a full restart. Session persistence now fixes this
+  as a side effect: a Vite-triggered reload is a page reload within the same
+  webview, not a process restart, so the tree, tabs, and split — persisted to
+  disk — come back exactly like a real restart brings them back. It still
+  doesn't cover unsaved buffer contents, which are not persisted.

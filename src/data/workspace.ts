@@ -4,10 +4,13 @@
 // needs a real Tauri runtime to exercise — see plans/in-progress/
 // code-editor-desktop-app.md's "App behaviour" manual-verify checklist.
 import { open, save } from '@tauri-apps/plugin-dialog'
-import { readDir, readTextFile, writeTextFile, stat } from '@tauri-apps/plugin-fs'
+import { readDir, readTextFile, writeTextFile, stat, mkdir, BaseDirectory } from '@tauri-apps/plugin-fs'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import type { CloseRequestedEvent } from '@tauri-apps/api/window'
+import { configDir, join } from '@tauri-apps/api/path'
+import { platform } from '@tauri-apps/plugin-os'
 import { joinPath, sortDirEntries } from './paths'
+import { APP_NAME } from '../appIdentity'
 
 /** One entry in a directory listing, as `FileTree` and `EditorController` consume it. */
 export interface DirectoryItem {
@@ -23,6 +26,19 @@ export interface DirectoryItem {
  * binary or log file.
  */
 const MAX_OPEN_BYTES = 5 * 1024 * 1024
+
+/**
+ * The app's own subfolder name under Tauri's `$CONFIG` directory — lowercased
+ * on Linux to match that platform's own convention (`~/.config/nvim`), left as
+ * {@link APP_NAME} elsewhere to match those platforms' own
+ * (`.../Application Support/Slack`); see the session-persistence plan's
+ * `## Architecture Decisions`. Deliberately not the `com.jimka.loom` bundle
+ * identifier either way.
+ */
+const CONFIG_DIR_NAME = platform() === 'linux' ? APP_NAME.toLowerCase() : APP_NAME
+
+/** The session file's name inside {@link CONFIG_DIR_NAME}. */
+const SESSION_FILE_NAME = 'session.json'
 
 /**
  * Shows the native directory picker and resolves to the chosen folder, or
@@ -91,6 +107,36 @@ export async function readFileText(path: string): Promise<string> {
  */
 export async function writeFileText(path: string, text: string): Promise<void> {
   return writeTextFile(path, text)
+}
+
+/**
+ * Reads the app-config session file's text, or `null` when it is absent or
+ * unreadable. An absent file is the common case (first launch, or a session
+ * never yet saved) rather than an error, so any read failure degrades to
+ * `null` instead of throwing.
+ *
+ * @returns The session file's text, or `null`.
+ */
+export async function readSessionText(): Promise<string | null> {
+  try {
+    return await readTextFile(`${CONFIG_DIR_NAME}/${SESSION_FILE_NAME}`, { baseDir: BaseDirectory.Config })
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Writes `text` to the app-config session file, creating the directory if
+ * needed.
+ *
+ * @param text - The session file's new contents.
+ */
+export async function writeSessionText(text: string): Promise<void> {
+  const dir = await join(await configDir(), CONFIG_DIR_NAME)
+
+  await mkdir(dir, { recursive: true })
+
+  return writeTextFile(`${CONFIG_DIR_NAME}/${SESSION_FILE_NAME}`, text, { baseDir: BaseDirectory.Config })
 }
 
 /**

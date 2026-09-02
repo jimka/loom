@@ -16,6 +16,7 @@
     "fs:allow-write-text-file",
     "fs:allow-read-dir",
     "fs:allow-stat",
-    { "identifier": "fs:scope", "allow": [{ "path": "$HOME/**" }] }
+    "fs:allow-mkdir",
+    { "identifier": "fs:scope", "allow": [{ "path": "$HOME/**" }, { "path": "$CONFIG/loom" }, { "path": "$CONFIG/loom/*" }, { "path": "$CONFIG/Loom" }, { "path": "$CONFIG/Loom/*" }] }
   ]
 }
