@@ -17,6 +17,7 @@
     "fs:allow-read-dir",
     "fs:allow-stat",
     "fs:allow-mkdir",
-    { "identifier": "fs:scope", "allow": [{ "path": "$HOME/**" }, { "path": "$CONFIG/loom" }, { "path": "$CONFIG/loom/*" }, { "path": "$CONFIG/Loom" }, { "path": "$CONFIG/Loom/*" }] }
+    "fs:allow-exists",
+    { "identifier": "fs:scope", "allow": [{ "path": "$HOME/**" }, { "path": "$HOME/**/.loom" }, { "path": "$HOME/**/.loom/*" }, { "path": "$HOME/**/.loom/.gitignore" }, { "path": "$CONFIG/loom" }, { "path": "$CONFIG/loom/*" }, { "path": "$CONFIG/Loom" }, { "path": "$CONFIG/Loom/*" }] }
   ]
 }

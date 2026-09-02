@@ -13,7 +13,8 @@ import { right_from_bracket } from '@jimka/typescript-ui/glyphs/solid/right_from
 import { APP_FAVICON } from './appIdentity'
 import { EditorController } from './EditorController'
 import { EditorShell } from './shell/EditorShell'
-import { loadSession } from './shell/session'
+import { loadSession, loadWorkspaceState } from './shell/session'
+import { applyWorkspaceOverlay } from './data/workspaceState'
 
 // Every glyph the shell, the tree, and the unsaved-changes prompt reference
 // by name, registered once here at the composition root.
@@ -27,7 +28,9 @@ Body.init({ layoutManager: Fit(), favicon: APP_FAVICON })
  * the restore's file reads begin, so the window paints immediately.
  */
 async function start(): Promise<void> {
-  const session = await loadSession()
+  const appSession = await loadSession()
+  const workspace = appSession.projectRoot !== null ? await loadWorkspaceState(appSession.projectRoot) : null
+  const session = applyWorkspaceOverlay(appSession, workspace)
   const controller = new EditorController()
   const shell = EditorShell(controller, session)
 

@@ -4,7 +4,7 @@
 // needs a real Tauri runtime to exercise — see plans/in-progress/
 // code-editor-desktop-app.md's "App behaviour" manual-verify checklist.
 import { open, save } from '@tauri-apps/plugin-dialog'
-import { readDir, readTextFile, writeTextFile, stat, mkdir, BaseDirectory } from '@tauri-apps/plugin-fs'
+import { readDir, readTextFile, writeTextFile, stat, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import type { CloseRequestedEvent } from '@tauri-apps/api/window'
 import { configDir, join } from '@tauri-apps/api/path'
@@ -39,6 +39,15 @@ const CONFIG_DIR_NAME = platform() === 'linux' ? APP_NAME.toLowerCase() : APP_NA
 
 /** The session file's name inside {@link CONFIG_DIR_NAME}. */
 const SESSION_FILE_NAME = 'session.json'
+
+/** The per-project settings folder's name, mirroring the app's own product name (`APP_NAME`) the way `.vscode` reads as VS Code's. */
+const WORKSPACE_DIR_NAME = '.loom'
+
+/** The workspace state file's name inside {@link WORKSPACE_DIR_NAME}. */
+const WORKSPACE_STATE_FILE_NAME = 'workspace.json'
+
+/** Ignore-everything marker written into a project's `.loom` folder so it never appears as untracked in the project's own `git status`, without touching the project's own `.gitignore`. */
+const WORKSPACE_GITIGNORE_CONTENTS = '*\n'
 
 /**
  * Shows the native directory picker and resolves to the chosen folder, or
@@ -137,6 +146,44 @@ export async function writeSessionText(text: string): Promise<void> {
   await mkdir(dir, { recursive: true })
 
   return writeTextFile(`${CONFIG_DIR_NAME}/${SESSION_FILE_NAME}`, text, { baseDir: BaseDirectory.Config })
+}
+
+/**
+ * Reads `root`'s workspace state file's text, or `null` when it (or its
+ * `.loom` folder) is absent or unreadable. A project with no `.loom` folder
+ * yet is the common case rather than an error, so any read failure degrades
+ * to `null` instead of throwing.
+ *
+ * @param root - The project folder to read the workspace state from.
+ * @returns The workspace state file's text, or `null`.
+ */
+export async function readWorkspaceStateText(root: string): Promise<string | null> {
+  try {
+    return await readTextFile(joinPath(joinPath(root, WORKSPACE_DIR_NAME), WORKSPACE_STATE_FILE_NAME))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Writes `text` to `root`'s workspace state file, creating its `.loom`
+ * folder — and a matching `.gitignore` inside it, the first time — if needed.
+ *
+ * @param root - The project folder to write the workspace state into.
+ * @param text - The workspace state file's new contents.
+ */
+export async function writeWorkspaceStateText(root: string, text: string): Promise<void> {
+  const dir = joinPath(root, WORKSPACE_DIR_NAME)
+
+  await mkdir(dir, { recursive: true })
+
+  const gitignorePath = joinPath(dir, '.gitignore')
+
+  if (!(await exists(gitignorePath))) {
+    await writeTextFile(gitignorePath, WORKSPACE_GITIGNORE_CONTENTS)
+  }
+
+  return writeTextFile(joinPath(dir, WORKSPACE_STATE_FILE_NAME), text)
 }
 
 /**

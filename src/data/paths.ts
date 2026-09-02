@@ -81,3 +81,23 @@ export function sortDirEntries<T extends SortableEntry>(items: T[]): T[] {
     return a.name < b.name ? -1 : 1
   })
 }
+
+/**
+ * Whether `path` is `root` itself or lives anywhere under it, comparing path
+ * segments so a same-prefix sibling (`/p2` under `/p`) is never mistaken for
+ * being inside it.
+ *
+ * @param root - The candidate ancestor directory.
+ * @param path - The path to test.
+ * @returns Whether `path` is `root` or a descendant of it.
+ */
+export function isUnderRoot(root: string, path: string): boolean {
+  const rootSegments = root.split(/[/\\]/).filter(segment => segment !== '')
+  const pathSegments = path.split(/[/\\]/).filter(segment => segment !== '')
+
+  if (pathSegments.length < rootSegments.length) {
+    return false
+  }
+
+  return rootSegments.every((segment, index) => segment === pathSegments[index])
+}
