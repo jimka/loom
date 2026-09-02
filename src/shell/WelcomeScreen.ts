@@ -1,6 +1,6 @@
 import { Container, callable } from '@jimka/typescript-ui/core'
 import { VBox } from '@jimka/typescript-ui/layout'
-import { Text } from '@jimka/typescript-ui/component/input'
+import { Text, Link } from '@jimka/typescript-ui/component/input'
 import { Button } from '@jimka/typescript-ui/component/button'
 import { OPEN_FOLDER_SHORTCUT } from './shortcuts'
 import { welcomeCopy } from './welcomeText'
@@ -59,7 +59,7 @@ class WelcomeScreen extends Container {
 
     openFolder.on('action', params.onOpenFolder)
 
-    const recentList = Container({ layoutManager: new VBox({ itemAlign: 'center', spacing: RECENT_LIST_SPACING }) })
+    const recentList = Container({ layoutManager: new VBox({ itemAlign: 'start', spacing: RECENT_LIST_SPACING }) })
 
     super({
       layoutManager: new VBox({ justify: 'center', itemAlign: 'center', spacing: CONTENT_SPACING }),
@@ -102,10 +102,10 @@ class WelcomeScreen extends Container {
       this._recentList.addComponent(new Text('Recent Projects', { foregroundColor: HINT_COLOR }))
 
       for (const root of projects) {
-        const button = Button({ text: projectName(root), glyph: 'folder', compact: true })
+        const link = Link(projectName(root))
 
-        button.on('action', () => this._onOpenRecentProject(root))
-        this._recentList.addComponent(button)
+        link.on('action', () => this._onOpenRecentProject(root))
+        this._recentList.addComponent(link)
       }
     }
 
