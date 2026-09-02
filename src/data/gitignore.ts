@@ -11,8 +11,8 @@ export const GITIGNORE_NAME = '.gitignore'
 
 /** One `.gitignore` file's compiled rules, tagged with the directory they are relative to. */
 export interface IgnoreLayer {
-  readonly dir: string
-  readonly matcher: Ignore
+    readonly dir: string
+    readonly matcher: Ignore
 }
 
 /** The ignore rules governing one directory, outermost layer first. */
@@ -35,7 +35,7 @@ export type PathExists = (path: string) => Promise<boolean>
  * @returns Whether `name` starts with `.`.
  */
 export function isHiddenName(name: string): boolean {
-  return name.startsWith('.')
+    return name.startsWith('.')
 }
 
 /**
@@ -47,7 +47,7 @@ export function isHiddenName(name: string): boolean {
  * @returns A compiled matcher for those rules.
  */
 function compileMatcher(text: string): Ignore {
-  return ignore({ ignorecase: false }).add(text)
+    return ignore({ ignorecase: false }).add(text)
 }
 
 /**
@@ -61,11 +61,11 @@ function compileMatcher(text: string): Ignore {
  * @returns The extended chain, or `chain` itself when `text` is `null`.
  */
 export function extendIgnoreChain(chain: IgnoreChain, dir: string, text: string | null): IgnoreChain {
-  if (text === null) {
-    return chain
-  }
+    if (text === null) {
+        return chain
+    }
 
-  return [...chain, { dir, matcher: compileMatcher(text) }]
+    return [...chain, { dir, matcher: compileMatcher(text) }]
 }
 
 /**
@@ -81,38 +81,38 @@ export function extendIgnoreChain(chain: IgnoreChain, dir: string, text: string 
  * @returns Whether any layer's verdict, innermost first, is "ignored".
  */
 export function isIgnoredByChain(chain: IgnoreChain, path: string, isDir: boolean): boolean {
-  for (let index = chain.length - 1; index >= 0; index -= 1) {
-    const layer = chain[index]
-    const relative = relativePath(layer.dir, path)
+    for (let index = chain.length - 1; index >= 0; index -= 1) {
+        const layer = chain[index]
+        const relative = relativePath(layer.dir, path)
 
-    // A layer whose directory does not contain `path` has nothing to say
-    // about it. This guard is also load-bearing against `Ignore.test`
-    // itself: it throws a `RangeError` on an absolute path and a
-    // `TypeError` on an empty one. `relativePath` folds both the "not
-    // contained" and the "is the layer's own directory" cases (however the
-    // latter is spelled — with or without a trailing separator) into `null`,
-    // so neither an absolute nor an empty string ever reaches `.test` below.
-    if (relative === null) {
-      continue
+        // A layer whose directory does not contain `path` has nothing to say
+        // about it. This guard is also load-bearing against `Ignore.test`
+        // itself: it throws a `RangeError` on an absolute path and a
+        // `TypeError` on an empty one. `relativePath` folds both the "not
+        // contained" and the "is the layer's own directory" cases (however the
+        // latter is spelled — with or without a trailing separator) into `null`,
+        // so neither an absolute nor an empty string ever reaches `.test` below.
+        if (relative === null) {
+            continue
+        }
+
+        const result = layer.matcher.test(isDir ? `${relative}/` : relative)
+
+        if (result.ignored) {
+            return true
+        }
+
+        if (result.unignored) {
+            return false
+        }
     }
 
-    const result = layer.matcher.test(isDir ? `${relative}/` : relative)
-
-    if (result.ignored) {
-      return true
-    }
-
-    if (result.unignored) {
-      return false
-    }
-  }
-
-  return false
+    return false
 }
 
 /** The path to a directory's `.git/info/exclude` file. */
 function gitExcludePath(gitDir: string): string {
-  return joinPath(joinPath(gitDir, 'info'), 'exclude')
+    return joinPath(joinPath(gitDir, 'info'), 'exclude')
 }
 
 /**
@@ -126,21 +126,21 @@ function gitExcludePath(gitDir: string): string {
  * @returns The repository root directory, or `null` when none is found.
  */
 async function findRepositoryRoot(dir: string, pathExists: PathExists): Promise<string | null> {
-  let current = dir
+    let current = dir
 
-  for (;;) {
-    if (await pathExists(joinPath(current, '.git'))) {
-      return current
+    for (;;) {
+        if (await pathExists(joinPath(current, '.git'))) {
+            return current
+        }
+
+        const parent = parentDir(current)
+
+        if (parent === current) {
+            return null
+        }
+
+        current = parent
     }
-
-    const parent = parentDir(current)
-
-    if (parent === current) {
-      return null
-    }
-
-    current = parent
-  }
 }
 
 /**
@@ -153,26 +153,26 @@ async function findRepositoryRoot(dir: string, pathExists: PathExists): Promise<
  * @returns The intermediate directories, outermost first.
  */
 function intermediateDirs(repoRoot: string, root: string): string[] {
-  if (root === repoRoot) {
-    return []
-  }
-
-  const dirs: string[] = []
-  let current = parentDir(root)
-
-  while (current !== repoRoot) {
-    dirs.unshift(current)
-
-    const parent = parentDir(current)
-
-    if (parent === current) {
-      break
+    if (root === repoRoot) {
+        return []
     }
 
-    current = parent
-  }
+    const dirs: string[] = []
+    let current = parentDir(root)
 
-  return dirs
+    while (current !== repoRoot) {
+        dirs.unshift(current)
+
+        const parent = parentDir(current)
+
+        if (parent === current) {
+            break
+        }
+
+        current = parent
+    }
+
+    return dirs
 }
 
 /**
@@ -191,27 +191,27 @@ function intermediateDirs(repoRoot: string, root: string): string[] {
  *   when `root` is not inside a repository.
  */
 export async function buildRootIgnoreChain(
-  root: string,
-  tryReadTextFile: TryReadTextFile,
-  pathExists: PathExists,
+    root: string,
+    tryReadTextFile: TryReadTextFile,
+    pathExists: PathExists,
 ): Promise<IgnoreChain> {
-  const repoRoot = await findRepositoryRoot(root, pathExists)
+    const repoRoot = await findRepositoryRoot(root, pathExists)
 
-  if (repoRoot === null) {
-    return EMPTY_IGNORE_CHAIN
-  }
+    if (repoRoot === null) {
+        return EMPTY_IGNORE_CHAIN
+    }
 
-  let chain = extendIgnoreChain(EMPTY_IGNORE_CHAIN, repoRoot, await tryReadTextFile(gitExcludePath(joinPath(repoRoot, '.git'))))
+    let chain = extendIgnoreChain(EMPTY_IGNORE_CHAIN, repoRoot, await tryReadTextFile(gitExcludePath(joinPath(repoRoot, '.git'))))
 
-  // `repoRoot`'s own `.gitignore` belongs in this seeded chain only when
-  // `root` is further down the tree; when the opened folder *is* the
-  // repository root, that file is `root`'s own and the caller's
-  // `loadDirectory` reads it instead (see the plan's architecture decision).
-  const gitignoreDirs = root === repoRoot ? [] : [repoRoot, ...intermediateDirs(repoRoot, root)]
+    // `repoRoot`'s own `.gitignore` belongs in this seeded chain only when
+    // `root` is further down the tree; when the opened folder *is* the
+    // repository root, that file is `root`'s own and the caller's
+    // `loadDirectory` reads it instead (see the plan's architecture decision).
+    const gitignoreDirs = root === repoRoot ? [] : [repoRoot, ...intermediateDirs(repoRoot, root)]
 
-  for (const dir of gitignoreDirs) {
-    chain = extendIgnoreChain(chain, dir, await tryReadTextFile(joinPath(dir, GITIGNORE_NAME)))
-  }
+    for (const dir of gitignoreDirs) {
+        chain = extendIgnoreChain(chain, dir, await tryReadTextFile(joinPath(dir, GITIGNORE_NAME)))
+    }
 
-  return chain
+    return chain
 }

@@ -14,9 +14,9 @@ import { APP_NAME } from '../appIdentity'
 
 /** One entry in a directory listing, as `FileTree` and `EditorController` consume it. */
 export interface DirectoryItem {
-  name: string
-  path: string
-  isDir: boolean
+    name: string
+    path: string
+    isDir: boolean
 }
 
 /**
@@ -59,7 +59,7 @@ const WORKSPACE_GITIGNORE_CONTENTS = '*\n'
  * @returns The chosen folder's path, or `null`.
  */
 export async function pickProjectFolder(): Promise<string | null> {
-  return open({ directory: true, multiple: false, recursive: true })
+    return open({ directory: true, multiple: false, recursive: true })
 }
 
 /**
@@ -72,7 +72,7 @@ export async function pickProjectFolder(): Promise<string | null> {
  * @returns The chosen path, or `null`.
  */
 export async function pickSaveTarget(defaultPath: string | null): Promise<string | null> {
-  return save({ defaultPath: defaultPath ?? undefined })
+    return save({ defaultPath: defaultPath ?? undefined })
 }
 
 /**
@@ -84,15 +84,15 @@ export async function pickSaveTarget(defaultPath: string | null): Promise<string
  * @returns The directory's immediate children, sorted.
  */
 export async function listDirectory(dir: string): Promise<DirectoryItem[]> {
-  const entries = await readDir(dir)
+    const entries = await readDir(dir)
 
-  const items = entries.map(entry => ({
-    name: entry.name,
-    path: joinPath(dir, entry.name),
-    isDir: entry.isDirectory,
-  }))
+    const items = entries.map(entry => ({
+        name: entry.name,
+        path: joinPath(dir, entry.name),
+        isDir: entry.isDirectory,
+    }))
 
-  return sortDirEntries(items)
+    return sortDirEntries(items)
 }
 
 /**
@@ -104,13 +104,13 @@ export async function listDirectory(dir: string): Promise<DirectoryItem[]> {
  * @throws Error - When the file exceeds {@link MAX_OPEN_BYTES}.
  */
 export async function readFileText(path: string): Promise<string> {
-  const info = await stat(path)
+    const info = await stat(path)
 
-  if (info.size > MAX_OPEN_BYTES) {
-    throw new Error(`"${path}" is larger than ${MAX_OPEN_BYTES} bytes and was not opened.`)
-  }
+    if (info.size > MAX_OPEN_BYTES) {
+        throw new Error(`"${path}" is larger than ${MAX_OPEN_BYTES} bytes and was not opened.`)
+    }
 
-  return readTextFile(path)
+    return readTextFile(path)
 }
 
 /**
@@ -120,7 +120,7 @@ export async function readFileText(path: string): Promise<string> {
  * @param text - The new file contents.
  */
 export async function writeFileText(path: string, text: string): Promise<void> {
-  return writeTextFile(path, text)
+    return writeTextFile(path, text)
 }
 
 /**
@@ -132,11 +132,11 @@ export async function writeFileText(path: string, text: string): Promise<void> {
  * @returns The file's text contents, or `null`.
  */
 export async function tryReadTextFile(path: string): Promise<string | null> {
-  try {
-    return await readTextFile(path)
-  } catch {
-    return null
-  }
+    try {
+        return await readTextFile(path)
+    } catch {
+        return null
+    }
 }
 
 /**
@@ -148,13 +148,13 @@ export async function tryReadTextFile(path: string): Promise<string | null> {
  * @returns Whether `path` exists.
  */
 export async function pathExists(path: string): Promise<boolean> {
-  try {
-    await stat(path)
+    try {
+        await stat(path)
 
-    return true
-  } catch {
-    return false
-  }
+        return true
+    } catch {
+        return false
+    }
 }
 
 /**
@@ -166,11 +166,11 @@ export async function pathExists(path: string): Promise<boolean> {
  * @returns The session file's text, or `null`.
  */
 export async function readSessionText(): Promise<string | null> {
-  try {
-    return await readTextFile(`${CONFIG_DIR_NAME}/${SESSION_FILE_NAME}`, { baseDir: BaseDirectory.Config })
-  } catch {
-    return null
-  }
+    try {
+        return await readTextFile(`${CONFIG_DIR_NAME}/${SESSION_FILE_NAME}`, { baseDir: BaseDirectory.Config })
+    } catch {
+        return null
+    }
 }
 
 /**
@@ -180,11 +180,11 @@ export async function readSessionText(): Promise<string | null> {
  * @param text - The session file's new contents.
  */
 export async function writeSessionText(text: string): Promise<void> {
-  const dir = await join(await configDir(), CONFIG_DIR_NAME)
+    const dir = await join(await configDir(), CONFIG_DIR_NAME)
 
-  await mkdir(dir, { recursive: true })
+    await mkdir(dir, { recursive: true })
 
-  return writeTextFile(`${CONFIG_DIR_NAME}/${SESSION_FILE_NAME}`, text, { baseDir: BaseDirectory.Config })
+    return writeTextFile(`${CONFIG_DIR_NAME}/${SESSION_FILE_NAME}`, text, { baseDir: BaseDirectory.Config })
 }
 
 /**
@@ -197,11 +197,11 @@ export async function writeSessionText(text: string): Promise<void> {
  * @returns The workspace state file's text, or `null`.
  */
 export async function readWorkspaceStateText(root: string): Promise<string | null> {
-  try {
-    return await readTextFile(joinPath(joinPath(root, WORKSPACE_DIR_NAME), WORKSPACE_STATE_FILE_NAME))
-  } catch {
-    return null
-  }
+    try {
+        return await readTextFile(joinPath(joinPath(root, WORKSPACE_DIR_NAME), WORKSPACE_STATE_FILE_NAME))
+    } catch {
+        return null
+    }
 }
 
 /**
@@ -212,17 +212,17 @@ export async function readWorkspaceStateText(root: string): Promise<string | nul
  * @param text - The workspace state file's new contents.
  */
 export async function writeWorkspaceStateText(root: string, text: string): Promise<void> {
-  const dir = joinPath(root, WORKSPACE_DIR_NAME)
+    const dir = joinPath(root, WORKSPACE_DIR_NAME)
 
-  await mkdir(dir, { recursive: true })
+    await mkdir(dir, { recursive: true })
 
-  const gitignorePath = joinPath(dir, '.gitignore')
+    const gitignorePath = joinPath(dir, '.gitignore')
 
-  if (!(await exists(gitignorePath))) {
-    await writeTextFile(gitignorePath, WORKSPACE_GITIGNORE_CONTENTS)
-  }
+    if (!(await exists(gitignorePath))) {
+        await writeTextFile(gitignorePath, WORKSPACE_GITIGNORE_CONTENTS)
+    }
 
-  return writeTextFile(joinPath(dir, WORKSPACE_STATE_FILE_NAME), text)
+    return writeTextFile(joinPath(dir, WORKSPACE_STATE_FILE_NAME), text)
 }
 
 /**
@@ -231,7 +231,7 @@ export async function writeWorkspaceStateText(root: string, text: string): Promi
  * @param title - The new title.
  */
 export async function setWindowTitle(title: string): Promise<void> {
-  return getCurrentWindow().setTitle(title)
+    return getCurrentWindow().setTitle(title)
 }
 
 /**
@@ -241,7 +241,7 @@ export async function setWindowTitle(title: string): Promise<void> {
  * that decides whether a close actually proceeds.
  */
 export async function closeWindow(): Promise<void> {
-  return getCurrentWindow().close()
+    return getCurrentWindow().close()
 }
 
 /**
@@ -252,9 +252,9 @@ export async function closeWindow(): Promise<void> {
  * @param handler - Called before the window closes; return `false` to veto it.
  */
 export function onCloseRequested(handler: () => Promise<boolean>): void {
-  void getCurrentWindow().onCloseRequested(async (event: CloseRequestedEvent) => {
-    if (!(await handler())) {
-      event.preventDefault()
-    }
-  })
+    void getCurrentWindow().onCloseRequested(async (event: CloseRequestedEvent) => {
+        if (!(await handler())) {
+            event.preventDefault()
+        }
+    })
 }

@@ -27,16 +27,16 @@ const PREVIEW_LABEL = 'Preview'
 
 /** Constructor parameters for {@link FileEditor}. */
 export interface FileEditorParams {
-  /** The file's absolute path on disk, or `null` for a buffer never yet saved. */
-  path: string | null
-  /** The initial display name: `baseName(path)` for a real file, `"Untitled-N"` for a path-less buffer. */
-  name: string
-  /** The file's text, as read from disk — `""` for a new buffer. */
-  text: string
-  /** The open project folder, or `null` when none is open. */
-  projectRoot: string | null
-  /** Notified whenever this editor's dirty state changes — including a `markClean` after save. */
-  onDirtyChange: (file: FileEditor) => void
+    /** The file's absolute path on disk, or `null` for a buffer never yet saved. */
+    path: string | null
+    /** The initial display name: `baseName(path)` for a real file, `"Untitled-N"` for a path-less buffer. */
+    name: string
+    /** The file's text, as read from disk — `""` for a new buffer. */
+    text: string
+    /** The open project folder, or `null` when none is open. */
+    projectRoot: string | null
+    /** Notified whenever this editor's dirty state changes — including a `markClean` after save. */
+    onDirtyChange: (file: FileEditor) => void
 }
 
 /**
@@ -46,235 +46,235 @@ export interface FileEditorParams {
  * through this wrapper, never the bare editor.
  */
 class FileEditor extends Container {
-  private _path: string | null
-  private _name: string
-  private _dirty = false
-  private _cleanText: string
-  private readonly _editor: CodeEditor
-  private readonly _breadcrumbs: FileBreadcrumbs
-  private readonly _onDirtyChange: (file: FileEditor) => void
-  private readonly _body: Container
-  private readonly _card: Card
-  private readonly _previewToggle: ToggleButton
-  private _preview: MarkdownViewer | null = null
-  private _previewing = false
-  private _refreshTimer: ReturnType<typeof setTimeout> | null = null
+    private _path: string | null
+    private _name: string
+    private _dirty = false
+    private _cleanText: string
+    private readonly _editor: CodeEditor
+    private readonly _breadcrumbs: FileBreadcrumbs
+    private readonly _onDirtyChange: (file: FileEditor) => void
+    private readonly _body: Container
+    private readonly _card: Card
+    private readonly _previewToggle: ToggleButton
+    private _preview: MarkdownViewer | null = null
+    private _previewing = false
+    private _refreshTimer: ReturnType<typeof setTimeout> | null = null
 
-  constructor(params: FileEditorParams) {
-    const editor = new CodeEditor(params.text, { language: languageForPath(params.path) ?? undefined })
-    const breadcrumbs = FileBreadcrumbs({ path: params.path, name: params.name, projectRoot: params.projectRoot })
-    const previewToggle = new ToggleButton(PREVIEW_LABEL, {
-      glyph: PREVIEW_GLYPH,
-      showText: false,
-      flat: true,
-      compact: true,
-    })
-    const card = new Card()
-    const body = Container({ layoutManager: card })
+    constructor(params: FileEditorParams) {
+        const editor = new CodeEditor(params.text, { language: languageForPath(params.path) ?? undefined })
+        const breadcrumbs = FileBreadcrumbs({ path: params.path, name: params.name, projectRoot: params.projectRoot })
+        const previewToggle = new ToggleButton(PREVIEW_LABEL, {
+            glyph: PREVIEW_GLYPH,
+            showText: false,
+            flat: true,
+            compact: true,
+        })
+        const card = new Card()
+        const body = Container({ layoutManager: card })
 
-    body.addComponent(editor)
+        body.addComponent(editor)
 
-    super({
-      layoutManager: new BorderLayout({ spacing: 0 }),
-      components: [
-        { component: breadcrumbs, constraints: { placement: Placement.NORTH } },
-        { component: body,        constraints: { placement: Placement.CENTER } },
-      ],
-    })
+        super({
+            layoutManager: new BorderLayout({ spacing: 0 }),
+            components: [
+                { component: breadcrumbs, constraints: { placement: Placement.NORTH } },
+                { component: body,        constraints: { placement: Placement.CENTER } },
+            ],
+        })
 
-    this._path = params.path
-    this._name = params.name
-    this._cleanText = params.text
-    this._editor = editor
-    this._breadcrumbs = breadcrumbs
-    this._onDirtyChange = params.onDirtyChange
-    this._body = body
-    this._card = card
-    this._previewToggle = previewToggle
+        this._path = params.path
+        this._name = params.name
+        this._cleanText = params.text
+        this._editor = editor
+        this._breadcrumbs = breadcrumbs
+        this._onDirtyChange = params.onDirtyChange
+        this._body = body
+        this._card = card
+        this._previewToggle = previewToggle
 
-    editor.on('change', this.handleChange)
-    previewToggle.on('action', this.handlePreviewToggle)
-    this.syncPreviewAvailability()
-  }
-
-  /**
-   * The wrapped editor's `"change"` handler — re-syncs the dirty flag, then
-   * arms a debounced preview refresh if the preview page is showing.
-   */
-  private handleChange = (): void => {
-    this.syncDirty()
-    this.schedulePreviewRefresh()
-  }
-
-  /**
-   * Dirties the file whenever its text no longer matches the
-   * last-loaded-or-saved snapshot, and clears the flag again if an edit
-   * brings it back to exactly that snapshot (e.g. an undo, or manually
-   * retyping what was removed).
-   */
-  private syncDirty(): void {
-    const dirty = this._editor.getValue() !== this._cleanText
-
-    if (dirty === this._dirty) {
-      return
+        editor.on('change', this.handleChange)
+        previewToggle.on('action', this.handlePreviewToggle)
+        this.syncPreviewAvailability()
     }
 
-    this._dirty = dirty
-    this._onDirtyChange(this)
-  }
-
-  // An arrow-function field, not a method: passed as a bare `this.handler`
-  // reference to `on("action", ...)`, matching the existing `handleChange`.
-  private readonly handlePreviewToggle = (): void => {
-    this.setPreviewing(this._previewToggle.isSelected())
-  }
-
-  /**
-   * Shows the source or the preview page, cancelling any pending refresh
-   * first. Entering preview mode always pushes the editor's current text, so
-   * the rendered view is never a stale snapshot from an earlier visit.
-   *
-   * @param previewing - `true` to show the preview, `false` to show the source.
-   */
-  private setPreviewing(previewing: boolean): void {
-    this.cancelPreviewRefresh()
-    this._previewing = previewing
-
-    if (!previewing) {
-      this._card.setVisibleComponentId(this._editor.getId())
-
-      return
+    /**
+     * The wrapped editor's `"change"` handler — re-syncs the dirty flag, then
+     * arms a debounced preview refresh if the preview page is showing.
+     */
+    private handleChange = (): void => {
+        this.syncDirty()
+        this.schedulePreviewRefresh()
     }
 
-    const preview = this.ensurePreview()
+    /**
+     * Dirties the file whenever its text no longer matches the
+     * last-loaded-or-saved snapshot, and clears the flag again if an edit
+     * brings it back to exactly that snapshot (e.g. an undo, or manually
+     * retyping what was removed).
+     */
+    private syncDirty(): void {
+        const dirty = this._editor.getValue() !== this._cleanText
 
-    this.refreshPreview()
-    this._card.setVisibleComponentId(preview.getId())
-  }
+        if (dirty === this._dirty) {
+            return
+        }
 
-  /** Builds the preview page on first use and adds it to the deck. */
-  private ensurePreview(): MarkdownViewer {
-    if (this._preview !== null) {
-      return this._preview
+        this._dirty = dirty
+        this._onDirtyChange(this)
     }
 
-    const preview = MarkdownViewer({ markdown: this._editor.getValue() })
-
-    this._body.addComponent(preview)
-    this._preview = preview
-
-    return preview
-  }
-
-  /** Pushes the editor's current text into the preview, if one exists. */
-  private refreshPreview(): void {
-    this._preview?.setMarkdown(this._editor.getValue())
-  }
-
-  /** Re-arms the refresh timer. A no-op while the source page is showing. */
-  private schedulePreviewRefresh(): void {
-    if (!this._previewing) {
-      return
+    // An arrow-function field, not a method: passed as a bare `this.handler`
+    // reference to `on("action", ...)`, matching the existing `handleChange`.
+    private readonly handlePreviewToggle = (): void => {
+        this.setPreviewing(this._previewToggle.isSelected())
     }
 
-    this.cancelPreviewRefresh()
+    /**
+     * Shows the source or the preview page, cancelling any pending refresh
+     * first. Entering preview mode always pushes the editor's current text, so
+     * the rendered view is never a stale snapshot from an earlier visit.
+     *
+     * @param previewing - `true` to show the preview, `false` to show the source.
+     */
+    private setPreviewing(previewing: boolean): void {
+        this.cancelPreviewRefresh()
+        this._previewing = previewing
 
-    this._refreshTimer = setTimeout(() => {
-      this._refreshTimer = null
-      this.refreshPreview()
-    }, PREVIEW_REFRESH_DEBOUNCE_MS)
-  }
+        if (!previewing) {
+            this._card.setVisibleComponentId(this._editor.getId())
 
-  /** Drops any pending refresh. */
-  private cancelPreviewRefresh(): void {
-    if (this._refreshTimer !== null) {
-      clearTimeout(this._refreshTimer)
-      this._refreshTimer = null
-    }
-  }
+            return
+        }
 
-  /**
-   * Adds or removes the preview toggle for the current path, and drops out of
-   * preview mode when the file has stopped being Markdown. `setSelected` does
-   * not fire the toggle's `"action"` event, so clearing it here cannot
-   * re-enter `handlePreviewToggle`.
-   */
-  private syncPreviewAvailability(): void {
-    const available = isMarkdownPath(this._path)
+        const preview = this.ensurePreview()
 
-    if (!available && this._previewing) {
-      this._previewToggle.setSelected(false)
-      this.setPreviewing(false)
+        this.refreshPreview()
+        this._card.setVisibleComponentId(preview.getId())
     }
 
-    this._breadcrumbs.setAction(available ? this._previewToggle : null)
-  }
+    /** Builds the preview page on first use and adds it to the deck. */
+    private ensurePreview(): MarkdownViewer {
+        if (this._preview !== null) {
+            return this._preview
+        }
 
-  /** The file's absolute path on disk, or `null` while it has never been saved. */
-  getPath(): string | null {
-    return this._path
-  }
+        const preview = MarkdownViewer({ markdown: this._editor.getValue() })
 
-  /**
-   * Repoints this editor at a new path (first save or Save As), renaming it
-   * and re-resolving its syntax language from the new extension.
-   *
-   * @param path - The file's new path.
-   */
-  setPath(path: string): void {
-    this._path = path
-    this._name = baseName(path)
-    this._editor.setLanguage(languageForPath(path))
-    this._breadcrumbs.setPath(path)
-    this.syncPreviewAvailability()
-  }
+        this._body.addComponent(preview)
+        this._preview = preview
 
-  /** Repoints the breadcrumb band at a new project folder. */
-  setProjectRoot(root: string | null): void {
-    this._breadcrumbs.setProjectRoot(root)
-  }
+        return preview
+    }
 
-  /** The file's display name: its base name once saved, its untitled name before that. */
-  getName(): string {
-    return this._name
-  }
+    /** Pushes the editor's current text into the preview, if one exists. */
+    private refreshPreview(): void {
+        this._preview?.setMarkdown(this._editor.getValue())
+    }
 
-  /** The wrapped `CodeEditor`. */
-  getEditor(): CodeEditor {
-    return this._editor
-  }
+    /** Re-arms the refresh timer. A no-op while the source page is showing. */
+    private schedulePreviewRefresh(): void {
+        if (!this._previewing) {
+            return
+        }
 
-  /** Whether the document has unsaved changes. */
-  isDirty(): boolean {
-    return this._dirty
-  }
+        this.cancelPreviewRefresh()
 
-  /** Whether Save would do anything: the document is dirty, or has no path yet. */
-  needsSave(): boolean {
-    return this._dirty || this._path === null
-  }
+        this._refreshTimer = setTimeout(() => {
+            this._refreshTimer = null
+            this.refreshPreview()
+        }, PREVIEW_REFRESH_DEBOUNCE_MS)
+    }
 
-  /** Clears the dirty flag (after a successful save) and notifies the owner. */
-  markClean(): void {
-    this._cleanText = this._editor.getValue()
-    this._dirty = false
-    this._onDirtyChange(this)
-  }
+    /** Drops any pending refresh. */
+    private cancelPreviewRefresh(): void {
+        if (this._refreshTimer !== null) {
+            clearTimeout(this._refreshTimer)
+            this._refreshTimer = null
+        }
+    }
 
-  /** The tab label: the file's display name, with `" •"` appended while dirty. */
-  getLabel(): string {
-    return this._dirty ? `${this._name} •` : this._name
-  }
+    /**
+     * Adds or removes the preview toggle for the current path, and drops out of
+     * preview mode when the file has stopped being Markdown. `setSelected` does
+     * not fire the toggle's `"action"` event, so clearing it here cannot
+     * re-enter `handlePreviewToggle`.
+     */
+    private syncPreviewAvailability(): void {
+        const available = isMarkdownPath(this._path)
 
-  /**
-   * Drops any pending refresh before the base class tears the subtree down.
-   * `Tab` disposes a closed tab's content by default, so without this a timer
-   * armed within the last 250ms would fire against a disposed viewer.
-   */
-  protected destructor(): void {
-    this.cancelPreviewRefresh()
-    super.destructor()
-  }
+        if (!available && this._previewing) {
+            this._previewToggle.setSelected(false)
+            this.setPreviewing(false)
+        }
+
+        this._breadcrumbs.setAction(available ? this._previewToggle : null)
+    }
+
+    /** The file's absolute path on disk, or `null` while it has never been saved. */
+    getPath(): string | null {
+        return this._path
+    }
+
+    /**
+     * Repoints this editor at a new path (first save or Save As), renaming it
+     * and re-resolving its syntax language from the new extension.
+     *
+     * @param path - The file's new path.
+     */
+    setPath(path: string): void {
+        this._path = path
+        this._name = baseName(path)
+        this._editor.setLanguage(languageForPath(path))
+        this._breadcrumbs.setPath(path)
+        this.syncPreviewAvailability()
+    }
+
+    /** Repoints the breadcrumb band at a new project folder. */
+    setProjectRoot(root: string | null): void {
+        this._breadcrumbs.setProjectRoot(root)
+    }
+
+    /** The file's display name: its base name once saved, its untitled name before that. */
+    getName(): string {
+        return this._name
+    }
+
+    /** The wrapped `CodeEditor`. */
+    getEditor(): CodeEditor {
+        return this._editor
+    }
+
+    /** Whether the document has unsaved changes. */
+    isDirty(): boolean {
+        return this._dirty
+    }
+
+    /** Whether Save would do anything: the document is dirty, or has no path yet. */
+    needsSave(): boolean {
+        return this._dirty || this._path === null
+    }
+
+    /** Clears the dirty flag (after a successful save) and notifies the owner. */
+    markClean(): void {
+        this._cleanText = this._editor.getValue()
+        this._dirty = false
+        this._onDirtyChange(this)
+    }
+
+    /** The tab label: the file's display name, with `" •"` appended while dirty. */
+    getLabel(): string {
+        return this._dirty ? `${this._name} •` : this._name
+    }
+
+    /**
+     * Drops any pending refresh before the base class tears the subtree down.
+     * `Tab` disposes a closed tab's content by default, so without this a timer
+     * armed within the last 250ms would fire against a disposed viewer.
+     */
+    protected destructor(): void {
+        this.cancelPreviewRefresh()
+        super.destructor()
+    }
 }
 
 const FileEditorCallable = callable(FileEditor)

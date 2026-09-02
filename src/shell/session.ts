@@ -21,22 +21,22 @@ const SESSION_SAVE_DEBOUNCE_MS = 500
 
 /** The three state owners a session snapshot is captured from and restored into. */
 export interface SessionTargets {
-  controller: EditorController
-  tree: FileTree
-  split: Split
+    controller: EditorController
+    tree: FileTree
+    split: Split
 }
 
 /** Queues and forces session writes. */
 export interface SessionAutosave {
-  /** Queues a save of the current snapshot, coalescing calls within the debounce window. */
-  schedule: () => void
-  /** Writes the current snapshot immediately, pending save or not. */
-  flush: () => Promise<void>
+    /** Queues a save of the current snapshot, coalescing calls within the debounce window. */
+    schedule: () => void
+    /** Writes the current snapshot immediately, pending save or not. */
+    flush: () => Promise<void>
 }
 
 /** Reads and parses the stored session. */
 export async function loadSession(): Promise<SessionState> {
-  return parseSession((await readSessionText()) ?? '')
+    return parseSession((await readSessionText()) ?? '')
 }
 
 /**
@@ -46,26 +46,26 @@ export async function loadSession(): Promise<SessionState> {
  * @returns The parsed workspace state, or `null` when it is absent or unusable.
  */
 export async function loadWorkspaceState(root: string): Promise<WorkspaceState | null> {
-  const text = await readWorkspaceStateText(root)
+    const text = await readWorkspaceStateText(root)
 
-  return text === null ? null : parseWorkspaceState(text)
+    return text === null ? null : parseWorkspaceState(text)
 }
 
 /** The current state of the tree, tabs, and split. */
 export function captureSession(targets: SessionTargets): SessionState {
-  const paneSizes = targets.split.getPaneSizes()
+    const paneSizes = targets.split.getPaneSizes()
 
-  return {
-    version: 1,
-    projectRoot: targets.tree.getProjectRoot(),
-    expandedDirs: targets.tree.getExpandedPaths(),
-    openFiles: targets.controller.getOpenFilePaths(),
-    activeFile: targets.controller.getActiveFilePath(),
-    paneSizes,
-    collapsedPanes: paneSizes.map((_, index) => index).filter(index => targets.split.isPaneCollapsed(index)),
-    recentProjects: targets.controller.getRecentProjects(),
-    recentFiles: targets.controller.getRecentFiles(),
-  }
+    return {
+        version: 1,
+        projectRoot: targets.tree.getProjectRoot(),
+        expandedDirs: targets.tree.getExpandedPaths(),
+        openFiles: targets.controller.getOpenFilePaths(),
+        activeFile: targets.controller.getActiveFilePath(),
+        paneSizes,
+        collapsedPanes: paneSizes.map((_, index) => index).filter(index => targets.split.isPaneCollapsed(index)),
+        recentProjects: targets.controller.getRecentProjects(),
+        recentFiles: targets.controller.getRecentFiles(),
+    }
 }
 
 /**
@@ -77,19 +77,19 @@ export function captureSession(targets: SessionTargets): SessionState {
  * @param targets - The live tree and controller to restore into.
  */
 export async function applySession(state: SessionState, targets: SessionTargets): Promise<void> {
-  if (state.projectRoot !== null) {
-    try {
-      await targets.tree.setProjectRoot(state.projectRoot)
-      await targets.tree.expandPaths(state.expandedDirs)
-      targets.controller.setProjectRoot(state.projectRoot)
-    } catch {
-      // A moved or deleted project folder leaves the tree empty; the rest of
-      // the restore (the open files below) still proceeds. The controller's
-      // own project root is left unset in that case too, matching the tree.
+    if (state.projectRoot !== null) {
+        try {
+            await targets.tree.setProjectRoot(state.projectRoot)
+            await targets.tree.expandPaths(state.expandedDirs)
+            targets.controller.setProjectRoot(state.projectRoot)
+        } catch {
+            // A moved or deleted project folder leaves the tree empty; the rest of
+            // the restore (the open files below) still proceeds. The controller's
+            // own project root is left unset in that case too, matching the tree.
+        }
     }
-  }
 
-  await targets.controller.restoreFiles(state.openFiles, state.activeFile)
+    await targets.controller.restoreFiles(state.openFiles, state.activeFile)
 }
 
 /**
@@ -102,47 +102,47 @@ export async function applySession(state: SessionState, targets: SessionTargets)
  * @returns The `schedule`/`flush` controls installed on `targets`.
  */
 export function installSessionAutosave(targets: SessionTargets): SessionAutosave {
-  let timer: ReturnType<typeof setTimeout> | null = null
+    let timer: ReturnType<typeof setTimeout> | null = null
 
-  const writeSnapshot = async (): Promise<void> => {
-    try {
-      const session = captureSession(targets)
+    const writeSnapshot = async (): Promise<void> => {
+        try {
+            const session = captureSession(targets)
 
-      await writeSessionText(serializeSession(session))
+            await writeSessionText(serializeSession(session))
 
-      if (session.projectRoot !== null && openFilesBelongToRoot(session.projectRoot, session.openFiles)) {
-        await writeWorkspaceStateText(session.projectRoot, serializeWorkspaceState(workspaceStateFromSession(session)))
-      }
-    } catch {
-      // A failed session write must never interrupt editing.
-    }
-  }
-
-  const schedule = (): void => {
-    if (timer !== null) {
-      clearTimeout(timer)
+            if (session.projectRoot !== null && openFilesBelongToRoot(session.projectRoot, session.openFiles)) {
+                await writeWorkspaceStateText(session.projectRoot, serializeWorkspaceState(workspaceStateFromSession(session)))
+            }
+        } catch {
+            // A failed session write must never interrupt editing.
+        }
     }
 
-    timer = setTimeout(() => { void writeSnapshot() }, SESSION_SAVE_DEBOUNCE_MS)
-  }
+    const schedule = (): void => {
+        if (timer !== null) {
+            clearTimeout(timer)
+        }
 
-  const flush = async (): Promise<void> => {
-    if (timer !== null) {
-      clearTimeout(timer)
-      timer = null
+        timer = setTimeout(() => { void writeSnapshot() }, SESSION_SAVE_DEBOUNCE_MS)
     }
 
-    await writeSnapshot()
-  }
+    const flush = async (): Promise<void> => {
+        if (timer !== null) {
+            clearTimeout(timer)
+            timer = null
+        }
 
-  targets.tree.on('expand', schedule)
-  targets.tree.on('collapse', schedule)
-  targets.controller.tabs.getTab().on('activate', schedule)
-  targets.controller.tabs.getTab().on('tabclose', schedule)
-  targets.split.on('paneresize', schedule)
-  targets.split.on('panecollapse', schedule)
+        await writeSnapshot()
+    }
 
-  return { schedule, flush }
+    targets.tree.on('expand', schedule)
+    targets.tree.on('collapse', schedule)
+    targets.controller.tabs.getTab().on('activate', schedule)
+    targets.controller.tabs.getTab().on('tabclose', schedule)
+    targets.split.on('paneresize', schedule)
+    targets.split.on('panecollapse', schedule)
+
+    return { schedule, flush }
 }
 
 /**
@@ -167,5 +167,5 @@ export function installSessionAutosave(targets: SessionTargets): SessionAutosave
  * @returns Whether every open file is under `root`.
  */
 function openFilesBelongToRoot(root: string, openFiles: string[]): boolean {
-  return openFiles.every(path => isUnderRoot(root, path))
+    return openFiles.every(path => isUnderRoot(root, path))
 }

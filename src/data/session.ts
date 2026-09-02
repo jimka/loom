@@ -8,23 +8,23 @@ const VALID_LAYOUT_SIZE_UNITS: readonly LayoutSizeUnit[] = ['px', 'ratio']
 
 /** One saved session: what the app should look like on the next launch. */
 export interface SessionState {
-  version: 1
-  /** The last opened project folder, or `null` when none was open. */
-  projectRoot: string | null
-  /** Absolute paths of the directories expanded in the tree. */
-  expandedDirs: string[]
-  /** Absolute paths of the open files, in tab order. */
-  openFiles: string[]
-  /** The active tab's file path, or `null` when no file was open. */
-  activeFile: string | null
-  /** The `Split`'s pane sizes, in pane order (explorer first). */
-  paneSizes: LayoutSize[]
-  /** Indices of the collapsed panes. */
-  collapsedPanes: number[]
-  /** Recently opened project folders, most-recent first. */
-  recentProjects: string[]
-  /** Recently opened files, most-recent first, independent of which project (if any) they were opened from. */
-  recentFiles: string[]
+    version: 1
+    /** The last opened project folder, or `null` when none was open. */
+    projectRoot: string | null
+    /** Absolute paths of the directories expanded in the tree. */
+    expandedDirs: string[]
+    /** Absolute paths of the open files, in tab order. */
+    openFiles: string[]
+    /** The active tab's file path, or `null` when no file was open. */
+    activeFile: string | null
+    /** The `Split`'s pane sizes, in pane order (explorer first). */
+    paneSizes: LayoutSize[]
+    /** Indices of the collapsed panes. */
+    collapsedPanes: number[]
+    /** Recently opened project folders, most-recent first. */
+    recentProjects: string[]
+    /** Recently opened files, most-recent first, independent of which project (if any) they were opened from. */
+    recentFiles: string[]
 }
 
 /**
@@ -44,22 +44,22 @@ export const MAX_RECENT_ENTRIES = 10
  * @returns The new list.
  */
 export function withRecent(list: string[], path: string): string[] {
-  return [path, ...list.filter(entry => entry !== path)].slice(0, MAX_RECENT_ENTRIES)
+    return [path, ...list.filter(entry => entry !== path)].slice(0, MAX_RECENT_ENTRIES)
 }
 
 /** A fresh, empty session — what a first launch (or an unusable file) gets. */
 export function emptySession(): SessionState {
-  return {
-    version: 1,
-    projectRoot: null,
-    expandedDirs: [],
-    openFiles: [],
-    activeFile: null,
-    paneSizes: [],
-    collapsedPanes: [],
-    recentProjects: [],
-    recentFiles: [],
-  }
+    return {
+        version: 1,
+        projectRoot: null,
+        expandedDirs: [],
+        openFiles: [],
+        activeFile: null,
+        paneSizes: [],
+        collapsedPanes: [],
+        recentProjects: [],
+        recentFiles: [],
+    }
 }
 
 /**
@@ -75,30 +75,30 @@ export function emptySession(): SessionState {
  * @returns The parsed session, or {@link emptySession} when `text` is unusable.
  */
 export function parseSession(text: string): SessionState {
-  const doc = parseDocument(text)
+    const doc = parseDocument(text)
 
-  if (doc === null) {
-    return emptySession()
-  }
+    if (doc === null) {
+        return emptySession()
+    }
 
-  const empty = emptySession()
+    const empty = emptySession()
 
-  return {
-    version: 1,
-    projectRoot: readOptionalString(doc.projectRoot) ?? empty.projectRoot,
-    expandedDirs: readStringArray(doc.expandedDirs) ?? empty.expandedDirs,
-    openFiles: readStringArray(doc.openFiles) ?? empty.openFiles,
-    activeFile: readOptionalString(doc.activeFile) ?? empty.activeFile,
-    paneSizes: readLayoutSizeArray(doc.paneSizes) ?? empty.paneSizes,
-    collapsedPanes: readNumberArray(doc.collapsedPanes) ?? empty.collapsedPanes,
-    recentProjects: (readStringArray(doc.recentProjects) ?? empty.recentProjects).slice(0, MAX_RECENT_ENTRIES),
-    recentFiles: (readStringArray(doc.recentFiles) ?? empty.recentFiles).slice(0, MAX_RECENT_ENTRIES),
-  }
+    return {
+        version: 1,
+        projectRoot: readOptionalString(doc.projectRoot) ?? empty.projectRoot,
+        expandedDirs: readStringArray(doc.expandedDirs) ?? empty.expandedDirs,
+        openFiles: readStringArray(doc.openFiles) ?? empty.openFiles,
+        activeFile: readOptionalString(doc.activeFile) ?? empty.activeFile,
+        paneSizes: readLayoutSizeArray(doc.paneSizes) ?? empty.paneSizes,
+        collapsedPanes: readNumberArray(doc.collapsedPanes) ?? empty.collapsedPanes,
+        recentProjects: (readStringArray(doc.recentProjects) ?? empty.recentProjects).slice(0, MAX_RECENT_ENTRIES),
+        recentFiles: (readStringArray(doc.recentFiles) ?? empty.recentFiles).slice(0, MAX_RECENT_ENTRIES),
+    }
 }
 
 /** Renders a session as the JSON text written to disk. */
 export function serializeSession(state: SessionState): string {
-  return JSON.stringify(state, null, 2)
+    return JSON.stringify(state, null, 2)
 }
 
 /**
@@ -114,7 +114,7 @@ export function serializeSession(state: SessionState): string {
  * @returns A new array, shortest path first.
  */
 export function expansionOrder(paths: string[]): string[] {
-  return [...paths].sort((a, b) => a.length - b.length)
+    return [...paths].sort((a, b) => a.length - b.length)
 }
 
 /**
@@ -126,25 +126,25 @@ export function expansionOrder(paths: string[]): string[] {
  * @returns The parsed document, or `null` when it is not a usable session.
  */
 function parseDocument(text: string): Record<string, unknown> | null {
-  let parsed: unknown
+    let parsed: unknown
 
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    return null
-  }
+    try {
+        parsed = JSON.parse(text)
+    } catch {
+        return null
+    }
 
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return null
-  }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        return null
+    }
 
-  const doc = parsed as Record<string, unknown>
+    const doc = parsed as Record<string, unknown>
 
-  if (doc.version !== 1) {
-    return null
-  }
+    if (doc.version !== 1) {
+        return null
+    }
 
-  return doc
+    return doc
 }
 
 /**
@@ -155,11 +155,11 @@ function parseDocument(text: string): Record<string, unknown> | null {
  *   when present but the wrong type (so the caller falls back to its default).
  */
 function readOptionalString(value: unknown): string | null | undefined {
-  if (value === undefined || value === null) {
-    return null
-  }
+    if (value === undefined || value === null) {
+        return null
+    }
 
-  return typeof value === 'string' ? value : undefined
+    return typeof value === 'string' ? value : undefined
 }
 
 /**
@@ -171,11 +171,11 @@ function readOptionalString(value: unknown): string | null | undefined {
  *   entry is invalid.
  */
 function readStringArray(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined
-  }
+    if (!Array.isArray(value)) {
+        return undefined
+    }
 
-  return value.every(entry => typeof entry === 'string') ? (value as string[]) : undefined
+    return value.every(entry => typeof entry === 'string') ? (value as string[]) : undefined
 }
 
 /**
@@ -187,11 +187,11 @@ function readStringArray(value: unknown): string[] | undefined {
  *   entry is invalid.
  */
 function readNumberArray(value: unknown): number[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined
-  }
+    if (!Array.isArray(value)) {
+        return undefined
+    }
 
-  return value.every(entry => typeof entry === 'number') ? (value as number[]) : undefined
+    return value.every(entry => typeof entry === 'number') ? (value as number[]) : undefined
 }
 
 /**
@@ -205,11 +205,11 @@ function readNumberArray(value: unknown): number[] | undefined {
  *   any entry is invalid.
  */
 function readLayoutSizeArray(value: unknown): LayoutSize[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined
-  }
+    if (!Array.isArray(value)) {
+        return undefined
+    }
 
-  return value.every(isLayoutSize) ? (value as LayoutSize[]) : undefined
+    return value.every(isLayoutSize) ? (value as LayoutSize[]) : undefined
 }
 
 /**
@@ -220,12 +220,12 @@ function readLayoutSizeArray(value: unknown): LayoutSize[] | undefined {
  * @returns Whether `value` is a valid `LayoutSize`.
  */
 function isLayoutSize(value: unknown): value is LayoutSize {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
+    if (typeof value !== 'object' || value === null) {
+        return false
+    }
 
-  const candidate = value as Record<string, unknown>
+    const candidate = value as Record<string, unknown>
 
-  return VALID_LAYOUT_SIZE_UNITS.includes(candidate.unit as LayoutSizeUnit)
-    && typeof candidate.value === 'number'
+    return VALID_LAYOUT_SIZE_UNITS.includes(candidate.unit as LayoutSizeUnit)
+        && typeof candidate.value === 'number'
 }

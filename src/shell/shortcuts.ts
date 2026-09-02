@@ -34,74 +34,74 @@ export const EXIT_SHORTCUT = 'Ctrl/Cmd+Q'
  * @returns `true` when the event matches exactly.
  */
 function isCtrlChord(event: KeyboardEvent, key: string, shift = false): boolean {
-  return (event.ctrlKey || event.metaKey)
-    && !event.altKey
-    && event.shiftKey === shift
-    && event.key.toLowerCase() === key
+    return (event.ctrlKey || event.metaKey)
+        && !event.altKey
+        && event.shiftKey === shift
+        && event.key.toLowerCase() === key
 }
 
 /** Whether a keydown is the New-File chord (Ctrl/Cmd+N). */
 export function isNewFileChord(event: KeyboardEvent): boolean {
-  return isCtrlChord(event, 'n')
+    return isCtrlChord(event, 'n')
 }
 
 /** Whether a keydown is the Open-Folder chord (Ctrl/Cmd+O). */
 export function isOpenFolderChord(event: KeyboardEvent): boolean {
-  return isCtrlChord(event, 'o')
+    return isCtrlChord(event, 'o')
 }
 
 /** Whether a keydown is the Save chord (Ctrl/Cmd+S). */
 export function isSaveChord(event: KeyboardEvent): boolean {
-  return isCtrlChord(event, 's')
+    return isCtrlChord(event, 's')
 }
 
 /** Whether a keydown is the Save-As chord (Ctrl/Cmd+Shift+S). */
 export function isSaveAsChord(event: KeyboardEvent): boolean {
-  return isCtrlChord(event, 's', true)
+    return isCtrlChord(event, 's', true)
 }
 
 /** Whether a keydown is the Close-File chord (Ctrl/Cmd+W). */
 export function isCloseFileChord(event: KeyboardEvent): boolean {
-  return isCtrlChord(event, 'w')
+    return isCtrlChord(event, 'w')
 }
 
 /** Whether a keydown is the Format chord (Alt+Shift+F). */
 export function isFormatChord(event: KeyboardEvent): boolean {
-  return event.altKey
-    && event.shiftKey
-    && !event.ctrlKey
-    && !event.metaKey
-    && event.key.toLowerCase() === 'f'
+    return event.altKey
+        && event.shiftKey
+        && !event.ctrlKey
+        && !event.metaKey
+        && event.key.toLowerCase() === 'f'
 }
 
 /** Whether a keydown is the Toggle-Explorer chord (Ctrl/Cmd+B). */
 export function isToggleExplorerChord(event: KeyboardEvent): boolean {
-  return isCtrlChord(event, 'b')
+    return isCtrlChord(event, 'b')
 }
 
 /** Whether a keydown is the Exit chord (Ctrl/Cmd+Q). */
 export function isExitChord(event: KeyboardEvent): boolean {
-  return isCtrlChord(event, 'q')
+    return isCtrlChord(event, 'q')
 }
 
 /** The accelerator callbacks `installAccelerators` dispatches each chord to. */
 export interface AcceleratorActions {
-  /** Ctrl/Cmd+N — opens a new untitled buffer. */
-  onNewFile: () => void
-  /** Ctrl/Cmd+O — shows the native folder picker. */
-  onOpenFolder: () => void
-  /** Ctrl/Cmd+S — saves the active file. */
-  onSave: () => void
-  /** Ctrl/Cmd+Shift+S — shows the native save-as dialog for the active file. */
-  onSaveAs: () => void
-  /** Ctrl/Cmd+W — closes the active file's tab. */
-  onCloseFile: () => void
-  /** Alt+Shift+F — reformats the active document. */
-  onFormat: () => void
-  /** Ctrl/Cmd+B — collapses/expands the explorer pane. */
-  onToggleExplorer: () => void
-  /** Ctrl/Cmd+Q — requests the window close. */
-  onExit: () => void
+    /** Ctrl/Cmd+N — opens a new untitled buffer. */
+    onNewFile: () => void
+    /** Ctrl/Cmd+O — shows the native folder picker. */
+    onOpenFolder: () => void
+    /** Ctrl/Cmd+S — saves the active file. */
+    onSave: () => void
+    /** Ctrl/Cmd+Shift+S — shows the native save-as dialog for the active file. */
+    onSaveAs: () => void
+    /** Ctrl/Cmd+W — closes the active file's tab. */
+    onCloseFile: () => void
+    /** Alt+Shift+F — reformats the active document. */
+    onFormat: () => void
+    /** Ctrl/Cmd+B — collapses/expands the explorer pane. */
+    onToggleExplorer: () => void
+    /** Ctrl/Cmd+Q — requests the window close. */
+    onExit: () => void
 }
 
 /**
@@ -113,31 +113,31 @@ export interface AcceleratorActions {
  * @param actions - The callbacks each chord dispatches to.
  */
 export function installAccelerators(actions: AcceleratorActions): void {
-  window.addEventListener('keydown', (event: KeyboardEvent) => {
-    let matched = true
+    window.addEventListener('keydown', (event: KeyboardEvent) => {
+        let matched = true
 
-    if (isNewFileChord(event)) {
-      actions.onNewFile()
-    } else if (isOpenFolderChord(event)) {
-      actions.onOpenFolder()
-    } else if (isSaveAsChord(event)) {
-      actions.onSaveAs()
-    } else if (isSaveChord(event)) {
-      actions.onSave()
-    } else if (isCloseFileChord(event)) {
-      actions.onCloseFile()
-    } else if (isFormatChord(event)) {
-      actions.onFormat()
-    } else if (isToggleExplorerChord(event)) {
-      actions.onToggleExplorer()
-    } else if (isExitChord(event)) {
-      actions.onExit()
-    } else {
-      matched = false
-    }
+        if (isNewFileChord(event)) {
+            actions.onNewFile()
+        } else if (isOpenFolderChord(event)) {
+            actions.onOpenFolder()
+        } else if (isSaveAsChord(event)) {
+            actions.onSaveAs()
+        } else if (isSaveChord(event)) {
+            actions.onSave()
+        } else if (isCloseFileChord(event)) {
+            actions.onCloseFile()
+        } else if (isFormatChord(event)) {
+            actions.onFormat()
+        } else if (isToggleExplorerChord(event)) {
+            actions.onToggleExplorer()
+        } else if (isExitChord(event)) {
+            actions.onExit()
+        } else {
+            matched = false
+        }
 
-    if (matched) {
-      event.preventDefault()
-    }
-  })
+        if (matched) {
+            event.preventDefault()
+        }
+    })
 }

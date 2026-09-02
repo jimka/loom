@@ -7,10 +7,10 @@ import { projectName } from '../data/paths'
 
 /** The welcome screen's heading and hint text for a given state. */
 export interface WelcomeCopy {
-  /** The page's large heading line. */
-  heading: string
-  /** The muted line under the heading. */
-  hint: string
+    /** The page's large heading line. */
+    heading: string
+    /** The muted line under the heading. */
+    hint: string
 }
 
 /**
@@ -20,15 +20,15 @@ export interface WelcomeCopy {
  * @returns The heading and hint to show.
  */
 export function welcomeCopy(projectRoot: string | null): WelcomeCopy {
-  if (projectRoot === null) {
-    return {
-      heading: `Welcome to ${APP_NAME}`,
-      hint: 'Open a project folder to start editing.',
+    if (projectRoot === null) {
+        return {
+            heading: `Welcome to ${APP_NAME}`,
+            hint: 'Open a project folder to start editing.',
+        }
     }
-  }
 
-  return {
-    heading: projectName(projectRoot),
-    hint: 'Select a file in the explorer to start editing.',
-  }
+    return {
+        heading: projectName(projectRoot),
+        hint: 'Select a file in the explorer to start editing.',
+    }
 }

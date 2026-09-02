@@ -15,42 +15,42 @@ export type UnsavedChoice = 'save' | 'discard' | 'cancel'
  * @returns The user's choice.
  */
 export async function promptUnsavedChanges(label: string): Promise<UnsavedChoice> {
-  let choice: UnsavedChoice = 'cancel'
+    let choice: UnsavedChoice = 'cancel'
 
-  await Dialog.show({
-    title: 'Unsaved changes',
-    message: `"${label}" has unsaved changes. Save them before closing?`,
-    buttons: [
-      {
-        text: 'Cancel',
-        result: 'cancel',
-        onClick: () => {
-          choice = 'cancel'
+    await Dialog.show({
+        title: 'Unsaved changes',
+        message: `"${label}" has unsaved changes. Save them before closing?`,
+        buttons: [
+            {
+                text: 'Cancel',
+                result: 'cancel',
+                onClick: () => {
+                    choice = 'cancel'
 
-          return true
-        },
-      },
-      {
-        text: "Don't Save",
-        result: 'confirm',
-        onClick: () => {
-          choice = 'discard'
+                    return true
+                },
+            },
+            {
+                text: "Don't Save",
+                result: 'confirm',
+                onClick: () => {
+                    choice = 'discard'
 
-          return true
-        },
-      },
-      {
-        text: 'Save',
-        result: 'confirm',
-        primary: true,
-        onClick: () => {
-          choice = 'save'
+                    return true
+                },
+            },
+            {
+                text: 'Save',
+                result: 'confirm',
+                primary: true,
+                onClick: () => {
+                    choice = 'save'
 
-          return true
-        },
-      },
-    ],
-  })
+                    return true
+                },
+            },
+        ],
+    })
 
-  return choice
+    return choice
 }

@@ -11,29 +11,29 @@ const VALID_LAYOUT_SIZE_UNITS: readonly LayoutSizeUnit[] = ['px', 'ratio']
 
 /** One project's own saved state: the slice of `SessionState` that only makes sense for the project it was captured in — every field except `projectRoot`. */
 export interface WorkspaceState {
-  version: 1
-  /** Absolute paths of the directories expanded in this project's tree. */
-  expandedDirs: string[]
-  /** Absolute paths of this project's open files, in tab order. */
-  openFiles: string[]
-  /** The active tab's file path, or `null`. */
-  activeFile: string | null
-  /** The `Split`'s pane sizes, in pane order (explorer first). */
-  paneSizes: LayoutSize[]
-  /** Indices of the collapsed panes. */
-  collapsedPanes: number[]
+    version: 1
+    /** Absolute paths of the directories expanded in this project's tree. */
+    expandedDirs: string[]
+    /** Absolute paths of this project's open files, in tab order. */
+    openFiles: string[]
+    /** The active tab's file path, or `null`. */
+    activeFile: string | null
+    /** The `Split`'s pane sizes, in pane order (explorer first). */
+    paneSizes: LayoutSize[]
+    /** Indices of the collapsed panes. */
+    collapsedPanes: number[]
 }
 
 /** A fresh, empty workspace state — what a project with no `.loom/workspace.json` yet gets once one is written. */
 export function emptyWorkspaceState(): WorkspaceState {
-  return {
-    version: 1,
-    expandedDirs: [],
-    openFiles: [],
-    activeFile: null,
-    paneSizes: [],
-    collapsedPanes: [],
-  }
+    return {
+        version: 1,
+        expandedDirs: [],
+        openFiles: [],
+        activeFile: null,
+        paneSizes: [],
+        collapsedPanes: [],
+    }
 }
 
 /**
@@ -46,27 +46,27 @@ export function emptyWorkspaceState(): WorkspaceState {
  * @returns The parsed workspace state, or `null` when `text` is unusable.
  */
 export function parseWorkspaceState(text: string): WorkspaceState | null {
-  const doc = parseDocument(text)
+    const doc = parseDocument(text)
 
-  if (doc === null) {
-    return null
-  }
+    if (doc === null) {
+        return null
+    }
 
-  const empty = emptyWorkspaceState()
+    const empty = emptyWorkspaceState()
 
-  return {
-    version: 1,
-    expandedDirs: readStringArray(doc.expandedDirs) ?? empty.expandedDirs,
-    openFiles: readStringArray(doc.openFiles) ?? empty.openFiles,
-    activeFile: readOptionalString(doc.activeFile) ?? empty.activeFile,
-    paneSizes: readLayoutSizeArray(doc.paneSizes) ?? empty.paneSizes,
-    collapsedPanes: readNumberArray(doc.collapsedPanes) ?? empty.collapsedPanes,
-  }
+    return {
+        version: 1,
+        expandedDirs: readStringArray(doc.expandedDirs) ?? empty.expandedDirs,
+        openFiles: readStringArray(doc.openFiles) ?? empty.openFiles,
+        activeFile: readOptionalString(doc.activeFile) ?? empty.activeFile,
+        paneSizes: readLayoutSizeArray(doc.paneSizes) ?? empty.paneSizes,
+        collapsedPanes: readNumberArray(doc.collapsedPanes) ?? empty.collapsedPanes,
+    }
 }
 
 /** Renders `state` as the JSON text written to `.loom/workspace.json`. */
 export function serializeWorkspaceState(state: WorkspaceState): string {
-  return JSON.stringify(state, null, 2)
+    return JSON.stringify(state, null, 2)
 }
 
 /**
@@ -79,20 +79,20 @@ export function serializeWorkspaceState(state: WorkspaceState): string {
  * @returns The project's own workspace-scoped state.
  */
 export function workspaceStateFromSession(session: SessionState): WorkspaceState {
-  if (session.projectRoot === null) {
-    return emptyWorkspaceState()
-  }
+    if (session.projectRoot === null) {
+        return emptyWorkspaceState()
+    }
 
-  const { paths, active } = filterToRoot(session.projectRoot, session.openFiles, session.activeFile)
+    const { paths, active } = filterToRoot(session.projectRoot, session.openFiles, session.activeFile)
 
-  return {
-    version: 1,
-    expandedDirs: session.expandedDirs,
-    openFiles: paths,
-    activeFile: active,
-    paneSizes: session.paneSizes,
-    collapsedPanes: session.collapsedPanes,
-  }
+    return {
+        version: 1,
+        expandedDirs: session.expandedDirs,
+        openFiles: paths,
+        activeFile: active,
+        paneSizes: session.paneSizes,
+        collapsedPanes: session.collapsedPanes,
+    }
 }
 
 /**
@@ -107,20 +107,20 @@ export function workspaceStateFromSession(session: SessionState): WorkspaceState
  * @returns The overlaid session.
  */
 export function applyWorkspaceOverlay(session: SessionState, workspace: WorkspaceState | null): SessionState {
-  if (workspace === null || session.projectRoot === null) {
-    return session
-  }
+    if (workspace === null || session.projectRoot === null) {
+        return session
+    }
 
-  const { paths, active } = filterToRoot(session.projectRoot, workspace.openFiles, workspace.activeFile)
+    const { paths, active } = filterToRoot(session.projectRoot, workspace.openFiles, workspace.activeFile)
 
-  return {
-    ...session,
-    expandedDirs: workspace.expandedDirs,
-    openFiles: paths,
-    activeFile: active,
-    paneSizes: workspace.paneSizes,
-    collapsedPanes: workspace.collapsedPanes,
-  }
+    return {
+        ...session,
+        expandedDirs: workspace.expandedDirs,
+        openFiles: paths,
+        activeFile: active,
+        paneSizes: workspace.paneSizes,
+        collapsedPanes: workspace.collapsedPanes,
+    }
 }
 
 /**
@@ -135,10 +135,10 @@ export function applyWorkspaceOverlay(session: SessionState, workspace: Workspac
  * @returns The filtered paths and active path.
  */
 function filterToRoot(root: string, paths: string[], active: string | null): { paths: string[]; active: string | null } {
-  return {
-    paths: paths.filter(path => isUnderRoot(root, path)),
-    active: active !== null && isUnderRoot(root, active) ? active : null,
-  }
+    return {
+        paths: paths.filter(path => isUnderRoot(root, path)),
+        active: active !== null && isUnderRoot(root, active) ? active : null,
+    }
 }
 
 /**
@@ -150,25 +150,25 @@ function filterToRoot(root: string, paths: string[], active: string | null): { p
  * @returns The parsed document, or `null` when it is not a usable workspace state.
  */
 function parseDocument(text: string): Record<string, unknown> | null {
-  let parsed: unknown
+    let parsed: unknown
 
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    return null
-  }
+    try {
+        parsed = JSON.parse(text)
+    } catch {
+        return null
+    }
 
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return null
-  }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        return null
+    }
 
-  const doc = parsed as Record<string, unknown>
+    const doc = parsed as Record<string, unknown>
 
-  if (doc.version !== 1) {
-    return null
-  }
+    if (doc.version !== 1) {
+        return null
+    }
 
-  return doc
+    return doc
 }
 
 /**
@@ -179,11 +179,11 @@ function parseDocument(text: string): Record<string, unknown> | null {
  *   when present but the wrong type (so the caller falls back to its default).
  */
 function readOptionalString(value: unknown): string | null | undefined {
-  if (value === undefined || value === null) {
-    return null
-  }
+    if (value === undefined || value === null) {
+        return null
+    }
 
-  return typeof value === 'string' ? value : undefined
+    return typeof value === 'string' ? value : undefined
 }
 
 /**
@@ -195,11 +195,11 @@ function readOptionalString(value: unknown): string | null | undefined {
  *   entry is invalid.
  */
 function readStringArray(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined
-  }
+    if (!Array.isArray(value)) {
+        return undefined
+    }
 
-  return value.every(entry => typeof entry === 'string') ? (value as string[]) : undefined
+    return value.every(entry => typeof entry === 'string') ? (value as string[]) : undefined
 }
 
 /**
@@ -211,11 +211,11 @@ function readStringArray(value: unknown): string[] | undefined {
  *   entry is invalid.
  */
 function readNumberArray(value: unknown): number[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined
-  }
+    if (!Array.isArray(value)) {
+        return undefined
+    }
 
-  return value.every(entry => typeof entry === 'number') ? (value as number[]) : undefined
+    return value.every(entry => typeof entry === 'number') ? (value as number[]) : undefined
 }
 
 /**
@@ -229,11 +229,11 @@ function readNumberArray(value: unknown): number[] | undefined {
  *   any entry is invalid.
  */
 function readLayoutSizeArray(value: unknown): LayoutSize[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined
-  }
+    if (!Array.isArray(value)) {
+        return undefined
+    }
 
-  return value.every(isLayoutSize) ? (value as LayoutSize[]) : undefined
+    return value.every(isLayoutSize) ? (value as LayoutSize[]) : undefined
 }
 
 /**
@@ -244,12 +244,12 @@ function readLayoutSizeArray(value: unknown): LayoutSize[] | undefined {
  * @returns Whether `value` is a valid `LayoutSize`.
  */
 function isLayoutSize(value: unknown): value is LayoutSize {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
+    if (typeof value !== 'object' || value === null) {
+        return false
+    }
 
-  const candidate = value as Record<string, unknown>
+    const candidate = value as Record<string, unknown>
 
-  return VALID_LAYOUT_SIZE_UNITS.includes(candidate.unit as LayoutSizeUnit)
-    && typeof candidate.value === 'number'
+    return VALID_LAYOUT_SIZE_UNITS.includes(candidate.unit as LayoutSizeUnit)
+        && typeof candidate.value === 'number'
 }
