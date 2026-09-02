@@ -108,10 +108,10 @@ class EditorShell extends Container {
     this._split = split
     this._controller = controller
 
-    controller.setProjectRootListener(root => {
-      void this.openProjectRoot(root)
+    controller.setProjectRootListener(async root => {
       welcome.setProjectRoot(root)
       welcome.setRecentProjects(controller.getRecentProjects())
+      await this.openProjectRoot(root)
     })
     installAccelerators(actions)
   }
@@ -140,7 +140,10 @@ class EditorShell extends Container {
    * pending autosave, points the tree at the newly chosen folder, restores
    * that folder's saved tree expansion (if it has any), then schedules a
    * session save. No `catch` around the listing itself — a failed listing
-   * keeps exactly the unhandled rejection it has today. Tabs, the active
+   * rejects up through the `async` callback registered in the constructor,
+   * which `EditorController.openProjectFolder` awaits and reports via
+   * `Dialog.error`; `openRecentProject` still leaves it as an unhandled
+   * rejection, unchanged from before this method existed. Tabs, the active
    * file, and the split are deliberately left untouched by a live switch —
    * only tree expansion restores outside a cold start.
    *

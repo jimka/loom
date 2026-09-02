@@ -8,8 +8,13 @@ nothing below has a plan yet.
 
 ## High
 
-- **Opening folders outside `$HOME`** — currently excluded by the `fs:scope`
-  capability grant in `src-tauri/capabilities/default.json`.
+- **Opening dotfiles** — a path component starting with `.` is never matched
+  by the `**` wildcard in either the `fs:scope` capability grant or the
+  runtime grant the folder picker makes, so `.gitignore`, `.eslintrc.json`
+  and anything under `.github/` cannot be opened even though the tree lists
+  them. The `plugins.fs.requireLiteralLeadingDot` setting in
+  `src-tauri/tauri.conf.json` only relaxes the capability grant, not the
+  picker's, so a fix has to cover both.
 - **File type icons** in the tree and tab strip.
 - **File-type breadcrumbs** just above the code editor.
 - **Hidden-file / `.gitignore`-aware filtering** — the tree currently shows
