@@ -4,8 +4,8 @@ import { defineConfig } from 'vitest/config'
 // need no DOM, so the default node environment is used; component/DOM
 // behaviour is verified live, not here.
 export default defineConfig({
-  test: {
-    include: ['tests/**/*.test.ts'],
-    environment: 'node',
-  },
+    test: {
+        include: ['tests/**/*.test.ts'],
+        environment: 'node',
+    },
 })

@@ -17,44 +17,44 @@ export type RecentDirectoryIntent = 'workspace' | 'expose' | 'cancel'
  * @returns The user's choice.
  */
 export async function promptRecentDirectoryIntent(path: string): Promise<RecentDirectoryIntent> {
-  let choice: RecentDirectoryIntent = 'cancel'
+    let choice: RecentDirectoryIntent = 'cancel'
 
-  await Dialog.show({
-    title: 'Open Recent',
-    message: `"${projectName(path)}" is inside the current workspace. Open it as its own workspace, or reveal it in the tree?`,
-    buttons: [
-      {
-        text: 'Cancel',
-        result: 'cancel',
-        onClick: () => {
-          choice = 'cancel'
+    await Dialog.show({
+        title: 'Open Recent',
+        message: `"${projectName(path)}" is inside the current workspace. Open it as its own workspace, or reveal it in the tree?`,
+        buttons: [
+            {
+                text: 'Cancel',
+                result: 'cancel',
+                onClick: () => {
+                    choice = 'cancel'
 
-          return true
-        },
-      },
-      {
-        text: 'Expose in Tree',
-        result: 'confirm',
-        onClick: () => {
-          choice = 'expose'
+                    return true
+                },
+            },
+            {
+                text: 'Expose in Tree',
+                result: 'confirm',
+                onClick: () => {
+                    choice = 'expose'
 
-          return true
-        },
-      },
-      {
-        text: 'Open as Workspace',
-        result: 'confirm',
-        primary: true,
-        onClick: () => {
-          choice = 'workspace'
+                    return true
+                },
+            },
+            {
+                text: 'Open as Workspace',
+                result: 'confirm',
+                primary: true,
+                onClick: () => {
+                    choice = 'workspace'
 
-          return true
-        },
-      },
-    ],
-  })
+                    return true
+                },
+            },
+        ],
+    })
 
-  return choice
+    return choice
 }
 
 /**
@@ -68,8 +68,8 @@ export async function promptRecentDirectoryIntent(path: string): Promise<RecentD
  * @returns Whether the user confirmed opening it.
  */
 export async function confirmOpenSeparateWorkspace(path: string, currentRoot: string): Promise<boolean> {
-  return Dialog.confirm(
-    'Open Recent',
-    `"${projectName(path)}" is a separate workspace from "${projectName(currentRoot)}". Open it and close the current workspace?`,
-  )
+    return Dialog.confirm(
+        'Open Recent',
+        `"${projectName(path)}" is a separate workspace from "${projectName(currentRoot)}". Open it and close the current workspace?`,
+    )
 }

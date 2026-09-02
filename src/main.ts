@@ -31,18 +31,18 @@ Body.init({ layoutManager: Fit(), favicon: APP_FAVICON })
  * the restore's file reads begin, so the window paints immediately.
  */
 async function start(): Promise<void> {
-  const appSession = await loadSession()
-  const workspace = appSession.projectRoot !== null ? await loadWorkspaceState(appSession.projectRoot) : null
-  const session = applyWorkspaceOverlay(appSession, workspace)
-  const controller = new EditorController()
+    const appSession = await loadSession()
+    const workspace = appSession.projectRoot !== null ? await loadWorkspaceState(appSession.projectRoot) : null
+    const session = applyWorkspaceOverlay(appSession, workspace)
+    const controller = new EditorController()
 
-  controller.seedRecents(session.recentProjects, session.recentFiles)
+    controller.seedRecents(session.recentProjects, session.recentFiles)
 
-  const shell = EditorShell(controller, session)
+    const shell = EditorShell(controller, session)
 
-  Body.getInstance().addComponent(shell)
+    Body.getInstance().addComponent(shell)
 
-  void shell.restoreSession(session)
+    void shell.restoreSession(session)
 }
 
 void start()

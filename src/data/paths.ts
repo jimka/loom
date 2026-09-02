@@ -8,9 +8,9 @@
  * @returns The last segment (the file or directory's own name).
  */
 export function baseName(path: string): string {
-  const segments = path.split(/[/\\]/)
+    const segments = path.split(/[/\\]/)
 
-  return segments[segments.length - 1]
+    return segments[segments.length - 1]
 }
 
 /**
@@ -22,9 +22,9 @@ export function baseName(path: string): string {
  *   separator leaves nothing (e.g. the filesystem root `/`).
  */
 export function projectName(root: string): string {
-  const trimmed = root.replace(/[/\\]+$/, '')
+    const trimmed = root.replace(/[/\\]+$/, '')
 
-  return trimmed === '' ? root : baseName(trimmed)
+    return trimmed === '' ? root : baseName(trimmed)
 }
 
 /**
@@ -36,14 +36,14 @@ export function projectName(root: string): string {
  * @returns The lowercased extension, without its leading dot, or `""`.
  */
 export function extensionOf(path: string): string {
-  const name = baseName(path)
-  const lastDot = name.lastIndexOf('.')
+    const name = baseName(path)
+    const lastDot = name.lastIndexOf('.')
 
-  if (lastDot <= 0) {
-    return ''
-  }
+    if (lastDot <= 0) {
+        return ''
+    }
 
-  return name.slice(lastDot + 1).toLowerCase()
+    return name.slice(lastDot + 1).toLowerCase()
 }
 
 /**
@@ -56,9 +56,9 @@ export function extensionOf(path: string): string {
  * @returns The joined path.
  */
 export function joinPath(parent: string, name: string): string {
-  const sep = parent.includes('\\') ? '\\' : '/'
+    const sep = parent.includes('\\') ? '\\' : '/'
 
-  return parent.endsWith(sep) ? parent + name : parent + sep + name
+    return parent.endsWith(sep) ? parent + name : parent + sep + name
 }
 
 /**
@@ -70,19 +70,19 @@ export function joinPath(parent: string, name: string): string {
  * @returns `path`'s parent directory, or `path` itself when there is none.
  */
 export function parentDir(path: string): string {
-  const sep = path.includes('\\') ? '\\' : '/'
-  const trimmed = path.endsWith(sep) && path.length > sep.length ? path.slice(0, -sep.length) : path
-  const cut = trimmed.lastIndexOf(sep)
+    const sep = path.includes('\\') ? '\\' : '/'
+    const trimmed = path.endsWith(sep) && path.length > sep.length ? path.slice(0, -sep.length) : path
+    const cut = trimmed.lastIndexOf(sep)
 
-  if (cut < 0) {
-    return path
-  }
+    if (cut < 0) {
+        return path
+    }
 
-  // A cut at index 0 is the filesystem root ("/a" → "/"); a cut past index 0
-  // is an ordinary parent ("/p/a" → "/p"). A Windows drive root ("C:") has no
-  // separator at all, so it never reaches this branch — it returns via the
-  // `cut < 0` case above.
-  return cut === 0 ? trimmed.slice(0, cut + 1) : trimmed.slice(0, cut)
+    // A cut at index 0 is the filesystem root ("/a" → "/"); a cut past index 0
+    // is an ordinary parent ("/p/a" → "/p"). A Windows drive root ("C:") has no
+    // separator at all, so it never reaches this branch — it returns via the
+    // `cut < 0` case above.
+    return cut === 0 ? trimmed.slice(0, cut + 1) : trimmed.slice(0, cut)
 }
 
 /**
@@ -101,15 +101,15 @@ export function parentDir(path: string): string {
  * @returns The portion of `path` below `parent`, `/`-separated, or `null`.
  */
 export function relativePath(parent: string, path: string): string | null {
-  const relative = relativeTo(parent, path)
+    const relative = relativeTo(parent, path)
 
-  return relative === null || relative === '' ? null : relative.replace(/\\/g, '/')
+    return relative === null || relative === '' ? null : relative.replace(/\\/g, '/')
 }
 
 /** A directory-listing item shaped enough to sort — carries no path of its own. */
 export interface SortableEntry {
-  name: string
-  isDir: boolean
+    name: string
+    isDir: boolean
 }
 
 /**
@@ -121,24 +121,24 @@ export interface SortableEntry {
  * @returns A new array in directories-first, case-insensitive name order.
  */
 export function sortDirEntries<T extends SortableEntry>(items: T[]): T[] {
-  return [...items].sort((a, b) => {
-    if (a.isDir !== b.isDir) {
-      return a.isDir ? -1 : 1
-    }
+    return [...items].sort((a, b) => {
+        if (a.isDir !== b.isDir) {
+            return a.isDir ? -1 : 1
+        }
 
-    const lowerA = a.name.toLowerCase()
-    const lowerB = b.name.toLowerCase()
+        const lowerA = a.name.toLowerCase()
+        const lowerB = b.name.toLowerCase()
 
-    if (lowerA !== lowerB) {
-      return lowerA < lowerB ? -1 : 1
-    }
+        if (lowerA !== lowerB) {
+            return lowerA < lowerB ? -1 : 1
+        }
 
-    if (a.name === b.name) {
-      return 0
-    }
+        if (a.name === b.name) {
+            return 0
+        }
 
-    return a.name < b.name ? -1 : 1
-  })
+        return a.name < b.name ? -1 : 1
+    })
 }
 
 /**
@@ -148,7 +148,7 @@ export function sortDirEntries<T extends SortableEntry>(items: T[]): T[] {
  * @returns The segments, leading/trailing/repeated separators dropped.
  */
 export function pathSegments(path: string): string[] {
-  return path.split(/[/\\]/).filter(segment => segment.length > 0)
+    return path.split(/[/\\]/).filter(segment => segment.length > 0)
 }
 
 /**
@@ -160,14 +160,14 @@ export function pathSegments(path: string): string[] {
  * @returns The portion of `path` below `root`, or `null`.
  */
 export function relativeTo(root: string | null, path: string): string | null {
-  if (root === null) {
-    return null
-  }
+    if (root === null) {
+        return null
+    }
 
-  const sep = root.includes('\\') ? '\\' : '/'
-  const prefix = root.endsWith(sep) ? root : root + sep
+    const sep = root.includes('\\') ? '\\' : '/'
+    const prefix = root.endsWith(sep) ? root : root + sep
 
-  return path.startsWith(prefix) ? path.slice(prefix.length) : null
+    return path.startsWith(prefix) ? path.slice(prefix.length) : null
 }
 
 /**
@@ -180,12 +180,12 @@ export function relativeTo(root: string | null, path: string): string | null {
  * @returns Whether `path` is `root` or a descendant of it.
  */
 export function isUnderRoot(root: string, path: string): boolean {
-  const rootSegments = root.split(/[/\\]/).filter(segment => segment !== '')
-  const pathSegments = path.split(/[/\\]/).filter(segment => segment !== '')
+    const rootSegments = root.split(/[/\\]/).filter(segment => segment !== '')
+    const pathSegments = path.split(/[/\\]/).filter(segment => segment !== '')
 
-  if (pathSegments.length < rootSegments.length) {
-    return false
-  }
+    if (pathSegments.length < rootSegments.length) {
+        return false
+    }
 
-  return rootSegments.every((segment, index) => segment === pathSegments[index])
+    return rootSegments.every((segment, index) => segment === pathSegments[index])
 }

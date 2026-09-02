@@ -12,22 +12,22 @@ import { extensionOf } from '../data/paths'
 const MARKDOWN_LANGUAGE = 'markdown'
 
 const EXTENSION_TO_LANGUAGE: Record<string, string> = {
-  js: 'javascript',
-  jsx: 'javascript',
-  mjs: 'javascript',
-  cjs: 'javascript',
-  ts: 'javascript',
-  tsx: 'javascript',
-  mts: 'javascript',
-  cts: 'javascript',
-  json: 'json',
-  html: 'html',
-  htm: 'html',
-  sql: 'sql',
-  md: MARKDOWN_LANGUAGE,
-  markdown: MARKDOWN_LANGUAGE,
-  css: 'css',
-  py: 'python',
+    js: 'javascript',
+    jsx: 'javascript',
+    mjs: 'javascript',
+    cjs: 'javascript',
+    ts: 'javascript',
+    tsx: 'javascript',
+    mts: 'javascript',
+    cts: 'javascript',
+    json: 'json',
+    html: 'html',
+    htm: 'html',
+    sql: 'sql',
+    md: MARKDOWN_LANGUAGE,
+    markdown: MARKDOWN_LANGUAGE,
+    css: 'css',
+    py: 'python',
 }
 
 /**
@@ -39,11 +39,11 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
  * @returns The language id, or `null` when the extension is unrecognised or `path` is `null`.
  */
 export function languageForPath(path: string | null): string | null {
-  if (path === null) {
-    return null
-  }
+    if (path === null) {
+        return null
+    }
 
-  return EXTENSION_TO_LANGUAGE[extensionOf(path)] ?? null
+    return EXTENSION_TO_LANGUAGE[extensionOf(path)] ?? null
 }
 
 /**
@@ -54,25 +54,25 @@ export function languageForPath(path: string | null): string | null {
  * @returns `true` when the path's language is Markdown.
  */
 export function isMarkdownPath(path: string | null): boolean {
-  return languageForPath(path) === MARKDOWN_LANGUAGE
+    return languageForPath(path) === MARKDOWN_LANGUAGE
 }
 
 registerLanguage({
-  id: 'css',
-  label: 'CSS',
-  loadExtension: async () => {
-    const { css } = await import('@codemirror/lang-css')
+    id: 'css',
+    label: 'CSS',
+    loadExtension: async () => {
+        const { css } = await import('@codemirror/lang-css')
 
-    return css()
-  },
+        return css()
+    },
 })
 
 registerLanguage({
-  id: 'python',
-  label: 'Python',
-  loadExtension: async () => {
-    const { python } = await import('@codemirror/lang-python')
+    id: 'python',
+    label: 'Python',
+    loadExtension: async () => {
+        const { python } = await import('@codemirror/lang-python')
 
-    return python()
-  },
+        return python()
+    },
 })
