@@ -30,6 +30,7 @@ class FileEditor extends Container {
   private _path: string | null
   private _name: string
   private _dirty = false
+  private _cleanText: string
   private readonly _editor: CodeEditor
   private readonly _breadcrumbs: FileBreadcrumbs
   private readonly _onDirtyChange: (file: FileEditor) => void
@@ -48,6 +49,7 @@ class FileEditor extends Container {
 
     this._path = params.path
     this._name = params.name
+    this._cleanText = params.text
     this._editor = editor
     this._breadcrumbs = breadcrumbs
     this._onDirtyChange = params.onDirtyChange
@@ -55,13 +57,20 @@ class FileEditor extends Container {
     editor.on('change', this.handleChange)
   }
 
-  /** The wrapped editor's `"change"` handler — dirties the file on its first edit since load/save. */
+  /**
+   * The wrapped editor's `"change"` handler — dirties the file whenever its
+   * text no longer matches the last-loaded-or-saved snapshot, and clears the
+   * flag again if an edit brings it back to exactly that snapshot (e.g. an
+   * undo, or manually retyping what was removed).
+   */
   private handleChange = (): void => {
-    if (this._dirty) {
+    const dirty = this._editor.getValue() !== this._cleanText
+
+    if (dirty === this._dirty) {
       return
     }
 
-    this._dirty = true
+    this._dirty = dirty
     this._onDirtyChange(this)
   }
 
@@ -110,6 +119,7 @@ class FileEditor extends Container {
 
   /** Clears the dirty flag (after a successful save) and notifies the owner. */
   markClean(): void {
+    this._cleanText = this._editor.getValue()
     this._dirty = false
     this._onDirtyChange(this)
   }
