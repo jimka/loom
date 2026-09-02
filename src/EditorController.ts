@@ -368,9 +368,9 @@ class EditorController {
 
   /**
    * Shows the native save dialog for `file` and, on confirm, writes it to
-   * the chosen path and re-tracks it there. Refuses a target that is
-   * already open under a different tab. Cancelling writes nothing and
-   * leaves `file` dirty.
+   * the chosen path, re-tracks it there, and records it in the recent-files
+   * list. Refuses a target that is already open under a different tab.
+   * Cancelling writes nothing and leaves `file` dirty.
    *
    * @param file - The file to save to a new path.
    * @returns Whether the write succeeded.
@@ -398,6 +398,7 @@ class EditorController {
 
     file.setPath(target)
     file.markClean()
+    this.recordRecentFile(target)
     this.tabs.getTab().setTabName(file, file.getLabel())
     this.statusBar.setMessage(`Saved ${file.getLabel()}`, SAVE_MESSAGE_DURATION_MS)
     this.syncActive()
