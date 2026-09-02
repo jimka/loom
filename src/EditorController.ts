@@ -246,9 +246,9 @@ class EditorController {
             name: `Untitled-${this._untitledCount}`,
             text: '',
             projectRoot: this._projectRoot,
-            onDirtyChange: this.handleDirtyChange,
         })
 
+        file.onDirtyChange(() => this.handleDirtyChange(file))
         this.tabs.addTab(file, file.getLabel(), { closeable: true, glyph: glyphNameForPath(file.getName()) })
         this._openFiles.push(file)
         this.tabs.getTab().setActiveContent(file)
@@ -302,8 +302,9 @@ class EditorController {
      * @returns The new tab's `FileEditor`.
      */
     private addFileTab(path: string, text: string): FileEditor {
-        const file = FileEditor({ path, name: baseName(path), text, projectRoot: this._projectRoot, onDirtyChange: this.handleDirtyChange })
+        const file = FileEditor({ path, name: baseName(path), text, projectRoot: this._projectRoot })
 
+        file.onDirtyChange(() => this.handleDirtyChange(file))
         this.tabs.addTab(file, file.getLabel(), { closeable: true, glyph: glyphNameForPath(path) })
         this._openFiles.push(file)
 
@@ -531,7 +532,7 @@ class EditorController {
         return content ? (content as FileEditor) : null
     }
 
-    /** `FileEditor.onDirtyChange`: relabels the tab and resyncs the title/status bar. */
+    /** Registered as a `Component` dirty-state listener on each open file: relabels its tab and resyncs the title/status bar. */
     private handleDirtyChange = (file: FileEditor): void => {
         this.tabs.getTab().setTabName(file, file.getLabel())
         this.syncActive()
