@@ -3,7 +3,6 @@ import { Fit } from '@jimka/typescript-ui/layout'
 import { Glyph } from '@jimka/typescript-ui/component/display'
 import { folder } from '@jimka/typescript-ui/glyphs/solid/folder'
 import { file_circle_plus } from '@jimka/typescript-ui/glyphs/solid/file_circle_plus'
-import { file_code } from '@jimka/typescript-ui/glyphs/solid/file_code'
 import { floppy_disk } from '@jimka/typescript-ui/glyphs/solid/floppy_disk'
 import { times } from '@jimka/typescript-ui/glyphs/solid/times'
 import { pen_to_square } from '@jimka/typescript-ui/glyphs/solid/pen_to_square'
@@ -13,14 +12,16 @@ import { code } from '@jimka/typescript-ui/glyphs/solid/code'
 import { right_from_bracket } from '@jimka/typescript-ui/glyphs/solid/right_from_bracket'
 import { clock_rotate_left } from '@jimka/typescript-ui/glyphs/solid/clock_rotate_left'
 import { APP_FAVICON } from './appIdentity'
+import { FILE_ICON_GLYPHS } from './fileIcons'
 import { EditorController } from './EditorController'
 import { EditorShell } from './shell/EditorShell'
 import { loadSession, loadWorkspaceState } from './shell/session'
 import { applyWorkspaceOverlay } from './data/workspaceState'
 
 // Every glyph the shell, the tree, and the unsaved-changes prompt reference
-// by name, registered once here at the composition root.
-Glyph.register(folder, file_circle_plus, file_code, floppy_disk, times, pen_to_square, eye, bars, code, right_from_bracket, clock_rotate_left)
+// by name, plus the per-file-type set from fileIcons.ts, registered once
+// here at the composition root.
+Glyph.register(folder, file_circle_plus, floppy_disk, times, pen_to_square, eye, bars, code, right_from_bracket, clock_rotate_left, ...FILE_ICON_GLYPHS)
 
 Body.init({ layoutManager: Fit(), favicon: APP_FAVICON })
 

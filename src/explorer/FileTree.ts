@@ -4,6 +4,7 @@ import type { TreeNode } from '@jimka/typescript-ui/component/tree'
 import { listDirectory } from '../data/workspace'
 import type { DirectoryItem } from '../data/workspace'
 import { expansionOrder } from '../data/session'
+import { glyphNameForPath } from '../fileIcons'
 
 /** Domain payload `FileTree` attaches to every node via `TreeNode.data`. */
 interface FileTreeNodeData {
@@ -37,7 +38,11 @@ class FileTree extends Tree {
     this._onOpenFile = params.onOpenFile
 
     this.setRendererFactory(() => new IconLabelTreeNodeRenderer(
-      node => (node.data as FileTreeNodeData).isDir ? 'folder' : 'file-code',
+      node => {
+        const data = node.data as FileTreeNodeData
+
+        return data.isDir ? 'folder' : glyphNameForPath(data.path)
+      },
     ))
 
     this.on('selection', this.handleSelection)

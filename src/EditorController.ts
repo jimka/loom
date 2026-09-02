@@ -5,6 +5,7 @@ import { Dialog } from '@jimka/typescript-ui/overlay'
 import type { TabCloseController } from '@jimka/typescript-ui/layout'
 import { FileEditor } from './editor/FileEditor'
 import { languageForPath } from './editor/languages'
+import { glyphNameForPath } from './fileIcons'
 import { baseName, joinPath } from './data/paths'
 import { readFileText, writeFileText, pickProjectFolder, pickSaveTarget, setWindowTitle, closeWindow, onCloseRequested } from './data/workspace'
 import { promptUnsavedChanges } from './shell/unsavedPrompt'
@@ -217,7 +218,7 @@ class EditorController {
       onDirtyChange: this.handleDirtyChange,
     })
 
-    this.tabs.addTab(file, file.getLabel(), { closeable: true })
+    this.tabs.addTab(file, file.getLabel(), { closeable: true, glyph: glyphNameForPath(file.getName()) })
     this._openFiles.push(file)
     this.tabs.getTab().setActiveContent(file)
     this.syncActive()
@@ -272,7 +273,7 @@ class EditorController {
   private addFileTab(path: string, text: string): FileEditor {
     const file = FileEditor({ path, name: baseName(path), text, onDirtyChange: this.handleDirtyChange })
 
-    this.tabs.addTab(file, file.getLabel(), { closeable: true })
+    this.tabs.addTab(file, file.getLabel(), { closeable: true, glyph: glyphNameForPath(path) })
     this._openFiles.push(file)
 
     return file

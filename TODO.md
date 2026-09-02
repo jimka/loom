@@ -15,7 +15,6 @@ nothing below has a plan yet.
   them. The `plugins.fs.requireLiteralLeadingDot` setting in
   `src-tauri/tauri.conf.json` only relaxes the capability grant, not the
   picker's, so a fix has to cover both.
-- **File type icons** in the tree and tab strip.
 - **File-type breadcrumbs** just above the code editor.
 - **Hidden-file / `.gitignore`-aware filtering** — the tree currently shows
   every entry `readDir` returns.
@@ -55,6 +54,11 @@ nothing below has a plan yet.
   a manual *Format* menu action; running it automatically before write is
   the natural follow-on.
 - **Drag-and-drop to open** a file or folder onto the window.
+- **Library `Tab.setTabGlyph` / `TabBar.setEntryGlyph`.** Neither exists
+  today — `Tab` has `setTabName` but no glyph counterpart, and the
+  `TabButton` that owns the icon is built once from the `glyph` option
+  passed to `addTab`. Without it, a *Save As* that changes a file's
+  extension cannot re-icon its already-open tab.
 
 ## Low
 
@@ -94,6 +98,16 @@ nothing below has a plan yet.
   ruling out a code-level cause. WebKitGTK has a known history of not
   repainting the cursor promptly (or at all) on script-driven style changes.
   No fix planned; recorded so it isn't mistaken for a regression later.
+- **Stale tab icon after a cross-type *Save As*.** Saving `notes.md` as
+  `notes.txt` leaves its already-open tab showing the Markdown icon until
+  the tab is closed and reopened — the library has no way to re-icon a
+  `Tab` in place (see the `Tab.setTabGlyph` item above). The status bar's
+  language updates correctly; the tree, per the Filesystem watching item
+  above, shows no row for `notes.txt` at all until its directory is loaded
+  again — the project is reopened, or, if the directory was never expanded
+  in this session, expanded for the first time. Collapsing and
+  re-expanding an already-loaded directory does not reload it, so the tab
+  icon is stale for longer than the tree row even exists.
 
 ## Notes
 
@@ -113,8 +127,10 @@ nothing below has a plan yet.
   - `plugin-updater` — relevant to the code signing/auto-update item, above.
   - Native OS drag-and-drop (`onDragDropEvent`) — relevant to the
     drag-and-drop-to-open item, above.
-  - No official plugin exists for OS file-type icons — relevant to the file
-    type icons item, above; would need a custom Rust crate.
+  - No official plugin exists for native OS file-type icons — the tree and
+    tabs draw their per-file-type icons from Font Awesome instead (see
+    [`src/fileIcons.ts`](src/fileIcons.ts)); matching the OS's own icon set
+    would need a custom Rust crate.
 - **Frontend hot reload today is a full page reload, not a state-preserving
   one** — the library has no HMR accept boundary (it isn't React, so there's
   no fast-refresh mechanism), so any source edit during `tauri:dev` drops the

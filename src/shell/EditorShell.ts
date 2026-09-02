@@ -11,6 +11,7 @@ import type { SessionState } from '../data/session'
 import type { SessionAutosave } from './session'
 import { applySession, installSessionAutosave, loadWorkspaceState } from './session'
 import { projectName, baseName } from '../data/paths'
+import { glyphNameForPath } from '../fileIcons'
 import {
   NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
   FORMAT_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, installAccelerators,
@@ -212,7 +213,7 @@ function buildRecentItems(actions: MenuBarActions): MenuItemConfig[] {
 
   items.push(...files.map(path => ({
     text: baseName(path),
-    glyph: 'file-code',
+    glyph: glyphNameForPath(path),
     action: () => actions.onOpenRecentFile(path),
   })))
 

@@ -432,6 +432,80 @@ update.
 
 ---
 
+## Implementation Notes
+
+**Codebase drift beyond line numbers.** The plan was drafted before the
+untitled-files and recent-projects plans landed, and both added file-display
+call sites the plan never saw:
+
+- `EditorController`'s single `addTab` call at the cited line had split into
+  two: `newFile()` (untitled-files.md) opens a path-less buffer, and a new
+  private `addFileTab(path, text)` helper — shared by `openFile` and
+  `restoreFiles` — opens a path-based one. The plan's step 4 snippet, written
+  against the single-call-site code, no longer matched either location.
+  Resolution: `addFileTab` got `glyph: glyphNameForPath(path)`, exactly the
+  plan's intent, since it always has a real path. `newFile()` got
+  `glyph: glyphNameForPath(file.getName())` — not mentioned by the plan at
+  all — so an untitled tab also carries an icon instead of none; since an
+  untitled buffer's name (`Untitled-N`) has no extension and matches neither
+  table, this resolves to the same default `file` icon every untitled tab
+  showed implicitly before (no icon rendered), just now rendered explicitly
+  and consistently with every other tab.
+- `EditorShell`'s Open Recent submenu (recent-projects.md) renders each
+  recent file with a hardcoded `glyph: 'file-code'`, a call site the plan
+  never mentions because it postdates the plan's drafting. Leaving it
+  hardcoded would have shipped a feature that visibly contradicts its own
+  README description ("per-file-type icon" everywhere a file is named) the
+  moment a user opened the File menu. Resolution: swapped the hardcoded
+  literal for `glyphNameForPath(path)`, the same call already used at every
+  other file-display site — no new pattern, just the existing one applied to
+  a call site the plan's author couldn't have known about.
+
+These two additions extend the same manual-verify gap the plan already
+accepted for the rest of the feature (`### Rendering — manual verification
+only` — no DOM in the vitest harness): on `npm run tauri:dev`, the File
+menu's *Open Recent* submenu should show each recent file's own per-type
+icon rather than the uniform code-page icon it showed before, and *File >
+New File* should open an untitled tab carrying the plain-page `file` icon
+(pinned automatable behaviour: `glyphNameForPath('Untitled-1')` resolves to
+`'file'`, added to `tests/fileIcons.test.ts`) rather than no icon at all.
+
+**A plan claim about `FileTree` doesn't hold.** Both the *Save As* row in
+`## Expected Behaviour`'s manual-verify list and step 8's `TODO.md`
+instructions describe the tree row for a *Save As*'d file as updating on
+its own ("the tree row for the new file shows the text-lines icon"). It
+doesn't: `FileTree` only loads a directory's children from
+`setProjectRoot`/`loadInto` on expansion (`src/explorer/FileTree.ts`), and
+`EditorController.saveAs` never touches the tree — this is the same
+no-filesystem-watching gap `TODO.md`'s own `## Medium` section already
+documents elsewhere. This was a pre-existing plan inaccuracy, not new
+codebase drift. `TODO.md`'s *Stale tab icon* bullet (step 8) is corrected
+to say the tree shows no row for the new file until it is next re-listed,
+rather than claiming it updates correctly.
+
+**`glyphNameForPath`'s lookups are guarded, not unguarded like the
+precedent.** `## Internal Structure` and `## Architecture Decisions` both
+call for mirroring `languages.ts`'s unguarded `if (byName)` / `??` checks —
+plain `Record` indexing with no ownership check. Implemented that way at
+first, but a plain `obj[key]` lookup on a file literally named `constructor`
+or `__proto__` resolves through `Object.prototype` rather than missing, so
+`glyphNameForPath` would return `'Object'` or `undefined` — a name
+`FILE_ICON_GLYPHS` never registers. In `languages.ts` the same shape only
+degrades to a wrong-typed value flowing into a status-bar label
+(`languageForPath` returns `string | null`, and a stray `Object` string is
+merely a cosmetic wrong label). Here it is strictly worse: `new Glyph(name)`
+throws `Unknown glyph: …` inside the tree row renderer
+(`IconLabelTreeNodeRenderer.update`) and inside `TabBar.createBarEntry`, so
+a file with either name would crash rendering rather than just mislabel it.
+Both lookups in `glyphNameForPath` were changed to `Object.hasOwn(table,
+key)` guards before indexing, keeping the tables themselves exactly as
+sketched (plain `Record<string, NamedGlyphDef>` literals) and diverging only
+in how they're read. `tests/fileIcons.test.ts` pins `constructor`,
+`x.constructor`, and `__proto__` all resolving to the default `file` icon
+rather than throwing.
+
+---
+
 ## Notes
 
 [^icon-source]: `@jimka/typescript-ui` bundles Font Awesome Free 7.2.0 as
