@@ -1,8 +1,10 @@
 import { Container, callable } from '@jimka/typescript-ui/core'
-import { Fit } from '@jimka/typescript-ui/layout'
+import { Border as BorderLayout } from '@jimka/typescript-ui/layout'
+import { Placement } from '@jimka/typescript-ui/primitive'
 import { CodeEditor } from '@jimka/typescript-ui/component/editor'
 import { baseName } from '../data/paths'
 import { languageForPath } from './languages'
+import { FileBreadcrumbs } from './FileBreadcrumbs'
 
 /** Constructor parameters for {@link FileEditor}. */
 export interface FileEditorParams {
@@ -12,31 +14,42 @@ export interface FileEditorParams {
   name: string
   /** The file's text, as read from disk — `""` for a new buffer. */
   text: string
+  /** The open project folder, or `null` when none is open. */
+  projectRoot: string | null
   /** Notified whenever this editor's dirty state changes — including a `markClean` after save. */
   onDirtyChange: (file: FileEditor) => void
 }
 
 /**
- * One open file: a `CodeEditor` filling its tab via a `Fit` layout, plus the
- * file's path and dirty flag. `EditorController` addresses `Tab` operations
- * (`setTabName`, `closeTab`, `getActiveContent`) through this wrapper, never
- * the bare editor.
+ * One open file: a breadcrumb band NORTH of a `CodeEditor`, stacked via a
+ * `Border` layout, plus the file's path and dirty flag. `EditorController`
+ * addresses `Tab` operations (`setTabName`, `closeTab`, `getActiveContent`)
+ * through this wrapper, never the bare editor.
  */
 class FileEditor extends Container {
   private _path: string | null
   private _name: string
   private _dirty = false
   private readonly _editor: CodeEditor
+  private readonly _breadcrumbs: FileBreadcrumbs
   private readonly _onDirtyChange: (file: FileEditor) => void
 
   constructor(params: FileEditorParams) {
     const editor = new CodeEditor(params.text, { language: languageForPath(params.path) ?? undefined })
+    const breadcrumbs = FileBreadcrumbs({ path: params.path, name: params.name, projectRoot: params.projectRoot })
 
-    super({ layoutManager: new Fit(), components: [editor] })
+    super({
+      layoutManager: new BorderLayout({ spacing: 0 }),
+      components: [
+        { component: breadcrumbs, constraints: { placement: Placement.NORTH } },
+        { component: editor,      constraints: { placement: Placement.CENTER } },
+      ],
+    })
 
     this._path = params.path
     this._name = params.name
     this._editor = editor
+    this._breadcrumbs = breadcrumbs
     this._onDirtyChange = params.onDirtyChange
 
     editor.on('change', this.handleChange)
@@ -67,6 +80,12 @@ class FileEditor extends Container {
     this._path = path
     this._name = baseName(path)
     this._editor.setLanguage(languageForPath(path))
+    this._breadcrumbs.setPath(path)
+  }
+
+  /** Repoints the breadcrumb band at a new project folder. */
+  setProjectRoot(root: string | null): void {
+    this._breadcrumbs.setProjectRoot(root)
   }
 
   /** The file's display name: its base name once saved, its untitled name before that. */

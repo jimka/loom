@@ -15,7 +15,6 @@ nothing below has a plan yet.
   them. The `plugins.fs.requireLiteralLeadingDot` setting in
   `src-tauri/tauri.conf.json` only relaxes the capability grant, not the
   picker's, so a fix has to cover both.
-- **File-type breadcrumbs** just above the code editor.
 - **Hidden-file / `.gitignore`-aware filtering** — the tree currently shows
   every entry `readDir` returns.
 - **Library `component-dirty-state` support** — a generic dirty-flag
