@@ -27,6 +27,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   unsaved changes per tab.
 - **Breadcrumbs** — a path band above each editor showing where the open
   file sits inside the project folder.
+- **Markdown preview** — a toggle on the breadcrumb band of any Markdown
+  file swaps the editor for a rendered view of it, with a heading outline
+  and width/zoom controls, that refreshes as the document changes.
 - **Session restore** — the last project folder, expanded tree directories,
   open tabs, and the explorer width all come back on the next launch. Once a
   project has been saved to once, its own tree expansion, open tabs, and
@@ -49,7 +52,7 @@ known limitations are tracked in [`TODO.md`](TODO.md).
 
 TypeScript + [Vite](https://vitejs.dev/) frontend, built on
 `@jimka/typescript-ui`'s layout and editor components (`Tree`, `Tab`/`TabBar`,
-`Split`, `MenuBar`, `CodeEditor`); [Tauri v2](https://v2.tauri.app/) provides
+`Split`, `MenuBar`, `CodeEditor`, `MarkdownViewer`); [Tauri v2](https://v2.tauri.app/) provides
 the native shell and the filesystem/dialog access the frontend calls through
 `src/data/workspace.ts`, the app's sole `@tauri-apps/*` entry point.
 
