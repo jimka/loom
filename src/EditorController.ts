@@ -6,7 +6,7 @@ import type { TabCloseController } from '@jimka/typescript-ui/layout'
 import { FileEditor } from './editor/FileEditor'
 import { languageForPath } from './editor/languages'
 import { glyphNameForPath } from './fileIcons'
-import { baseName, joinPath } from './data/paths'
+import { baseName, joinPath, isUnderRoot } from './data/paths'
 import { readFileText, writeFileText, pickProjectFolder, pickSaveTarget, setWindowTitle, closeWindow, onCloseRequested } from './data/workspace'
 import { promptUnsavedChanges } from './shell/unsavedPrompt'
 import { APP_NAME } from './appIdentity'
@@ -228,7 +228,7 @@ class EditorController {
    * {@link openRecentProject} for session restore, which points the tree at
    * its saved root directly (`applySession`) rather than through either of
    * those. {@link EditorController} still needs to know the root so
-   * {@link defaultSaveTarget} defaults an untitled save into it after a
+   * {@link saveDialogDefault} defaults an untitled save into it after a
    * restored launch, not just after a live *Open Folder…* or *Open Recent*.
    *
    * @param root - The project folder the tree was just pointed at.
@@ -404,7 +404,7 @@ class EditorController {
    * @returns Whether the write succeeded.
    */
   async saveAs(file: FileEditor): Promise<boolean> {
-    const target = await pickSaveTarget(file.getPath() ?? this.defaultSaveTarget(file))
+    const target = await pickSaveTarget(this.saveDialogDefault(file))
 
     if (target === null) {
       return false
@@ -464,14 +464,24 @@ class EditorController {
   }
 
   /**
-   * The path the save dialog opens to for a file that has none — the
-   * buffer's untitled name inside the open project folder, or `null` when
-   * no folder is open, leaving the dialog to choose its own directory.
+   * The path the save dialog should open to for `file`: its own path when
+   * that already sits inside the open workspace, otherwise the workspace
+   * root itself — so the dialog never defaults to a directory outside the
+   * current workspace, whether `file` has never been saved or was saved
+   * somewhere else entirely (a different project, before the workspace
+   * changed).
    *
-   * @param file - The path-less file about to be saved.
-   * @returns The default save path, or `null`.
+   * @param file - The file about to be saved.
+   * @returns The default save path, or `null` when no workspace is open,
+   *   leaving the dialog to choose its own directory.
    */
-  private defaultSaveTarget(file: FileEditor): string | null {
+  private saveDialogDefault(file: FileEditor): string | null {
+    const path = file.getPath()
+
+    if (path !== null && this._projectRoot !== null && isUnderRoot(this._projectRoot, path)) {
+      return path
+    }
+
     return this._projectRoot === null ? null : joinPath(this._projectRoot, file.getName())
   }
 
