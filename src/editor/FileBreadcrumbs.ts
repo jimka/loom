@@ -1,4 +1,5 @@
 import { Container, callable } from '@jimka/typescript-ui/core'
+import type { Component } from '@jimka/typescript-ui/core'
 import { Insets } from '@jimka/typescript-ui/primitive'
 import { HBox } from '@jimka/typescript-ui/layout'
 import { IconText } from '@jimka/typescript-ui/component/display'
@@ -51,6 +52,7 @@ class FileBreadcrumbs extends Container {
   private _name: string
   private _projectRoot: string | null
   private readonly _trail: IconText
+  private _action: Component | null = null
 
   constructor(params: FileBreadcrumbsParams) {
     const trail = new IconText(TRAIL_GLYPH, '')
@@ -85,6 +87,24 @@ class FileBreadcrumbs extends Container {
     this._projectRoot = root
 
     this.updateTrail()
+  }
+
+  /**
+   * Puts `component` at the right end of the band, replacing whatever was
+   * there, or clears the slot when passed `null`.
+   *
+   * @param component - The trailing widget, or `null` to leave the slot empty.
+   */
+  setAction(component: Component | null): void {
+    if (this._action !== null) {
+      this.removeComponent(this._action)
+    }
+
+    this._action = component
+
+    if (this._action !== null) {
+      this.addComponent(this._action)
+    }
   }
 
   /**

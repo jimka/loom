@@ -6,6 +6,11 @@
 import { registerLanguage } from '@jimka/typescript-ui/component/editor'
 import { extensionOf } from '../data/paths'
 
+/** The language id `languageForPath` resolves Markdown extensions to.
+ *  {@link isMarkdownPath} compares against this same constant, so the two
+ *  can never disagree about what counts as Markdown. */
+const MARKDOWN_LANGUAGE = 'markdown'
+
 const EXTENSION_TO_LANGUAGE: Record<string, string> = {
   js: 'javascript',
   jsx: 'javascript',
@@ -19,8 +24,8 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
   html: 'html',
   htm: 'html',
   sql: 'sql',
-  md: 'markdown',
-  markdown: 'markdown',
+  md: MARKDOWN_LANGUAGE,
+  markdown: MARKDOWN_LANGUAGE,
   css: 'css',
   py: 'python',
 }
@@ -39,6 +44,17 @@ export function languageForPath(path: string | null): string | null {
   }
 
   return EXTENSION_TO_LANGUAGE[extensionOf(path)] ?? null
+}
+
+/**
+ * Whether `path` names a Markdown file, by the same extension map
+ * {@link languageForPath} resolves against.
+ *
+ * @param path - The file path, or `null` for a buffer with no path yet.
+ * @returns `true` when the path's language is Markdown.
+ */
+export function isMarkdownPath(path: string | null): boolean {
+  return languageForPath(path) === MARKDOWN_LANGUAGE
 }
 
 registerLanguage({
