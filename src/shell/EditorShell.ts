@@ -13,6 +13,7 @@ import type { SessionAutosave } from './session'
 import { applySession, installSessionAutosave, loadWorkspaceState } from './session'
 import { projectName, baseName, isUnderRoot } from '../data/paths'
 import { glyphNameForPath } from '../fileIcons'
+import { promptRecentDirectoryIntent, confirmOpenSeparateWorkspace } from './recentProjectPrompt'
 import {
   NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
   FORMAT_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, installAccelerators,
@@ -73,7 +74,7 @@ class EditorShell extends Container {
     const welcome = WelcomeScreen({
       onOpenFolder: openFolder,
       recentProjects: controller.getRecentProjects(),
-      onOpenRecentProject: (path: string) => controller.openRecentProject(path),
+      onOpenRecentProject: (path: string) => { void this.handleOpenRecentProject(path) },
     })
     const deck = buildEditorDeck(controller, welcome)
     const split = new Split({
@@ -99,7 +100,7 @@ class EditorShell extends Container {
       canSaveActive: () => controller.canSaveActive(),
       getRecentProjects: () => controller.getRecentProjects(),
       getRecentFiles: () => controller.getRecentFiles(),
-      onOpenRecentProject: (path: string) => controller.openRecentProject(path),
+      onOpenRecentProject: (path: string) => { void this.handleOpenRecentProject(path) },
       onOpenRecentFile: (path: string) => { void controller.openFile(path) },
       isShowingHidden: () => tree.isShowingHidden(),
       onToggleHidden: (value: boolean) => tree.setShowHidden(value),
@@ -192,6 +193,44 @@ class EditorShell extends Container {
 
     if (root !== null && isUnderRoot(root, path)) {
       await this._tree.refresh()
+    }
+  }
+
+  /**
+   * A Recent Projects entry's click handler, from either the welcome screen
+   * or the File > Open Recent submenu. With no workspace open yet, or the
+   * entry naming the one already open, there is nothing to decide — it just
+   * opens (or does nothing, respectively). Otherwise the entry either sits
+   * inside the open workspace, in which case the user picks between opening
+   * it as its own workspace and merely revealing it in the tree that's
+   * already open, or it sits outside it entirely, in which case opening it
+   * can only mean replacing the current workspace and the prompt says so.
+   *
+   * @param path - The recent project's root path.
+   */
+  private async handleOpenRecentProject(path: string): Promise<void> {
+    const current = this._tree.getProjectRoot()
+
+    if (current === null || path === current) {
+      this._controller.openRecentProject(path)
+
+      return
+    }
+
+    if (isUnderRoot(current, path)) {
+      const intent = await promptRecentDirectoryIntent(path)
+
+      if (intent === 'workspace') {
+        this._controller.openRecentProject(path)
+      } else if (intent === 'expose') {
+        await this._tree.selectPath(path)
+      }
+
+      return
+    }
+
+    if (await confirmOpenSeparateWorkspace(path, current)) {
+      this._controller.openRecentProject(path)
     }
   }
 }
