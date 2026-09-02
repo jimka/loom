@@ -91,8 +91,14 @@ class FileTree extends Tree {
     }
 
     /**
-     * Reveals and selects the node for `path`, expanding ancestors as needed —
-     * loading any lazy branch on the way down, the same as {@link expandPaths}.
+     * Selects the node for `path`, syncing the tree to an external source of
+     * truth (e.g. the active tab). A path already loaded — the common case,
+     * since switching between already-open tabs revisits the same nodes —
+     * takes {@link findLoadedNode}'s cheap in-memory lookup straight into
+     * {@link Tree.selectNode}, which itself no-ops rather than force-expand a
+     * collapsed ancestor. Only a path that has never been loaded pays for
+     * {@link Tree.revealByPredicate}'s full reveal — expanding ancestors and
+     * loading lazy branches on the way down, the same as {@link expandPaths}.
      * A no-op when `path` is `null`, or when it isn't found under the current
      * root (not loaded, not on disk, or no root is set).
      *
@@ -103,7 +109,7 @@ class FileTree extends Tree {
             return
         }
 
-        const node = await this.revealByPredicate(data => (data as FileTreeNodeData).path === path)
+        const node = this.findLoadedNode(path) ?? await this.revealByPredicate(data => (data as FileTreeNodeData).path === path)
 
         if (node) {
             this.selectNode(node)
