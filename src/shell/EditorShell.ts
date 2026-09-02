@@ -11,7 +11,7 @@ import type { EditorController } from '../EditorController'
 import type { SessionState } from '../data/session'
 import type { SessionAutosave } from './session'
 import { applySession, installSessionAutosave, loadWorkspaceState } from './session'
-import { projectName, baseName } from '../data/paths'
+import { projectName, baseName, isUnderRoot } from '../data/paths'
 import { glyphNameForPath } from '../fileIcons'
 import {
   NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
@@ -127,6 +127,8 @@ class EditorShell extends Container {
       welcome.setRecentProjects(controller.getRecentProjects())
       await this.openProjectRoot(root)
     })
+    controller.setActiveFileListener(path => { void tree.selectPath(path) })
+    controller.setFileSavedListener(path => { void this.handleFileSaved(path) })
     installAccelerators(actions)
   }
 
@@ -174,6 +176,23 @@ class EditorShell extends Container {
     }
 
     this._autosave?.schedule()
+  }
+
+  /**
+   * `setFileSavedListener`'s callback: refreshes the tree when `path` landed
+   * under its root, so a directory it already has loaded picks up a file
+   * that didn't exist there before this save — a first save of an untitled
+   * buffer, or a Save As to a new name. A no-op outside the tree's root, or
+   * before any root is set.
+   *
+   * @param path - The path a file was just saved to.
+   */
+  private async handleFileSaved(path: string): Promise<void> {
+    const root = this._tree.getProjectRoot()
+
+    if (root !== null && isUnderRoot(root, path)) {
+      await this._tree.refresh()
+    }
   }
 }
 
