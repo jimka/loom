@@ -3,6 +3,7 @@ import type { Component } from '@jimka/typescript-ui/core'
 import { Placement } from '@jimka/typescript-ui/primitive'
 import { Border as BorderLayout, Card, Split } from '@jimka/typescript-ui/layout'
 import { MenuBar } from '@jimka/typescript-ui/component/menubar'
+import { CheckboxMenuRow } from '@jimka/typescript-ui/component/container'
 import type { MenuItemConfig } from '@jimka/typescript-ui/component/container'
 import { FileTree } from '../explorer/FileTree'
 import { WelcomeScreen } from './WelcomeScreen'
@@ -39,6 +40,14 @@ interface MenuBarActions extends AcceleratorActions {
   onOpenRecentProject: (path: string) => void
   /** Reopens a recent file — the same action a tree click runs. */
   onOpenRecentFile: (path: string) => void
+  /** Whether the tree currently shows hidden (leading-dot) entries — read live each time the View menu opens. */
+  isShowingHidden: () => boolean
+  /** Toggles whether the tree shows hidden entries. */
+  onToggleHidden: (value: boolean) => void
+  /** Whether the tree currently shows `.gitignore`-ignored entries — read live each time the View menu opens. */
+  isShowingIgnored: () => boolean
+  /** Toggles whether the tree shows ignored entries. */
+  onToggleIgnored: (value: boolean) => void
 }
 
 /**
@@ -92,6 +101,10 @@ class EditorShell extends Container {
       getRecentFiles: () => controller.getRecentFiles(),
       onOpenRecentProject: (path: string) => controller.openRecentProject(path),
       onOpenRecentFile: (path: string) => { void controller.openFile(path) },
+      isShowingHidden: () => tree.isShowingHidden(),
+      onToggleHidden: (value: boolean) => tree.setShowHidden(value),
+      isShowingIgnored: () => tree.isShowingIgnored(),
+      onToggleIgnored: (value: boolean) => tree.setShowIgnored(value),
     }
 
     const menuBar = buildMenuBar(actions)
@@ -251,6 +264,21 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
       ] },
       { label: 'View', glyph: 'eye', items: () => [
         { text: 'Toggle Explorer', glyph: 'bars', shortcut: TOGGLE_EXPLORER_SHORTCUT, action: actions.onToggleExplorer },
+        { separator: true },
+        { row: () => {
+            const row = CheckboxMenuRow({ text: 'Show Hidden Files', checked: actions.isShowingHidden() })
+
+            row.on('action', () => { actions.onToggleHidden(row.isChecked()) })
+
+            return row
+          } },
+        { row: () => {
+            const row = CheckboxMenuRow({ text: 'Show Ignored Files', checked: actions.isShowingIgnored() })
+
+            row.on('action', () => { actions.onToggleIgnored(row.isChecked()) })
+
+            return row
+          } },
       ] },
     ],
   })

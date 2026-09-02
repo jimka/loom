@@ -124,6 +124,40 @@ export async function writeFileText(path: string, text: string): Promise<void> {
 }
 
 /**
+ * Reads `path` as UTF-8 text, resolving `null` when it is missing or
+ * unreadable. Used for probing a file that may not exist (a `.gitignore`, a
+ * `.git/info/exclude`) where absence is the common case rather than an error.
+ *
+ * @param path - The file to read.
+ * @returns The file's text contents, or `null`.
+ */
+export async function tryReadTextFile(path: string): Promise<string | null> {
+  try {
+    return await readTextFile(path)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Whether `path` exists and is reachable under the app's filesystem scope.
+ * Swallows a `stat` rejection — which includes a path outside the app's
+ * `$HOME/**` scope — resolving `false` rather than throwing.
+ *
+ * @param path - The path to check.
+ * @returns Whether `path` exists.
+ */
+export async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path)
+
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
  * Reads the app-config session file's text, or `null` when it is absent or
  * unreadable. An absent file is the common case (first launch, or a session
  * never yet saved) rather than an error, so any read failure degrades to

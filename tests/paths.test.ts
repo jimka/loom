@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { baseName, extensionOf, joinPath, sortDirEntries, isUnderRoot, projectName, pathSegments, relativeTo } from '../src/data/paths'
+import { baseName, extensionOf, joinPath, sortDirEntries, isUnderRoot, projectName, pathSegments, relativeTo, parentDir, relativePath } from '../src/data/paths'
 
 describe('baseName', () => {
   it('takes the last segment of a forward-slash path', () => {
@@ -170,5 +170,57 @@ describe('relativeTo', () => {
 
   it('returns an empty string for the root plus a bare trailing separator', () => {
     expect(relativeTo('/p', '/p/')).toBe('')
+  })
+})
+
+describe('parentDir', () => {
+  it('takes the directory above a file', () => {
+    expect(parentDir('/p/src/main.ts')).toBe('/p/src')
+  })
+
+  it('takes the directory above a top-level project folder', () => {
+    expect(parentDir('/p')).toBe('/')
+  })
+
+  it('is its own parent at the filesystem root', () => {
+    expect(parentDir('/')).toBe('/')
+  })
+
+  it('takes the directory above a Windows path', () => {
+    expect(parentDir('C:\\p\\src')).toBe('C:\\p')
+  })
+
+  it('is its own parent at a Windows drive root', () => {
+    expect(parentDir('C:')).toBe('C:')
+  })
+})
+
+describe('relativePath', () => {
+  it('rewrites a path below the parent as the part below it', () => {
+    expect(relativePath('/p', '/p/src/main.ts')).toBe('src/main.ts')
+  })
+
+  it('normalises backslash separators to forward slashes', () => {
+    expect(relativePath('C:\\p', 'C:\\p\\src\\main.ts')).toBe('src/main.ts')
+  })
+
+  it('rewrites a path below the filesystem root', () => {
+    expect(relativePath('/', '/p')).toBe('p')
+  })
+
+  it('returns null when the path is the parent itself', () => {
+    expect(relativePath('/p', '/p')).toBeNull()
+  })
+
+  it('returns null for a same-prefix sibling that is not really below the parent', () => {
+    expect(relativePath('/p', '/px/a')).toBeNull()
+  })
+
+  it('returns null when the parent is nested below the path', () => {
+    expect(relativePath('/p/a', '/p')).toBeNull()
+  })
+
+  it('returns null for the parent plus a bare trailing separator, same as the parent itself', () => {
+    expect(relativePath('/p', '/p/')).toBeNull()
   })
 })
