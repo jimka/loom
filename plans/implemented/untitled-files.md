@@ -580,3 +580,128 @@ Loom has no docs site; its prose lives in two files.
     so one field is added there. Passing `null` for every untitled save was
     rejected: it drops the user into whatever directory the OS last used, which
     is rarely the project.
+
+---
+
+## Implementation Notes
+
+The worktree's `node_modules/@jimka/typescript-ui` needed re-pointing at the
+sibling `typescript-ui` checkout (`ln -s ../../../typescript-ui/packages/lib`,
+mirroring the main tree's own symlink) after `npm install` replaced it with
+the older published `0.8.0` package — the same dev-environment gap
+`welcome-screen.md` and `recent-projects.md` already record, needed again in
+this fresh worktree. Not a plan defect.
+
+**Deviation found by the independent audit, and how it was addressed.** The
+plan's `[^default-path]` footnote and step 7 give `EditorController`'s new
+`_projectRoot` field exactly one writer: `openProjectFolder`. The audit
+found two more paths that make a project current without going through it —
+`openRecentProject` (File > Open Recent, and the welcome screen's own recent-
+project buttons) and session restore, which points the tree at its saved
+root directly in `applySession` (`src/shell/session.ts`), bypassing
+`EditorController` entirely. Left as the plan specified, `defaultSaveTarget`
+would silently return `null` after either path — the untitled save dialog
+falling back to whatever directory the OS last used, exactly the outcome
+`[^default-path]` says was rejected — on what is, for a restored session, the
+*ordinary launch path*. Fixed by giving `openRecentProject` the same
+`this._projectRoot = root` line `openProjectFolder` already has, and adding
+a narrow `EditorController.setProjectRoot(root)` (recorded, not picked, no
+listener call) that `applySession` calls once the tree's own
+`setProjectRoot`/`expandPaths` have succeeded. This touches
+`src/shell/session.ts`, which is not in the plan's "Files to Create/Modify/
+Delete" table — the smallest change that keeps `_projectRoot` in agreement
+with the tree's actual root across every path that sets it, rather than only
+the one the plan named. `src/EditorController.ts`'s `openProjectFolder` still
+assigns `_projectRoot` synchronously when a folder is picked, before the
+shell's own (async, fallible) tree listing runs; a listing failure there
+would leave `_projectRoot` pointing at a folder the tree never actually
+opened. This narrower race was not fixed — closing it would need
+`EditorController` to learn the listing's outcome, which the plan's chosen
+"controller remembers the root" architecture doesn't wire up, and doing so
+is a larger change than the audit finding calls for. Recorded here as a
+known limitation rather than fixed silently.
+
+**Second audit round: stale JSDoc.** A follow-up audit round found
+`getActiveFilePath()`'s doc comment ("The active tab's file path, or `null`
+when the strip is empty") no longer complete once `getPath()` became
+nullable: it also returns `null` when the active tab is an untitled buffer
+with other tabs open. Fixed by widening the comment to say so; no behaviour
+change, since the nullability itself is inherent to the plan's design (an
+untitled active tab persists as `session.activeFile: null`, covered under
+*Not persisting untitled buffers across restarts* in `## Non-Goals`).
+
+**Manual verification.** Ran against a real `npm run tauri:dev` process
+(Linux/WSL2, DISPLAY forwarded to a Windows host via WSLg), reusing the main
+tree's Cargo build cache (`CARGO_TARGET_DIR` pointed at
+`/home/jika/typescript/loom/src-tauri/target`), screenshotted with Pillow's
+`ImageGrab` and driven with `pyautogui` — X input focus had to be set
+explicitly via `python-xlib` (`set_input_focus`/`raise_window`) whenever a
+new window appeared, since clicks reached the app but keystrokes did not
+until focus was assigned programmatically; window-title text was read
+directly from the `_NET_WM_NAME` X property rather than by screenshot OCR.
+Confirmed by screenshot and file contents, across three launches (the third
+audit round closed the gaps the first two left unexercised, listed below):
+
+- *File > New File* and Ctrl/Cmd+N both open a new empty tab and activate it
+  (`Untitled-1`, then `Untitled-2`, `Untitled-3`/`Untitled-4` on later
+  presses, including across a tab close — the counter never reuses a closed
+  number); a new buffer starts with the status bar's language text blank and
+  the window title reading plain `Untitled-N — Loom` (no leading `•`).
+- Typing one character adds ` •` to the tab label and `• ` to the window
+  title (read as `_NET_WM_NAME`).
+- With no tabs open at all, *Save*, *Save As…*, and *Close File* are all
+  greyed out in the File menu; *New File* and *Open Folder…* stay enabled.
+- Save is enabled in the File menu for a clean, never-saved untitled buffer
+  and greyed out for a clean saved one.
+- Ctrl/Cmd+S on a path-less buffer opens the native save dialog pre-filled
+  with the untitled name; saving `Untitled-1` as `loom-manual-verify-
+  scratch.md` inside the open project folder wrote the typed content to
+  disk, renamed the tab (dropping the dirty dot), showed `Saved
+  loom-manual-verify-scratch.md` in the status bar, and turned on Markdown
+  highlighting.
+- With no project folder open at all (a from-scratch `session.json` with
+  `projectRoot: null`, the true cold-start welcome screen — no Recent
+  Projects section), Ctrl/Cmd+N then Ctrl/Cmd+S still opens the native save
+  dialog (with an empty Name field rather than a pre-filled one, since
+  `defaultSaveTarget` has no root to join and `pickSaveTarget` passes
+  `defaultPath: undefined`) and a real save to a chosen path under `$HOME`
+  still writes the file and renames the tab.
+- Closing a clean, never-edited untitled tab (Ctrl/Cmd+W) closes immediately
+  with no prompt; closing a dirty one raises `"Untitled-3" has unsaved
+  changes. Save them before closing?` — *Cancel* leaves the tab open and
+  dirty, *Save* opens the save dialog and *cancelling that* also leaves the
+  tab open and dirty (nothing written), *Don't Save* discards and closes
+  with nothing written.
+- Exiting (Ctrl/Cmd+Q) with a dirty untitled buffer open raises the same
+  `"You have unsaved changes. Exit without saving?"` confirmation a dirty
+  saved file does — the scenario `[^registry-list]`'s justification for the
+  `_openFiles` map→array conversion rests on (`confirmExit` must see a
+  path-less buffer); *Cancel* aborts the exit and leaves the app running.
+- Saving an untitled buffer onto a path already open in another tab
+  (attempting `Untitled-1` → the open project's own `README.md`) shows
+  *Cannot save here — That file is already open in another tab. Close it
+  first.* and leaves both the target file and the untitled buffer
+  untouched — the identity-based guard in `saveAs` firing before any write.
+- Opening an already-open path from the tree — after saving an untitled
+  buffer as `manual-verify-item6.md` and re-selecting the same project
+  (forcing a fresh directory listing, since this app has no manual tree
+  refresh) to make the new file visible there — activates the existing tab
+  instead of opening a second one; the tab strip's tab count is unchanged
+  before and after the click.
+- The audit-fix itself (the `_projectRoot` gap the second `## Implementation
+  Notes` entry above describes) was verified live over both previously-
+  broken paths: switching the current project via File > Open Recent, then
+  saving a new untitled buffer, opened the save dialog inside the
+  newly-selected project's folder (not the one open at launch); a
+  cold-launch session restore (the ordinary case, no picker or Open Recent
+  involved) likewise opened the save dialog for `Untitled-1` inside the
+  session's restored project folder.
+
+Every scratch file this pass wrote (`loom-manual-verify-scratch.md`,
+`manual-verify-item6.md`, `loom-manual-verify-item3.txt`) was deleted
+afterward, and `~/.config/loom/session.json` was restored from a pre-pass
+backup; `git status` in both `loom` and the sibling `typescript-ui` checkout
+is clean. Not separately exercised: the `openProjectFolder`-vs-tree-listing-
+failure race noted above (narrow, pre-existing-shaped, and not part of what
+the audit finding asked to fix), and the macOS `Ctrl+N`/CodeMirror collision
+noted in `## Potential Challenges` (no Mac available in this environment).

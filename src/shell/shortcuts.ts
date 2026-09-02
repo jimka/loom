@@ -15,6 +15,7 @@
 // on Ctrl+S).
 
 /** Display labels shown on the menu items' shortcut hints. */
+export const NEW_FILE_SHORTCUT = 'Ctrl/Cmd+N'
 export const OPEN_FOLDER_SHORTCUT = 'Ctrl/Cmd+O'
 export const SAVE_SHORTCUT = 'Ctrl/Cmd+S'
 export const SAVE_AS_SHORTCUT = 'Ctrl/Cmd+Shift+S'
@@ -37,6 +38,11 @@ function isCtrlChord(event: KeyboardEvent, key: string, shift = false): boolean 
     && !event.altKey
     && event.shiftKey === shift
     && event.key.toLowerCase() === key
+}
+
+/** Whether a keydown is the New-File chord (Ctrl/Cmd+N). */
+export function isNewFileChord(event: KeyboardEvent): boolean {
+  return isCtrlChord(event, 'n')
 }
 
 /** Whether a keydown is the Open-Folder chord (Ctrl/Cmd+O). */
@@ -80,6 +86,8 @@ export function isExitChord(event: KeyboardEvent): boolean {
 
 /** The accelerator callbacks `installAccelerators` dispatches each chord to. */
 export interface AcceleratorActions {
+  /** Ctrl/Cmd+N — opens a new untitled buffer. */
+  onNewFile: () => void
   /** Ctrl/Cmd+O — shows the native folder picker. */
   onOpenFolder: () => void
   /** Ctrl/Cmd+S — saves the active file. */
@@ -108,7 +116,9 @@ export function installAccelerators(actions: AcceleratorActions): void {
   window.addEventListener('keydown', (event: KeyboardEvent) => {
     let matched = true
 
-    if (isOpenFolderChord(event)) {
+    if (isNewFileChord(event)) {
+      actions.onNewFile()
+    } else if (isOpenFolderChord(event)) {
       actions.onOpenFolder()
     } else if (isSaveAsChord(event)) {
       actions.onSaveAs()

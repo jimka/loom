@@ -28,6 +28,8 @@ known limitations are tracked in [`TODO.md`](TODO.md).
 - **Recent Projects & Files** — reopen a recently-used project folder or
   file from the File menu's *Open Recent* submenu, or a recent project from
   the welcome screen.
+- **New files** — *File > New File* (Ctrl/Cmd+N) opens an empty, untitled
+  tab; *Save* prompts for a location the first time it's saved.
 - **Save / Save As**, with an unsaved-changes prompt on closing a modified
   file or exiting with modified files open.
 - **Syntax highlighting** for JavaScript/TypeScript (and their JSX/module
