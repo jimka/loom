@@ -35,6 +35,7 @@ class EditorController {
   private readonly _languageText: Text
   private _projectRootListener: ((root: string) => void) | null = null
   private _beforeExitListener: (() => Promise<void>) | null = null
+  private _emptyStateListener: ((empty: boolean) => void) | null = null
 
   constructor() {
     this.tabs = new TabPanel({
@@ -60,6 +61,19 @@ class EditorController {
    */
   setProjectRootListener(fn: (root: string) => void): void {
     this._projectRootListener = fn
+  }
+
+  /**
+   * Injects the shell's editor/welcome deck toggle, called once immediately
+   * with the current state and again on every change — mirrors
+   * {@link setProjectRootListener}. The argument is whether `_openFiles` is
+   * empty, not whether a tab happens to be active.
+   *
+   * @param fn - Called with `true` whenever no file is open.
+   */
+  setEmptyStateListener(fn: (empty: boolean) => void): void {
+    this._emptyStateListener = fn
+    fn(this._openFiles.size === 0)
   }
 
   /**
@@ -409,6 +423,8 @@ class EditorController {
 
   /** Sets the window title and the status bar's language text from the active file. */
   private syncActive(): void {
+    this._emptyStateListener?.(this._openFiles.size === 0)
+
     const file = this.getActiveFile()
 
     if (!file) {

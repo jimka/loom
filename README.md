@@ -16,6 +16,8 @@ known limitations are tracked in [`TODO.md`](TODO.md).
 
 - **File tree** — open a project folder, browse it, lazily loading each
   directory as it's expanded.
+- **Welcome screen** — shown in place of the tab strip whenever no file is
+  open, offering *Open Folder…* and naming the current project once one is.
 - **Tabbed editing** — open several files at once; a dirty-indicator dot
   marks unsaved changes per tab.
 - **Session restore** — the last project folder, expanded tree directories,

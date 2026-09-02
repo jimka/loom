@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { baseName, extensionOf, joinPath, sortDirEntries, isUnderRoot } from '../src/data/paths'
+import { baseName, extensionOf, joinPath, sortDirEntries, isUnderRoot, projectName } from '../src/data/paths'
 
 describe('baseName', () => {
   it('takes the last segment of a forward-slash path', () => {
@@ -78,6 +78,24 @@ describe('sortDirEntries', () => {
     ]
 
     expect(sortDirEntries(input).map(e => e.name)).toEqual(['Test', 'test'])
+  })
+})
+
+describe('projectName', () => {
+  it('takes the last segment of a forward-slash path', () => {
+    expect(projectName('/home/jika/loom')).toBe('loom')
+  })
+
+  it('trims a trailing "/" before splitting', () => {
+    expect(projectName('/home/jika/loom/')).toBe('loom')
+  })
+
+  it('trims a trailing "\\" before splitting', () => {
+    expect(projectName('C:\\dev\\loom\\')).toBe('loom')
+  })
+
+  it('falls back to the raw path when trimming leaves nothing', () => {
+    expect(projectName('/')).toBe('/')
   })
 })
 
