@@ -90,6 +90,42 @@ class FileTree extends Tree {
     return this._root
   }
 
+  /**
+   * Reveals and selects the node for `path`, expanding ancestors as needed —
+   * loading any lazy branch on the way down, the same as {@link expandPaths}.
+   * A no-op when `path` is `null`, or when it isn't found under the current
+   * root (not loaded, not on disk, or no root is set).
+   *
+   * @param path - The file or directory path to select, or `null`.
+   */
+  async selectPath(path: string | null): Promise<void> {
+    if (path === null) {
+      return
+    }
+
+    const node = await this.revealByPredicate(data => (data as FileTreeNodeData).path === path)
+
+    if (node) {
+      this.selectNode(node)
+    }
+  }
+
+  /**
+   * Reloads the tree from its root while preserving which directories are
+   * currently expanded — unlike {@link setShowHidden}/{@link setShowIgnored},
+   * which intentionally collapse everything. A no-op before any root is set.
+   */
+  async refresh(): Promise<void> {
+    if (this._root === null) {
+      return
+    }
+
+    const expanded = this.getExpandedPaths()
+
+    await this.reload()
+    await this.expandPaths(expanded)
+  }
+
   /** Whether hidden (leading-dot) entries are currently shown. */
   isShowingHidden(): boolean {
     return this._showHidden

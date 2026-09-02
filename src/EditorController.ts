@@ -42,6 +42,8 @@ class EditorController {
   private _projectRootListener: ((root: string) => Promise<void>) | null = null
   private _beforeExitListener: (() => Promise<void>) | null = null
   private _emptyStateListener: ((empty: boolean) => void) | null = null
+  private _activeFileListener: ((path: string | null) => void) | null = null
+  private _fileSavedListener: ((path: string) => void) | null = null
 
   constructor() {
     this.tabs = new TabPanel({
@@ -92,6 +94,32 @@ class EditorController {
    */
   setBeforeExitListener(fn: () => Promise<void>): void {
     this._beforeExitListener = fn
+  }
+
+  /**
+   * Injects the shell's tree-selection sync, called once immediately with
+   * the current state and again on every active-tab change — mirrors
+   * {@link setEmptyStateListener}. `null` covers both an empty tab strip and
+   * an active path-less (untitled) buffer.
+   *
+   * @param fn - Called with the active tab's file path, or `null`.
+   */
+  setActiveFileListener(fn: (path: string | null) => void): void {
+    this._activeFileListener = fn
+    fn(this.getActiveFilePath())
+  }
+
+  /**
+   * Injects the shell's post-save tree-refresh hook, called after a
+   * successful {@link saveAs} — including a path-less buffer's first save —
+   * with the path it was written to. Not called from a plain {@link save}:
+   * that always writes to a path the file already had, so it can never land
+   * a new entry under a directory the tree has loaded.
+   *
+   * @param fn - Called with the path a file was just saved to.
+   */
+  setFileSavedListener(fn: (path: string) => void): void {
+    this._fileSavedListener = fn
   }
 
   /**
@@ -402,6 +430,7 @@ class EditorController {
     this.tabs.getTab().setTabName(file, file.getLabel())
     this.statusBar.setMessage(`Saved ${file.getLabel()}`, SAVE_MESSAGE_DURATION_MS)
     this.syncActive()
+    this._fileSavedListener?.(target)
 
     return true
   }
@@ -579,6 +608,8 @@ class EditorController {
     this._emptyStateListener?.(this._openFiles.length === 0)
 
     const file = this.getActiveFile()
+
+    this._activeFileListener?.(file?.getPath() ?? null)
 
     if (!file) {
       void setWindowTitle(APP_NAME)
