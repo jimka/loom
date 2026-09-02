@@ -8,21 +8,34 @@ nothing below has a plan yet.
 
 ## High
 
-- **Opening dotfiles** — a path component starting with `.` is never matched
-  by the `**` wildcard in either the `fs:scope` capability grant or the
-  runtime grant the folder picker makes, so `.gitignore`, `.eslintrc.json`
-  and anything under `.github/` cannot be opened even though the tree lists
-  them. The `plugins.fs.requireLiteralLeadingDot` setting in
-  `src-tauri/tauri.conf.json` only relaxes the capability grant, not the
-  picker's, so a fix has to cover both.
 - **Library `component-dirty-state` support** — a generic dirty-flag
   propagation mechanism on `Component` itself, so a parent can expose "a
   descendant has unsaved changes" without every consumer hand-rolling it the
-  way `FileEditor`/`EditorController` currently do. Already drafted (not
-  implemented) at `typescript-ui`'s `plans/component-dirty-state.md`.
+  way `FileEditor`/`EditorController` currently do. Implemented upstream in
+  `typescript-ui` (`Component.isDirty()`/`setDirty()`/`onDirtyChange()` plus
+  an automatic parent-relay), but only on the unmerged `feature/component-
+  dirty-state` branch — `typescript-ui`'s `master` doesn't have it yet. A
+  follow-on plan, `plans/code-editor-dirty-state-adoption.md`, is in
+  progress on its own stacked branch to wire it into `CodeEditor` itself.
+  Loom depends on `@jimka/typescript-ui` via a plain npm semver range
+  (`^0.8.0`), not a workspace link, so none of this reaches Loom until it's
+  released and Loom upgrades — and `FileEditor`/`EditorController` would
+  still need their own adoption pass to drop the hand-rolled `_dirty` flag
+  in favor of it.
 
 ## Medium
 
+- **Opening dotfiles in a workspace outside `$HOME`/`$CONFIG`.** Fixed for
+  the common case by `plugins.fs.requireLiteralLeadingDot: false` in
+  `src-tauri/tauri.conf.json` (see commit `ed29f86`): the capability-
+  declared `fs:scope` (`$HOME/**`, `$CONFIG/loom/**`) now matches
+  dot-prefixed path components, so `.gitignore` etc. open normally in any
+  project under the user's home directory. The gap that's left is the
+  folder picker's own runtime scope grant (`window.try_fs_scope()` on the
+  Tauri side) — it's built once at plugin startup from Tauri's hardcoded
+  Unix default and never reads this config value, so a workspace opened
+  from entirely outside `$HOME`/`$CONFIG` would still have its dotfiles
+  blocked.
 - **Split-pane multi-file editing.** `Dock` is the natural upgrade path if
   wanted later — it composes `Split` and `Tab` already, at the cost of
   tear-off windows, a panel registry, and `DockRegion` drop targets that
