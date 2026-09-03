@@ -14,6 +14,7 @@ import { applySession, installSessionAutosave, loadWorkspaceState } from './sess
 import { projectName, baseName, isUnderRoot, parentDir } from '../data/paths'
 import { glyphNameForPath } from '../fileIcons'
 import { promptRecentDirectoryIntent, confirmOpenSeparateWorkspace } from './recentProjectPrompt'
+import { installFileDrop } from './fileDrop'
 import {
     NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
     FORMAT_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, installAccelerators,
@@ -77,7 +78,7 @@ class EditorShell extends Container {
         const welcome = WelcomeScreen({
             onOpenFolder: openFolder,
             recentProjects: controller.getRecentProjects(),
-            onOpenRecentProject: (path: string) => { void this.handleOpenRecentProject(path) },
+            onOpenRecentProject: (path: string) => { void this.confirmAndOpenProject(path) },
         })
         const deck = buildEditorDeck(controller, welcome)
         const split = new Split({
@@ -103,7 +104,7 @@ class EditorShell extends Container {
             canSaveActive: () => controller.canSaveActive(),
             getRecentProjects: () => controller.getRecentProjects(),
             getRecentFiles: () => controller.getRecentFiles(),
-            onOpenRecentProject: (path: string) => { void this.handleOpenRecentProject(path) },
+            onOpenRecentProject: (path: string) => { void this.confirmAndOpenProject(path) },
             onOpenRecentFile: (path: string) => { void controller.openFile(path) },
             isShowingHidden: () => tree.isShowingHidden(),
             onToggleHidden: (value: boolean) => tree.setShowHidden(value),
@@ -134,6 +135,10 @@ class EditorShell extends Container {
         controller.setActiveFileListener(path => { void tree.selectPath(path) })
         controller.setFileSavedListener(path => { void this.handleFileSaved(path) })
         installAccelerators(actions)
+        installFileDrop({
+            onDropFile: (path: string) => controller.openFile(path),
+            onDropFolder: (path: string) => this.confirmAndOpenProject(path),
+        })
     }
 
     /**
@@ -200,18 +205,20 @@ class EditorShell extends Container {
     }
 
     /**
-     * A Recent Projects entry's click handler, from either the welcome screen
-     * or the File > Open Recent submenu. With no workspace open yet, or the
-     * entry naming the one already open, there is nothing to decide — it just
-     * opens (or does nothing, respectively). Otherwise the entry either sits
-     * inside the open workspace, in which case the user picks between opening
-     * it as its own workspace and merely revealing it in the tree that's
-     * already open, or it sits outside it entirely, in which case opening it
-     * can only mean replacing the current workspace and the prompt says so.
+     * Opens a project folder whose path is already known, rather than picked
+     * via the native dialog — from a Recent Projects entry on the welcome
+     * screen, the File > Open Recent submenu, or a folder dropped onto the
+     * window. With no workspace open yet, or the path naming the one already
+     * open, there is nothing to decide — it just opens (or does nothing,
+     * respectively). Otherwise the path either sits inside the open
+     * workspace, in which case the user picks between opening it as its own
+     * workspace and merely revealing it in the tree that's already open, or
+     * it sits outside it entirely, in which case opening it can only mean
+     * replacing the current workspace and the prompt says so.
      *
-     * @param path - The recent project's root path.
+     * @param path - The project folder's root path.
      */
-    private async handleOpenRecentProject(path: string): Promise<void> {
+    private async confirmAndOpenProject(path: string): Promise<void> {
         const current = this._tree.getProjectRoot()
 
         if (current === null || path === current) {

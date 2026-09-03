@@ -44,6 +44,10 @@ known limitations are tracked in [`TODO.md`](TODO.md).
 - **Recent Projects & Files** — reopen a recently-used project folder or
   file from the File menu's *Open Recent* submenu, or a recent project from
   the welcome screen.
+- **Drag-and-drop to open** — dropping a file from the OS onto the window
+  opens it in a tab, and dropping a single folder opens it as the project,
+  raising the same prompts a Recent Projects entry does when a workspace is
+  already open.
 - **New files** — *File > New File* (Ctrl/Cmd+N) opens an empty, untitled
   tab; *Save* prompts for a location the first time it's saved.
 - **Save / Save As**, with an unsaved-changes prompt on closing a modified
