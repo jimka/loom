@@ -70,7 +70,10 @@ class EditorShell extends Container {
      */
     constructor(controller: EditorController, session: SessionState) {
         const openFolder = (): void => { void controller.openProjectFolder() }
-        const tree = FileTree({ onOpenFile: (path: string) => { void controller.openFile(path) } })
+        const tree = FileTree({
+            onSelectFile: (path: string) => { void controller.openFile(path, 'temporary') },
+            onOpenFile:   (path: string) => { void controller.openFile(path, 'permanent') },
+        })
         const welcome = WelcomeScreen({
             onOpenFolder: openFolder,
             recentProjects: controller.getRecentProjects(),

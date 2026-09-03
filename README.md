@@ -21,12 +21,16 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   menu's **Show Hidden Files** and **Show Ignored Files** toggles bring each
   class back independently. The tree follows changes made outside the app —
   another editor, a `git checkout`, a build tool — and editing a
-  `.gitignore` re-filters everything below its own directory.
+  `.gitignore` re-filters everything below its own directory. A single
+  click opens a file in a reusable temp tab; a double click opens it
+  permanently.
 - **Welcome screen** — shown in place of the tab strip whenever no file is
   open, offering *Open Folder…* and naming the current project once one is.
 - **Tabbed editing** — open several files at once, each tab carrying the
   same per-file-type icon the tree shows; a dirty-indicator dot marks
-  unsaved changes per tab.
+  unsaved changes per tab. A temp tab shows a `~` before its name and
+  becomes permanent on the first edit, on a double-click in the tree, or on
+  a *Save As*.
 - **Breadcrumbs** — a path band above each editor showing where the open
   file sits inside the project folder.
 - **Markdown preview** — a toggle on the breadcrumb band of any Markdown

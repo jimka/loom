@@ -25,6 +25,12 @@ const PREVIEW_GLYPH = 'eye'
  *  inside the band's fixed height. */
 const PREVIEW_LABEL = 'Preview'
 
+/** The label prefix marking a temp tab. A prefix, not a suffix like the dirty
+ *  `" •"`: the tab strip caps a tab's width (`TAB_MAX_WIDTH`, in
+ *  `EditorController`) and ellipsises the label's tail, so a long file name
+ *  would swallow a trailing mark. */
+const TEMPORARY_LABEL_PREFIX: string = '~'
+
 /** Constructor parameters for {@link FileEditor}. */
 export interface FileEditorParams {
     /** The file's absolute path on disk, or `null` for a buffer never yet saved. */
@@ -47,10 +53,16 @@ export interface FileEditorParams {
  * `Component`'s parent-to-child relay folds the editor's flag up through
  * `_body` into this component's inherited `isDirty()`, so `FileEditor` does
  * not declare an `isDirty()` override.
+ *
+ * A file may also occupy the tab strip's one temp tab, tracked here as
+ * `_temporary` and folded into {@link getLabel}. `EditorController` is the
+ * sole owner of the "at most one" rule — it sets the flag via
+ * {@link setTemporary} and never lets more than one open file carry it.
  */
 class FileEditor extends Container {
     private _path: string | null
     private _name: string
+    private _temporary: boolean = false
     private readonly _editor: CodeEditor
     private readonly _breadcrumbs: FileBreadcrumbs
     private readonly _body: Container
@@ -238,8 +250,32 @@ class FileEditor extends Container {
         this._editor.markClean()
     }
 
-    /** The tab label: the file's display name, with `" •"` appended while dirty. */
+    /** Whether this file occupies the strip's temp tab — the one a temporary open recycles. */
+    isTemporary(): boolean {
+        return this._temporary
+    }
+
+    /**
+     * Marks this file as the temp tab's content, or pins it. Changing the flag
+     * changes {@link getLabel}, so the owner relabels the tab afterwards.
+     *
+     * @param value - Whether this file is the temp tab's content.
+     */
+    setTemporary(value: boolean): void {
+        this._temporary = value
+    }
+
+    /**
+     * The tab label: the display name, prefixed with `"~"` while the tab is
+     * temporary and suffixed with `" •"` while the document is dirty. The two
+     * marks never appear together — the first edit pins a temp tab, so a
+     * temporary file is always clean.
+     */
     getLabel(): string {
+        if (this._temporary) {
+            return `${TEMPORARY_LABEL_PREFIX}${this._name}`
+        }
+
         return this.isDirty() ? `${this._name} •` : this._name
     }
 

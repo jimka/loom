@@ -7,10 +7,6 @@ The original plan lives in `typescript-ui`'s
 nothing below has a plan yet.
 
 ## High
-- **Temp tabs.** When browsing files (single-click / tree navigation), reuse
-  one transient tab instead of opening a new permanent one; a tab becomes
-  permanent once the user edits the file or double-clicks it. (The common
-  "preview tab" pattern.)
 - **Commmand palette / fuzzy file finder (Ctrl+P)** — distinct from cross-file
   content search, above: this is file-name navigation, not content search.
   We should add ability to execute commands from here as well. What commands
@@ -24,6 +20,9 @@ nothing below has a plan yet.
   `TabButton` that owns the icon is built once from the `glyph` option
   passed to `addTab`. Without it, a *Save As* that changes a file's
   extension cannot re-icon its already-open tab.
+- **Library per-tab label styling.** `Tab.setTabName` sets a tab's text but
+  nothing styles it, and `Tab` keeps its `TabBar` private, so Loom marks a
+  temp tab with a `~` prefix instead of the italics VS Code uses.
 - **Opening dotfiles in a workspace outside `$HOME`/`$CONFIG`.** Fixed for
   the common case by `plugins.fs.requireLiteralLeadingDot: false` in
   `src-tauri/tauri.conf.json` (see commit `ed29f86`): the capability-
