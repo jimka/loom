@@ -11,22 +11,13 @@ import { readFileText, writeFileText, pickProjectFolder, pickSaveTarget, setWind
 import { promptUnsavedChanges } from './shell/unsavedPrompt'
 import { APP_NAME } from './appIdentity'
 import { withRecent } from './data/session'
+import type { Settings } from './data/settings'
+import { DEFAULT_SETTINGS, renderTitle } from './data/settings'
+import { ensureGlobalSettingsFile, ensureWorkspaceSettingsFile } from './shell/settings'
 import { messageOf } from './errors'
-
-/** Per-tab width cap for the "content" width mode — long enough for most file names, short enough that several tabs still fit the strip. */
-const TAB_MAX_WIDTH = 200
 
 /** How long the "Saved <name>" status message stays up, in milliseconds — long enough to notice, short enough not to linger. */
 const SAVE_MESSAGE_DURATION_MS = 2000
-
-/** Whether a save reformats the document before writing it.
- *
- *  The single switch for format-on-save: `formatBeforeSave` is the only reader,
- *  so setting this to `false` restores a byte-for-byte save with no other edit.
- *  Hardcoded rather than read from disk because Loom has no settings system
- *  yet — TODO.md's *Transition hard-coded settings to a settings file* entry
- *  names this constant as one of the values that migration picks up. */
-const FORMAT_ON_SAVE = true
 
 /** How an {@link EditorController.openFile} request should treat the tab it lands in. */
 export type OpenMode = 'temporary' | 'permanent'
@@ -60,10 +51,12 @@ class EditorController {
     private _emptyStateListener: ((empty: boolean) => void) | null = null
     private _activeFileListener: ((path: string | null) => void) | null = null
     private _fileSavedListener: ((path: string) => void) | null = null
+    private _formatOnSave: boolean = DEFAULT_SETTINGS.formatOnSave
+    private _titleBarTemplate: string = DEFAULT_SETTINGS.titleBarTemplate
 
     constructor() {
         this.tabs = new TabPanel({
-            tabOptions: { widthMode: 'content', maxWidth: TAB_MAX_WIDTH, scrollable: true, reorderable: true },
+            tabOptions: { widthMode: 'content', maxWidth: DEFAULT_SETTINGS.tabMaxWidthPx, scrollable: true, reorderable: true },
         })
 
         this.statusBar = new StatusBar()
@@ -502,8 +495,8 @@ class EditorController {
      * the chosen path, re-tracks it there, and records it in the recent-files
      * list. Refuses a target that is already open under a different tab.
      * Cancelling writes nothing and leaves `file` dirty. Once a target is
-     * confirmed, the document is reformatted first when `FORMAT_ON_SAVE` is on
-     * and the language has a formatter.
+     * confirmed, the document is reformatted first when format-on-save is
+     * enabled and the language has a formatter.
      *
      * @param file - The file to save to a new path.
      * @returns Whether the write succeeded.
@@ -546,7 +539,7 @@ class EditorController {
     /**
      * Writes `file` to its own path, or runs {@link saveAs} when it has none.
      * A failed write shows a `Dialog.error` and leaves the file dirty. The
-     * document is reformatted first when `FORMAT_ON_SAVE` is on and the
+     * document is reformatted first when format-on-save is enabled and the
      * language has a formatter.
      *
      * @param file - The file to save.
@@ -599,17 +592,17 @@ class EditorController {
 
     /**
      * Reformats `file`'s document in place, immediately before its bytes are
-     * written. A no-op while `FORMAT_ON_SAVE` is off, and for a language with no
-     * registered formatter — that second guard is what keeps a save away from
-     * `CodeEditor.format()`'s whole-document re-indent fallback, which is
-     * reserved for the manual *Format Document* action.
+     * written. A no-op while {@link _formatOnSave} is off, and for a language
+     * with no registered formatter — that second guard is what keeps a save
+     * away from `CodeEditor.format()`'s whole-document re-indent fallback,
+     * which is reserved for the manual *Format Document* action.
      *
      * @param file - The file about to be written.
      * @returns `true` when a formatter ran and threw, leaving the document
      *   unformatted; `false` when formatting succeeded or was skipped.
      */
     private async formatBeforeSave(file: FileEditor): Promise<boolean> {
-        if (!FORMAT_ON_SAVE || !hasFormatter(file.getEditor().getLanguage())) {
+        if (!this._formatOnSave || !hasFormatter(file.getEditor().getLanguage())) {
             return false
         }
 
@@ -662,6 +655,47 @@ class EditorController {
 
         if (file) {
             await file.getEditor().format()
+        }
+    }
+
+    /**
+     * Applies a resolved settings snapshot: format-on-save, the title
+     * template, and the tab width cap. Callable more than once — again on
+     * every project switch, each time with that project's own resolved
+     * settings.
+     *
+     * @param settings - The resolved settings to apply.
+     */
+    applySettings(settings: Settings): void {
+        this._formatOnSave = settings.formatOnSave
+        this._titleBarTemplate = settings.titleBarTemplate
+        this.tabs.getTab().setMaxWidth(settings.tabMaxWidthPx)
+        this.syncActive()
+    }
+
+    /** Opens the app-wide settings file, creating it first if needed. */
+    async openGlobalSettings(): Promise<void> {
+        try {
+            const path = await ensureGlobalSettingsFile()
+
+            await this.openFile(path)
+        } catch (error) {
+            await Dialog.error('Could not open settings', messageOf(error))
+        }
+    }
+
+    /**
+     * Opens `root`'s own settings file, creating it first if needed.
+     *
+     * @param root - The project folder whose settings file to open.
+     */
+    async openWorkspaceSettings(root: string): Promise<void> {
+        try {
+            const path = await ensureWorkspaceSettingsFile(root)
+
+            await this.openFile(path)
+        } catch (error) {
+            await Dialog.error('Could not open settings', messageOf(error))
         }
     }
 
@@ -828,7 +862,7 @@ class EditorController {
         }
 
         const name = file.getName()
-        const title = file.isDirty() ? `• ${name} — ${APP_NAME}` : `${name} — ${APP_NAME}`
+        const title = renderTitle(this._titleBarTemplate, { name, app: APP_NAME, dirty: file.isDirty() })
 
         void setWindowTitle(title)
         this._languageText.setText(languageForPath(file.getPath()) ?? '')
