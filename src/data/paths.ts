@@ -189,3 +189,37 @@ export function isUnderRoot(root: string, path: string): boolean {
 
     return rootSegments.every((segment, index) => segment === pathSegments[index])
 }
+
+/**
+ * Whether `name` is usable as a single path segment: non-empty after
+ * trimming, and free of path separators (so it can never be misread as a
+ * nested path when joined onto a directory).
+ *
+ * @param name - The candidate entry name.
+ * @returns Whether `name` is a valid single path segment.
+ */
+export function isValidEntryName(name: string): boolean {
+    const trimmed = name.trim()
+
+    return trimmed.length > 0 && !/[/\\]/.test(trimmed)
+}
+
+/**
+ * Rewrites `path` — `dir` itself, or any entry under it — onto `newDir`,
+ * preserving whatever comes after `dir` unchanged. Used to repoint an open
+ * tab's tracked path after the tree renames the file or folder it belongs to.
+ *
+ * @param path - The path to rewrite; must be `dir` or a descendant of it.
+ * @param dir - The directory (or file) that was renamed or moved.
+ * @param newDir - `dir`'s new path.
+ * @returns `path` rewritten onto `newDir`.
+ */
+export function relocatePath(path: string, dir: string, newDir: string): string {
+    if (path === dir) {
+        return newDir
+    }
+
+    const suffix = relativeTo(dir, path) ?? ''
+
+    return joinPath(newDir, suffix)
+}

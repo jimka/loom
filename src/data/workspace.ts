@@ -4,7 +4,7 @@
 // needs a real Tauri runtime to exercise — see plans/in-progress/
 // code-editor-desktop-app.md's "App behaviour" manual-verify checklist.
 import { open, save } from '@tauri-apps/plugin-dialog'
-import { readDir, readTextFile, writeTextFile, stat, mkdir, exists, watch, BaseDirectory } from '@tauri-apps/plugin-fs'
+import { readDir, readTextFile, writeTextFile, stat, mkdir, exists, watch, rename, remove, BaseDirectory } from '@tauri-apps/plugin-fs'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import type { CloseRequestedEvent } from '@tauri-apps/api/window'
 import { configDir, join } from '@tauri-apps/api/path'
@@ -160,6 +160,36 @@ export async function pathExists(path: string): Promise<boolean> {
     } catch {
         return false
     }
+}
+
+/**
+ * Creates an empty directory at `path`. Rejects if a directory already
+ * exists at `path` or a parent segment is missing.
+ *
+ * @param path - The directory to create.
+ */
+export async function createDirectory(path: string): Promise<void> {
+    return mkdir(path)
+}
+
+/**
+ * Renames or moves `oldPath` to `newPath`.
+ *
+ * @param oldPath - The file or directory's current path.
+ * @param newPath - The file or directory's new path.
+ */
+export async function renamePath(oldPath: string, newPath: string): Promise<void> {
+    return rename(oldPath, newPath)
+}
+
+/**
+ * Deletes the file or directory at `path`.
+ *
+ * @param path - The file or directory to delete.
+ * @param isDir - Must be `true` for a non-empty directory to be removed.
+ */
+export async function removePath(path: string, isDir: boolean): Promise<void> {
+    return remove(path, isDir ? { recursive: true } : undefined)
 }
 
 /**
