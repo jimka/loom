@@ -162,6 +162,24 @@ export async function pathExists(path: string): Promise<boolean> {
     }
 }
 
+/**
+ * Whether `path` names a directory. Swallows a `stat` rejection — a missing
+ * path, or one outside the app's filesystem scope — resolving `false`
+ * rather than throwing, so a caller classifying a dropped path treats an
+ * unreadable one as a file and reports it through the normal open-file
+ * error path.
+ *
+ * @param path - The path to check.
+ * @returns Whether `path` is a directory.
+ */
+export async function isDirectory(path: string): Promise<boolean> {
+    try {
+        return (await stat(path)).isDirectory
+    } catch {
+        return false
+    }
+}
+
 /** Stops a watch started by {@link watchDirectory}. */
 export type StopWatching = () => void
 
@@ -281,6 +299,23 @@ export function onCloseRequested(handler: () => Promise<boolean>): void {
     void getCurrentWindow().onCloseRequested(async (event: CloseRequestedEvent) => {
         if (!(await handler())) {
             event.preventDefault()
+        }
+    })
+}
+
+/**
+ * Registers `handler` to run whenever files or folders are dropped onto the
+ * window from the OS. This is a window-level native event, not a DOM `drop`
+ * event: the payload carries real filesystem paths, and it fires wherever in
+ * the window the drop lands. Hover and cancel payloads are ignored — only a
+ * completed drop reaches `handler`.
+ *
+ * @param handler - Called with the dropped paths, in the order the OS listed them.
+ */
+export function onFilesDropped(handler: (paths: string[]) => void): void {
+    void getCurrentWindow().onDragDropEvent(event => {
+        if (event.payload.type === 'drop') {
+            handler(event.payload.paths)
         }
     })
 }
