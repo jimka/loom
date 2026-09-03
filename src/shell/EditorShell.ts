@@ -7,17 +7,21 @@ import { CheckboxMenuRow } from '@jimka/typescript-ui/component/container'
 import type { MenuItemConfig } from '@jimka/typescript-ui/component/container'
 import { FileTree } from '../explorer/FileTree'
 import { WelcomeScreen } from './WelcomeScreen'
+import { CommandPalette } from './CommandPalette'
+import { buildPaletteCommands } from './commands'
+import { listFilesRecursive } from '../data/fileIndex'
 import type { EditorController } from '../EditorController'
 import type { SessionState } from '../data/session'
 import type { SessionAutosave } from './session'
 import { applySession, installSessionAutosave, loadWorkspaceState } from './session'
 import { projectName, baseName, isUnderRoot, parentDir } from '../data/paths'
+import { listDirectory, tryReadTextFile, pathExists } from '../data/workspace'
 import { glyphNameForPath } from '../fileIcons'
 import { promptRecentDirectoryIntent, confirmOpenSeparateWorkspace } from './recentProjectPrompt'
 import { installFileDrop } from './fileDrop'
 import {
     NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
-    FORMAT_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, installAccelerators,
+    FORMAT_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, COMMAND_PALETTE_SHORTCUT, installAccelerators,
 } from './shortcuts'
 import type { AcceleratorActions } from './shortcuts'
 
@@ -63,6 +67,8 @@ class EditorShell extends Container {
     private readonly _tree: FileTree
     private readonly _split: Split
     private readonly _controller: EditorController
+    private readonly _palette: CommandPalette
+    private readonly _menuBarActions: MenuBarActions
     private _autosave: SessionAutosave | null = null
 
     /**
@@ -93,6 +99,10 @@ class EditorShell extends Container {
         splitBody.addComponent(tree, { weight: 0 })
         splitBody.addComponent(deck, { weight: 1 })
 
+        const palette = CommandPalette({
+            onConfirmFile: (path: string) => { void controller.openFile(path) },
+        })
+
         const actions: MenuBarActions = {
             onNewFile: () => controller.newFile(),
             onOpenFolder: openFolder,
@@ -102,6 +112,7 @@ class EditorShell extends Container {
             onFormat: () => { void controller.formatActive() },
             onToggleExplorer: () => split.setPaneCollapsed(EXPLORER_PANE_INDEX, !split.isPaneCollapsed(EXPLORER_PANE_INDEX)),
             onExit: () => { void controller.exitApp() },
+            onOpenCommandPalette: () => { void this.openCommandPalette() },
             hasActiveFile: () => controller.hasActiveFile(),
             canSaveActive: () => controller.canSaveActive(),
             getRecentProjects: () => controller.getRecentProjects(),
@@ -128,6 +139,8 @@ class EditorShell extends Container {
         this._tree = tree
         this._split = split
         this._controller = controller
+        this._palette = palette
+        this._menuBarActions = actions
 
         controller.setProjectRootListener(async root => {
             welcome.setProjectRoot(root)
@@ -245,6 +258,21 @@ class EditorShell extends Container {
             this._controller.openRecentProject(path)
         }
     }
+
+    /**
+     * Ctrl/Cmd+P and the View menu's *Command Palette…* item: walks the open
+     * workspace into a flat file list (empty when no workspace is open),
+     * rebuilds the command list from the shell's own menu actions, and opens
+     * the palette over both.
+     */
+    private async openCommandPalette(): Promise<void> {
+        const root = this._tree.getProjectRoot()
+        const files = root !== null
+            ? await listFilesRecursive(root, listDirectory, tryReadTextFile, pathExists)
+            : []
+
+        this._palette.open(files, buildPaletteCommands(this._menuBarActions), root)
+    }
 }
 
 /**
@@ -333,6 +361,8 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
                 { text: 'Format Document', glyph: 'pen-to-square', shortcut: FORMAT_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onFormat },
             ] },
             { label: 'View', glyph: 'eye', items: () => [
+                { text: 'Command Palette…', glyph: 'magnifying-glass', shortcut: COMMAND_PALETTE_SHORTCUT, action: actions.onOpenCommandPalette },
+                { separator: true },
                 { text: 'Toggle Explorer', glyph: 'bars', shortcut: TOGGLE_EXPLORER_SHORTCUT, action: actions.onToggleExplorer },
                 { separator: true },
                 { row: () => {
