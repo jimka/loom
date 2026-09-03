@@ -4,7 +4,7 @@ import { Text } from '@jimka/typescript-ui/component/input'
 import { Dialog } from '@jimka/typescript-ui/overlay'
 import type { TabCloseController } from '@jimka/typescript-ui/layout'
 import { FileEditor } from './editor/FileEditor'
-import { languageForPath } from './editor/languages'
+import { languageForPath, hasFormatter } from './editor/languages'
 import { glyphNameForPath } from './fileIcons'
 import { baseName, joinPath, isUnderRoot } from './data/paths'
 import { readFileText, writeFileText, pickProjectFolder, pickSaveTarget, setWindowTitle, closeWindow, onCloseRequested } from './data/workspace'
@@ -22,6 +22,15 @@ const TAB_MAX_WIDTH = 200
 
 /** How long the "Saved <name>" status message stays up, in milliseconds — long enough to notice, short enough not to linger. */
 const SAVE_MESSAGE_DURATION_MS = 2000
+
+/** Whether a save reformats the document before writing it.
+ *
+ *  The single switch for format-on-save: `formatBeforeSave` is the only reader,
+ *  so setting this to `false` restores a byte-for-byte save with no other edit.
+ *  Hardcoded rather than read from disk because Loom has no settings system
+ *  yet — TODO.md's *Transition hard-coded settings to a settings file* entry
+ *  names this constant as one of the values that migration picks up. */
+const FORMAT_ON_SAVE = true
 
 /** How an {@link EditorController.openFile} request should treat the tab it lands in. */
 export type OpenMode = 'temporary' | 'permanent'
@@ -454,7 +463,9 @@ class EditorController {
      * Shows the native save dialog for `file` and, on confirm, writes it to
      * the chosen path, re-tracks it there, and records it in the recent-files
      * list. Refuses a target that is already open under a different tab.
-     * Cancelling writes nothing and leaves `file` dirty.
+     * Cancelling writes nothing and leaves `file` dirty. Once a target is
+     * confirmed, the document is reformatted first when `FORMAT_ON_SAVE` is on
+     * and the language has a formatter.
      *
      * @param file - The file to save to a new path.
      * @returns Whether the write succeeded.
@@ -472,6 +483,8 @@ class EditorController {
             return false
         }
 
+        const formatFailed = await this.formatBeforeSave(file)
+
         try {
             await writeFileText(target, file.getEditor().getValue())
         } catch (error) {
@@ -485,7 +498,7 @@ class EditorController {
         this.pinTab(file)
         this.recordRecentFile(target)
         this.tabs.getTab().setTabName(file, file.getLabel())
-        this.statusBar.setMessage(`Saved ${file.getLabel()}`, SAVE_MESSAGE_DURATION_MS)
+        this.statusBar.setMessage(this.savedMessage(file, formatFailed), SAVE_MESSAGE_DURATION_MS)
         this.syncActive()
         this._fileSavedListener?.(target)
 
@@ -494,7 +507,9 @@ class EditorController {
 
     /**
      * Writes `file` to its own path, or runs {@link saveAs} when it has none.
-     * A failed write shows a `Dialog.error` and leaves the file dirty.
+     * A failed write shows a `Dialog.error` and leaves the file dirty. The
+     * document is reformatted first when `FORMAT_ON_SAVE` is on and the
+     * language has a formatter.
      *
      * @param file - The file to save.
      * @returns Whether the write succeeded.
@@ -506,6 +521,8 @@ class EditorController {
             return this.saveAs(file)
         }
 
+        const formatFailed = await this.formatBeforeSave(file)
+
         try {
             await writeFileText(path, file.getEditor().getValue())
         } catch (error) {
@@ -515,7 +532,7 @@ class EditorController {
         }
 
         file.markClean()
-        this.statusBar.setMessage(`Saved ${file.getLabel()}`, SAVE_MESSAGE_DURATION_MS)
+        this.statusBar.setMessage(this.savedMessage(file, formatFailed), SAVE_MESSAGE_DURATION_MS)
 
         return true
     }
@@ -540,6 +557,45 @@ class EditorController {
         }
 
         return this._projectRoot === null ? null : joinPath(this._projectRoot, file.getName())
+    }
+
+    /**
+     * Reformats `file`'s document in place, immediately before its bytes are
+     * written. A no-op while `FORMAT_ON_SAVE` is off, and for a language with no
+     * registered formatter — that second guard is what keeps a save away from
+     * `CodeEditor.format()`'s whole-document re-indent fallback, which is
+     * reserved for the manual *Format Document* action.
+     *
+     * @param file - The file about to be written.
+     * @returns `true` when a formatter ran and threw, leaving the document
+     *   unformatted; `false` when formatting succeeded or was skipped.
+     */
+    private async formatBeforeSave(file: FileEditor): Promise<boolean> {
+        if (!FORMAT_ON_SAVE || !hasFormatter(file.getEditor().getLanguage())) {
+            return false
+        }
+
+        try {
+            await file.getEditor().format()
+        } catch {
+            // A formatter throws on syntactically invalid source, which is the
+            // normal state of a file mid-edit. The save is what the user asked
+            // for, so it goes ahead with the text as it stands.
+            return true
+        }
+
+        return false
+    }
+
+    /**
+     * The status-bar text for a completed save.
+     *
+     * @param file - The file that was written; its label supplies the name.
+     * @param formatFailed - Whether format-on-save ran a formatter that threw.
+     * @returns The message to show for `SAVE_MESSAGE_DURATION_MS`.
+     */
+    private savedMessage(file: FileEditor, formatFailed: boolean): string {
+        return formatFailed ? `Saved ${file.getLabel()} (not formatted)` : `Saved ${file.getLabel()}`
     }
 
     /**

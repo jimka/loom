@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { languageForPath, isMarkdownPath } from '../src/editor/languages'
+import { languageForPath, isMarkdownPath, hasFormatter } from '../src/editor/languages'
 
 describe('languageForPath', () => {
     it('resolves .ts to javascript', () => {
@@ -89,5 +89,43 @@ describe('isMarkdownPath', () => {
 
     it('resolves a null path to false', () => {
         expect(isMarkdownPath(null)).toBe(false)
+    })
+})
+
+describe('hasFormatter', () => {
+    it('resolves javascript to true', () => {
+        expect(hasFormatter('javascript')).toBe(true)
+    })
+
+    it('resolves json to true', () => {
+        expect(hasFormatter('json')).toBe(true)
+    })
+
+    it('resolves html to true', () => {
+        expect(hasFormatter('html')).toBe(true)
+    })
+
+    it('resolves sql to true', () => {
+        expect(hasFormatter('sql')).toBe(true)
+    })
+
+    it('resolves markdown to true', () => {
+        expect(hasFormatter('markdown')).toBe(true)
+    })
+
+    it('resolves css to false, registered by Loom with a grammar only', () => {
+        expect(hasFormatter('css')).toBe(false)
+    })
+
+    it('resolves python to false, registered by Loom with a grammar only', () => {
+        expect(hasFormatter('python')).toBe(false)
+    })
+
+    it('resolves an unregistered id to false', () => {
+        expect(hasFormatter('nonsense')).toBe(false)
+    })
+
+    it('resolves null to false', () => {
+        expect(hasFormatter(null)).toBe(false)
     })
 })
