@@ -30,13 +30,6 @@ nothing below has a plan yet.
   Unix default and never reads this config value, so a workspace opened
   from entirely outside `$HOME`/`$CONFIG` would still have its dotfiles
   blocked.
-- Transition hard-coded settings to a settings file (both global and per-session)
-  What settings should we move?
-  * Title bar template
-  * Format-on-save — the `FORMAT_ON_SAVE` constant at the top of
-    [`src/EditorController.ts`](src/EditorController.ts)
-  * Default values for Show-hidden-files and Show-ignored-files
-  * What else?
 
 ## Medium
 
