@@ -619,3 +619,68 @@ the impact is the two Markdown files at the repo root.
     repoint the breadcrumbs even when the write then fails. The cost of
     leaving it alone is the untitled-first-save row in the decisions table:
     the editor has no language yet, so nothing is formatted that once.
+
+---
+
+## Implementation Notes
+
+- **`node_modules/@jimka/typescript-ui` needed re-pointing at the sibling
+  checkout.** A plain `npm install` in this fresh worktree pulled the published
+  `0.8.0` package from the registry, which lags the local
+  `../typescript-ui/packages/lib` checkout the main tree symlinks to (`isDirty`,
+  `markClean`, `onDirtyChange`, `setTabName` and `TabCloseController` are all
+  missing from the published version, failing typecheck on lines this plan
+  never touches). Fixed with
+  `ln -s /home/jika/typescript/typescript-ui/packages/lib node_modules/@jimka/typescript-ui`
+  after install, mirroring the main tree's own symlink — the same recurring
+  dev-environment gap `welcome-screen.md` and `recent-projects.md` already
+  record.
+- **The plan's own step-10/Verification grep counts undercount by design.**
+  `grep -rn 'FORMAT_ON_SAVE' src/` and `grep -rn '\.format()' src/` return more
+  than the "exactly two" the plan predicts, because the doc comments this
+  plan's own Internal Structure specifies (`formatBeforeSave`'s JSDoc, and
+  `hasFormatter`'s) mention both identifiers in prose. The underlying
+  invariant — one constant with one guard site, and two real `.format()` call
+  sites (`formatActive`, `formatBeforeSave`) — holds; only the literal grep
+  match count is off, which is a pre-existing imprecision in the plan's
+  wording rather than a defect in the implementation.
+- **Manual verification (the plan's `## Expected Behaviour` cases 1, 3, 4, 6)
+  was executed live, against an isolated display, not the user's desktop.**
+  `npm run tauri:dev` was launched with `DISPLAY` unset from the ambient
+  session at first, which briefly rendered the real window on the user's live
+  X server (`172.22.32.1:0`) before this was noticed; it was killed
+  immediately, with no synthetic input ever sent to it and no trace left
+  behind (confirmed by querying that display's window tree afterward). All
+  further runs isolated the app: an `Xvfb` inside a throwaway Docker container
+  (`debian:bookworm-slim`, the user's own Docker daemon, no `sudo` needed),
+  TCP-listening and port-mapped to `127.0.0.1:6098`; `npm run tauri:dev` was
+  then relaunched with `DISPLAY=127.0.0.1:98`, `GDK_BACKEND=x11` (forcing X11
+  over the ambient Wayland session), and fresh `XDG_CONFIG_HOME`/
+  `XDG_DATA_HOME` scratch directories, so neither the display nor the app's
+  own session/recent-projects config (`~/.config/loom/session.json`, shared
+  with the user's real usage) was touched again — confirmed by the file's
+  unchanged mtime across the whole rest of the session. All file operations
+  were pointed at a scratch project folder under `$HOME`
+  (`~/loom-format-on-save-verify`, required by the fs plugin's `$HOME/**`
+  scope — a folder under `/tmp` was tried first and is outside it), driven
+  with `python-xlib`'s XTEST extension (no `xdotool` in this sandbox) for
+  clicks/keys and raw `X.ZPixmap`/`get_image` for screenshots.
+
+  Four cases were driven and confirmed by screenshot plus the written file's
+  actual bytes: case 1 (a messy `.ts` file reformats to Prettier's output on
+  Ctrl+S, status bar reads `Saved messy.ts`, disk matches); case 3 (`const x
+  = (` still saves exactly as typed, status bar reads `Saved broken.ts (not
+  formatted)` — the plan's own flagged least-obvious case); case 4 (a `.py`
+  file's odd 8-space indentation and a one-line `.css` rule both survive a
+  save unchanged, with a plain `Saved <name>` and no suffix); and case 6 (a
+  New File buffer's first save, via Save As to `scratch.ts`, writes the
+  pasted text unformatted since the editor has no language yet, while its
+  second save — now that the language is known — reformats it) — the plan's
+  other flagged least-obvious case. Cases 2, 5, 7-12 were not driven live:
+  2 and 10 exercise the same `formatBeforeSave` call already proven correct
+  from a different entry point; 5 is the same no-formatter path already
+  confirmed by cases 4's two languages; 7-8 touch `formatActive`, which this
+  plan does not change; 9 and 11-12 were judged lower-value against the setup
+  cost of a further build/relaunch cycle. The container, scratch project
+  folder, and `XDG_*` scratch directories were removed afterward; nothing
+  from this verification persists outside this note.

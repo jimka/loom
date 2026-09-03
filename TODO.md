@@ -11,9 +11,6 @@ nothing below has a plan yet.
   content search, above: this is file-name navigation, not content search.
   We should add ability to execute commands from here as well. What commands
   make sense to start with? Which could we add?
-- **Format-on-save.** `CodeEditor.format()` is already exposed and wired to
-  a manual *Format* menu action; running it automatically before write is
-  the natural follow-on.
 - **Drag-and-drop to open** a file or folder onto the window.
 - **Library `Tab.setTabGlyph` / `TabBar.setEntryGlyph`.** Neither exists
   today — `Tab` has `setTabName` but no glyph counterpart, and the
@@ -37,7 +34,8 @@ nothing below has a plan yet.
 - Transition hard-coded settings to a settings file (both global and per-session)
   What settings should we move?
   * Title bar template
-  * Format-on-save
+  * Format-on-save — the `FORMAT_ON_SAVE` constant at the top of
+    [`src/EditorController.ts`](src/EditorController.ts)
   * Default values for Show-hidden-files and Show-ignored-files
   * What else?
 - Context menu in FileTree to operate on files, create new files and folders

@@ -52,7 +52,8 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   variants), JSON, HTML, SQL, Markdown, CSS, and Python — see
   [`src/editor/languages.ts`](src/editor/languages.ts) for the extension map.
 - **Format Document**, and a **Toggle Explorer** command to hide/show the
-  file tree.
+  file tree. Saving reformats the document first, for the languages that
+  have a formatter (JavaScript/TypeScript, JSON, HTML, SQL, Markdown).
 
 ## Architecture
 
