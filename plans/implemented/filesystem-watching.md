@@ -771,6 +771,166 @@ touches is app-internal.
 
 ---
 
+## Implementation Notes
+
+**`watchDirectory` filters out `WatchEvent`s of kind `access` — a case the
+plan's `## Internal Structure` did not specify.** Manual verification (below)
+found a second self-triggering loop distinct from the `.loom`-feedback loop
+`## Architecture Decisions` already designed against: on this app's live test
+platform, Linux's `inotify` backend reports a directory *open* and *read-only
+close* as part of its ordinary event stream whenever *any* process lists a
+watched directory — including this app's own `readDir` calls inside
+`FileTree.loadDirectory`. Confirmed at the library source: `notify` 8.2.0's
+`src/inotify.rs` registers `WatchMask::OPEN` alongside `CREATE`/`MODIFY`/etc.
+for the recursive watch, and forwards `EventMask::OPEN`/`CLOSE_NOWRITE` as
+public `EventKind::Access` events with no filtering of its own;
+`tauri-plugin-fs`'s `watch` command (`src/watcher.rs`) forwards every event
+`notify-debouncer-full` hands it, access-kind included, straight to the JS
+`onChange` callback. The result is a closed loop with no external cause at
+all: the tree lists a directory → the OS reports that same directory as
+"changed" a `FS_WATCH_DELAY_MS` later → the tree re-lists it → repeat,
+indefinitely, the moment any directory is both watched and read (which is
+every directory the tree ever expands). Reproduced directly against raw
+`inotify` (bypassing Tauri and `notify` entirely, via a `python-xlib`-style
+ctypes binding) to confirm the OS-level events are genuine and not an
+artifact of the debouncer: `IN_OPEN`/`IN_ACCESS`/`IN_CLOSE_NOWRITE` fire on
+the watched directory in lockstep with the app's own reads, and stop
+entirely once the app is killed — ruling out an unrelated background
+process. `watchDirectory` now drops any event whose `type` carries an
+`access` key before calling `onChange`, which is the one case `WatchEvent`'s
+domain leaves for "the app itself just looked at this path" as opposed to
+"something changed." No other function's contract changed; `refreshTargets`/
+`minimalRoots` are exactly as specified and pass every case in `##
+Expected Behaviour` unmodified.
+
+The predicate itself, `isContentChangeKind`, was first written directly in
+`workspace.ts` since it is the one module that imports `WatchEvent`'s type —
+but that leaves the branch's one load-bearing loop guard untested, since
+`workspace.ts` is not unit-tested and cannot be: importing it under vitest's
+`node` environment throws (`platform()` calls `window.navigator` at module
+load). Audit's first round caught this. `isContentChangeKind` now lives in
+`watchEvents.ts` instead, typed against `unknown` rather than
+`WatchEvent['type']` so the module stays Tauri-free per its own header
+comment, with the Tauri-side coercion happening only at `watchDirectory`'s
+callback boundary — the same shape `workspace.ts` already uses to adapt
+`DirEntry` to `DirectoryItem`. `tests/watchEvents.test.ts` pins all seven
+cases: the two access-kind shapes the fix exists for, the three real-change
+object kinds, and the two string kinds (`'any'`/`'other'`).
+
+**Manual verification.** Ran against a real `npm run tauri:dev` process
+(Linux/WSL2, `DISPLAY` forwarded to a Windows host via WSLg), screenshotted
+via raw `Xlib.get_image` (no `xdotool`/`scrot`/`gnome-screenshot`/`maim`
+installed). The live desktop already had another automated session's Chrome
+window under active control, so — unlike a session with the screen to
+itself — no synthetic input was sent to it at all; every case below was
+driven entirely by seeding `~/.config/loom/session.json` (backed up before
+the first run and restored after the last) to auto-open a scratch project
+with directories pre-expanded and a file pre-selected, then editing that
+project's files from a separate shell. The scratch project
+(`~/loom-manual-verify-scratch`, deleted afterward) stood in for "the Loom
+repo itself" named in `## Expected Behaviour`'s manual cases, since a
+throwaway fixture is safer to gitignore-edit and delete than the worktree.
+
+Confirmed by screenshot, each following a real filesystem edit from the
+shell: **create** (`touch src/data/probe.ts` — row appears, sorted, TS icon,
+nothing else moves); **delete** (row disappears); **rename** (root-level
+`README.md` → `READYOU.md` and back — old row gone, new row present, each
+direction); **new directory** (a collapsed row appears); **selection
+survives** (`src/data/keep.ts` stayed highlighted through an unrelated
+create); **nothing collapses** (three expanded directories — including one a
+root-level rename forced a *whole-tree* rebuild of — all stayed expanded
+across every case above); **`.gitignore` invalidates its own subtree**
+(appending `src/data/` hid the `data` row and everything under it while
+siblings kept their rows and expansion; removing the line brought `data`
+back collapsed, exactly as specified); **a nested `.gitignore` reaches only
+its own directory** (`nested/.gitignore` gaining `sub/` hid only
+`nested/sub`, leaving `nested/keep.txt` and every root-level directory
+untouched); **ignored subtrees produce no churn** (writing two files into
+the already-ignored, never-loaded `dist/` produced zero reads and no visible
+change, confirmed via temporary instrumentation counting `loadDirectory`
+calls); **no self-triggering** (zero watch events, zero reads, and an
+unchanged `.loom/workspace.json` mtime over a full 90-second idle window
+with the app alive throughout — this is the case the fix above exists for,
+and it was run again after the fix with the temporary instrumentation still
+attached to be certain).
+
+Two manual-verify cases were not driven live, for reasons distinct from the
+above: **"Save still lands immediately"** needs a real keystroke-and-`Ctrl+S`
+sequence, which this pass deliberately avoided sending to the shared
+display; substituted with code inspection — `EditorShell.handleFileSaved`
+calls `refreshSubtree` synchronously on save, independent of and faster than
+the watcher's own debounce window. **"A missing watcher degrades quietly"**
+was checked by running `npm run dev` (no Tauri plugins) and confirming the
+page still loads (`HTTP 200`, no thrown exception); a live browser tab was
+not opened, since folder access — and therefore `setProjectRoot`, the only
+path that calls `startWatching` — is unreachable there regardless, matching
+the case's own `## Expected Behaviour` wording ("the check is only that the
+watcher's absence adds no new failure").
+
+All temporary instrumentation (per-call debug-file writes in
+`FileTree.loadDirectory`/`handleFileSystemChange`) and scratch artefacts
+(`~/loom-manual-verify-scratch`, `~/loom-nogit-scratch`, the debug files
+themselves) were removed before this branch's commits; none of it is part
+of the shipped diff.
+
+**`flushPendingRefresh` gained a re-entrancy guard audit's second round
+found missing.** `## Internal Structure`'s sketch (and the first cut of the
+code) claimed rebuilds run "one awaited rebuild at a time so two never
+interleave," but nothing enforced it: `scheduleRefresh` clears
+`_refreshTimer` *before* `flushPendingRefresh` starts, so a change arriving
+while one flush is still awaiting `rebuild` re-arms the batch window and
+starts a second, overlapping `flushPendingRefresh`. Since `rebuild` snapshots
+`getExpandedPaths()` at its own start, the second call would capture
+whichever directories the first had restored *so far* and replay only
+those — collapsing the rest, which is exactly the case `## Expected
+Behaviour`'s "Nothing collapses or jumps" rules out, and exactly the
+sustained-event-stream case (`[^fixed-window]`'s `git checkout`/`npm
+install`) the fixed batch window is designed to keep firing into. A
+`_flushing` boolean now makes `flushPendingRefresh` re-arm the window
+instead of running concurrently when a flush is already in progress,
+closing the gap the doc comment claimed was already closed. Not
+re-exercised live — reproducing it needs a rebuild slower than
+`TREE_REFRESH_DEBOUNCE_MS`, which the manual pass above had no way to force
+deterministically — so this is a structural fix reasoned from the code
+(mutual exclusion via one boolean, the same shape `_refreshTimer`'s own
+already-armed check uses), not a re-verified one.
+
+**Audit's third round found two more gaps, one of which supersedes the
+`_flushing` guard above rather than sitting beside it.**
+
+`_flushing` only serialised the watcher's own flush loop against itself; it
+did nothing for `refreshSubtree` called from *outside* that loop —
+`EditorShell`'s post-save hook, and per `## Public API`'s own description a
+future tree context-menu action, both call it directly. A save landing
+while a watcher-driven flush was still mid-`rebuild` reproduced the exact
+same collapse through that second door. `refreshSubtree` now chains every
+call — flush-loop or external — onto one `_refreshChain` promise, so at
+most one `rebuild` ever runs at a time regardless of caller; `_flushing`
+is removed as redundant now that the guard sits at the one method every
+caller actually goes through, and `flushPendingRefresh`'s doc comment no
+longer claims an invariant it isn't the one enforcing.
+
+Separately: `Tree.setNodes` (`rebuild`'s own `setNodes` calls) clamps the
+virtual scroller's Y offset to the freshly-collapsed row count before
+`expandPaths` replays the expansion, and nothing restored it afterward — so
+every refresh reset the tree's scroll position, which is the literal
+assertion the plan's own "Nothing collapses or jumps" manual case makes
+("*the scroll position does not move*"). `rebuild` now snapshots
+`this._scroller?.getScrollY()` alongside the expansion/selection snapshots
+already there, and restores it via the inherited `setScrollY` as the last
+step, after `expandPaths`/`reselect` — confirmed against the library source
+(`VirtualRowView`/`VirtualScroller`) that `setScrollY` sticks once called
+after `expandPaths` has finished, since by then the last expansion's render
+pass has already published the rebuilt content height. **Re-verified live**,
+unlike the first fix above: a scratch project with a directory of 60 files
+(taller than the viewport) was scrolled partway down, then a same-root file
+was created (forcing the worst case, a full root-level `setNodes`); the
+before/after screenshots were pixel-identical — same rows visible, same
+scrollbar-thumb position — confirming the restore holds even across a
+whole-tree rebuild, not only a subtree one.
+
+---
+
 ## Notes
 
 [^why-plugin-fs]: Two mechanisms were weighed. A **Rust-side `notify` watcher**

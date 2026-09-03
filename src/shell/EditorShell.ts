@@ -11,7 +11,7 @@ import type { EditorController } from '../EditorController'
 import type { SessionState } from '../data/session'
 import type { SessionAutosave } from './session'
 import { applySession, installSessionAutosave, loadWorkspaceState } from './session'
-import { projectName, baseName, isUnderRoot } from '../data/paths'
+import { projectName, baseName, isUnderRoot, parentDir } from '../data/paths'
 import { glyphNameForPath } from '../fileIcons'
 import { promptRecentDirectoryIntent, confirmOpenSeparateWorkspace } from './recentProjectPrompt'
 import {
@@ -180,11 +180,11 @@ class EditorShell extends Container {
     }
 
     /**
-     * `setFileSavedListener`'s callback: refreshes the tree when `path` landed
-     * under its root, so a directory it already has loaded picks up a file
-     * that didn't exist there before this save — a first save of an untitled
-     * buffer, or a Save As to a new name. A no-op outside the tree's root, or
-     * before any root is set.
+     * `setFileSavedListener`'s callback: refreshes the saved file's own
+     * directory when `path` landed under the tree's root, so a directory it
+     * already has loaded picks up a file that didn't exist there before this
+     * save — a first save of an untitled buffer, or a Save As to a new name.
+     * A no-op outside the tree's root, or before any root is set.
      *
      * @param path - The path a file was just saved to.
      */
@@ -192,7 +192,7 @@ class EditorShell extends Container {
         const root = this._tree.getProjectRoot()
 
         if (root !== null && isUnderRoot(root, path)) {
-            await this._tree.refresh()
+            await this._tree.refreshSubtree(parentDir(path))
         }
     }
 

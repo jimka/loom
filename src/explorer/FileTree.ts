@@ -1,9 +1,10 @@
 import { callable } from '@jimka/typescript-ui/core'
 import { Tree, IconLabelTreeNodeRenderer } from '@jimka/typescript-ui/component/tree'
 import type { TreeNode } from '@jimka/typescript-ui/component/tree'
-import { listDirectory, tryReadTextFile, pathExists } from '../data/workspace'
-import type { DirectoryItem } from '../data/workspace'
+import { listDirectory, tryReadTextFile, pathExists, watchDirectory } from '../data/workspace'
+import type { DirectoryItem, StopWatching } from '../data/workspace'
 import { expansionOrder } from '../data/session'
+import { refreshTargets, minimalRoots } from '../data/watchEvents'
 import { glyphNameForPath } from '../fileIcons'
 import { joinPath } from '../data/paths'
 import {
@@ -11,10 +12,17 @@ import {
 } from '../data/gitignore'
 import type { IgnoreChain } from '../data/gitignore'
 
+/** How long changed paths accumulate before the tree refreshes, in
+ *  milliseconds. Batches the several messages one native flush still delivers
+ *  into a single rebuild. */
+const TREE_REFRESH_DEBOUNCE_MS = 150
+
 /** Domain payload `FileTree` attaches to every node via `TreeNode.data`. */
 interface FileTreeNodeData {
     path: string
     isDir: boolean
+    /** The ignore chain governing this node from above — what `loadDirectory` takes as its `parentChain`. */
+    parentChain: IgnoreChain
 }
 
 /** Constructor parameters for {@link FileTree}. */
@@ -33,6 +41,11 @@ class FileTree extends Tree {
     private _rootChain: IgnoreChain = EMPTY_IGNORE_CHAIN
     private _showHidden = false
     private _showIgnored = false
+    private _stopWatching: StopWatching | null = null
+    private _pendingDirs = new Set<string>()
+    private _refreshTimer: ReturnType<typeof setTimeout> | null = null
+    /** Every {@link refreshSubtree} call chains onto this so at most one rebuild runs at a time. */
+    private _refreshChain: Promise<void> = Promise.resolve()
 
     constructor(params: FileTreeParams) {
         super({
@@ -83,6 +96,7 @@ class FileTree extends Tree {
         this.setNodes(nodes)
         this._root = root
         this._rootChain = chain
+        this.startWatching(root)
     }
 
     /** The folder {@link setProjectRoot} last pointed the tree at, or `null` when it never has. */
@@ -117,19 +131,115 @@ class FileTree extends Tree {
     }
 
     /**
-     * Reloads the tree from its root while preserving which directories are
-     * currently expanded — unlike {@link setShowHidden}/{@link setShowIgnored},
-     * which intentionally collapse everything. A no-op before any root is set.
+     * Re-lists `dir` and rebuilds every directory the tree had loaded below
+     * it, re-applying the hidden/ignored filters and re-reading every
+     * `.gitignore` on the way down. Expansion, selection, and scroll
+     * position are preserved where the entries still exist. A no-op when
+     * `dir` is not the project root and not a directory whose listing the
+     * tree has loaded.
+     *
+     * Every call — from the watcher's own batched flush, from
+     * `EditorShell`'s post-save hook, and from any future caller — is
+     * chained onto {@link _refreshChain}, so at most one rebuild ever runs
+     * at a time: a second rebuild starting before the first finishes would
+     * snapshot expansion the first hadn't restored yet and collapse
+     * whatever it hadn't reached.
+     *
+     * @param dir - The directory to refresh.
      */
-    async refresh(): Promise<void> {
+    async refreshSubtree(dir: string): Promise<void> {
+        const run = this._refreshChain.then(() => this.performRefreshSubtree(dir))
+
+        this._refreshChain = run.then(() => undefined, () => undefined)
+
+        return run
+    }
+
+    /** {@link refreshSubtree}'s actual work, run strictly after every earlier queued refresh. */
+    private async performRefreshSubtree(dir: string): Promise<void> {
         if (this._root === null) {
             return
         }
 
-        const expanded = this.getExpandedPaths()
+        if (dir === this._root) {
+            await this.rebuild(dir, null, this._rootChain)
 
-        await this.reload()
+            return
+        }
+
+        const node = this.findLoadedNode(dir)
+
+        // A directory the tree never listed contributes nothing on screen, so
+        // there is nothing to repair — and re-listing it here would eagerly
+        // load a branch the user never opened.
+        if (node === null || node.children === undefined) {
+            return
+        }
+
+        const data = node.data as FileTreeNodeData
+
+        if (!data.isDir) {
+            return
+        }
+
+        await this.rebuild(dir, node, data.parentChain)
+    }
+
+    /**
+     * Re-lists `dir` under `parentChain` and installs the result as `node`'s
+     * children — or as the root node set when `node` is `null` — then
+     * replays the expansion, selection, and scroll position `setNodes`
+     * cleared.
+     *
+     * @param dir - The directory to re-list.
+     * @param node - The node whose children to replace, or `null` to replace
+     *   the whole root node set.
+     * @param parentChain - The ignore chain governing `dir` from above.
+     */
+    private async rebuild(dir: string, node: TreeNode | null, parentChain: IgnoreChain): Promise<void> {
+        const expanded = this.getExpandedPaths()
+        const selected = this.selectedPath()
+        const scrollY = this._scroller?.getScrollY() ?? 0
+        const children = await this.loadDirectory(dir, parentChain)
+
+        if (node === null) {
+            this.setNodes(children)
+        } else {
+            node.children = children
+            this.setNodes(this.getNodes())
+        }
+
         await this.expandPaths(expanded)
+        this.reselect(selected)
+
+        // Restored last so it wins over any incidental scroll `reselect`
+        // (via `selectNode`'s reveal behaviour) may have just caused —
+        // `setNodes` clamped the offset to the rebuilt, still-collapsed
+        // content height, and neither expansion nor selection replay it.
+        this.setScrollY(scrollY)
+    }
+
+    /** The selected row's path, or `null` when nothing is selected. */
+    private selectedPath(): string | null {
+        const data = this.getSelectedNode()?.data as FileTreeNodeData | undefined
+
+        return data?.path ?? null
+    }
+
+    /**
+     * Re-selects `path` when the rebuild left a node for it. Deliberately not
+     * `selectPath`: that falls back to `revealByPredicate`, which would load
+     * every unloaded branch hunting for a path the refresh may have just
+     * removed.
+     *
+     * @param path - The path to re-select, or `null`.
+     */
+    private reselect(path: string | null): void {
+        const node = path === null ? null : this.findLoadedNode(path)
+
+        if (node !== null) {
+            this.selectNode(node)
+        }
     }
 
     /** Whether hidden (leading-dot) entries are currently shown. */
@@ -280,12 +390,116 @@ class FileTree extends Tree {
                     label: item.name,
                     hasChildren: true,
                     loadChildren: () => this.loadDirectory(item.path, chain),
-                    data: { path: item.path, isDir: true } as FileTreeNodeData,
+                    data: { path: item.path, isDir: true, parentChain: chain } as FileTreeNodeData,
                 }
             : {
                     label: item.name,
-                    data: { path: item.path, isDir: false } as FileTreeNodeData,
+                    data: { path: item.path, isDir: false, parentChain: chain } as FileTreeNodeData,
                 })
+    }
+
+    /**
+     * Points the watcher at `root`, replacing any watch already running. Not
+     * awaited by `setProjectRoot`: registering a recursive watch on a large
+     * project takes time the tree does not need to wait for. A watch that
+     * lands after the root has moved on again is closed immediately rather
+     * than stored.
+     *
+     * @param root - The project folder to watch.
+     */
+    private startWatching(root: string): void {
+        this.stopWatching()
+
+        void watchDirectory(root, paths => { this.handleFileSystemChange(paths) })
+            .then(stop => {
+                if (this._root === root) {
+                    this._stopWatching = stop
+                } else {
+                    stop()
+                }
+            })
+            .catch(() => {
+                // No watcher: a browser-only `npm run dev` session with no
+                // Tauri plugins, or an OS watch-descriptor limit. The tree
+                // still works, it just does not follow outside changes.
+            })
+    }
+
+    /** Releases the running watch, if any. */
+    private stopWatching(): void {
+        this._stopWatching?.()
+        this._stopWatching = null
+    }
+
+    /**
+     * Records the directories a batch of changed paths affects, and arms the
+     * refresh.
+     *
+     * @param paths - The changed paths the watcher reported.
+     */
+    private handleFileSystemChange(paths: string[]): void {
+        if (this._root === null) {
+            return
+        }
+
+        for (const dir of refreshTargets(this._root, paths)) {
+            this._pendingDirs.add(dir)
+        }
+
+        if (this._pendingDirs.size > 0) {
+            this.scheduleRefresh()
+        }
+    }
+
+    /** Arms the batch window. Already-armed is left alone, so a continuous
+     *  stream of events still flushes every `TREE_REFRESH_DEBOUNCE_MS`. */
+    private scheduleRefresh(): void {
+        if (this._refreshTimer !== null) {
+            return
+        }
+
+        this._refreshTimer = setTimeout(() => {
+            this._refreshTimer = null
+            void this.flushPendingRefresh()
+        }, TREE_REFRESH_DEBOUNCE_MS)
+    }
+
+    /** Drops any armed batch window. */
+    private cancelScheduledRefresh(): void {
+        if (this._refreshTimer !== null) {
+            clearTimeout(this._refreshTimer)
+            this._refreshTimer = null
+        }
+    }
+
+    /**
+     * Refreshes each pending directory. `minimalRoots` has already removed
+     * any target another target covers, so the order between the survivors
+     * does not matter; `refreshSubtree`'s own {@link _refreshChain} is what
+     * keeps this flush's rebuilds from interleaving with each other or with
+     * a concurrent call from outside the watcher (e.g. `EditorShell`'s
+     * post-save hook).
+     */
+    private async flushPendingRefresh(): Promise<void> {
+        const dirs = minimalRoots([...this._pendingDirs])
+
+        this._pendingDirs.clear()
+
+        for (const dir of dirs) {
+            try {
+                await this.refreshSubtree(dir)
+            } catch {
+                // A directory that vanished between the event and the
+                // refresh leaves the tree as it was.
+            }
+        }
+    }
+
+    /** Releases the watch and any armed refresh before the base class tears down. */
+    protected destructor(): void {
+        this.cancelScheduledRefresh()
+        this.stopWatching()
+        super.destructor()
     }
 }
 
