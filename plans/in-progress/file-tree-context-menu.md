@@ -967,3 +967,91 @@ touches is app-internal.
     menu item is a heavier change (new Cargo dependency, new capability
     grant, new Rust plugin registration in `src-tauri/src/lib.rs`) than
     everything else in this plan combined.
+
+---
+
+## Implementation Notes
+
+**No codebase drift beyond line numbers.** Every symbol, API, and precedent
+the plan cites — `FileTree.refreshSubtree`/`selectPath`, `Menu`'s rebuild-mode
+`show`, `Dialog`'s `contentComponent`/async `onClick` veto, `FieldDecorator`,
+`TextField`, `EditorController.saveAs`, `isUnderRoot` — was unchanged in
+substance on this branch's start point. Only a handful of cited line numbers
+had shifted by a few lines (e.g. the `_onOpenFile` constructor assignment the
+plan cites at `FileTree.ts:46` sits at line 63 on this branch; the
+`FileTree({ ... })` call the plan cites at `EditorShell.ts:73` sits at line
+74). No adaptation beyond following the current line was needed; every
+snippet in `## Internal Structure` was used as written.
+
+**The "Tree behaviour" manual-verification pass in `## Verification` was not
+run live in this environment.** Two prior plans on this branch chain
+(`drag-and-drop-open.md`, and others referenced in `TODO.md`'s history) were
+verified against a real `npm run tauri:dev` process using an isolated Xvfb
+display driven by `xdotool`/`python-xlib`, and this implementation attempted
+the same: extracting a local `Xvfb` (via `apt-get download` + `dpkg-deb -x`,
+no root, mirroring the technique those earlier passes used) and working
+around its missing `/usr/bin/xkbcomp` dependency with an unprivileged
+`unshare --mount` + overlayfs bind trick. That got as far as a working,
+standalone `Xvfb :98` process with a correct keymap. Every attempt to keep it
+running past a single foreground command — backgrounding it, `run_in_background`,
+even a bare `pkill -f "Xvfb :98"` cleanup call with no `unshare` involved —
+was killed by this session's own sandbox before completing, consistently and
+reproducibly, unlike every other command run during this implementation. That
+pattern reads as this sandbox actively disallowing a spawned X/display-server
+process specifically (not a flaky environment or a fixable dependency gap),
+so the attempt was abandoned rather than fought further per the implement
+skill's guidance not to route around a deliberate restriction.
+
+None of the plan's 14 manual `## Expected Behaviour` ▸ *Tree behaviour* cases
+were therefore driven live. They remain exactly as the plan already describes
+them — expected behaviour was written down before this code existed, and the
+code was implemented to match it — but confirming them against the real app
+is left as a genuine manual step: run `npm run tauri:dev` and walk each case
+in that section. This is the escape hatch's honest "documented manual-verify
+step," not a silent skip: the gap is recorded here rather than left
+unmentioned, and every unit-testable piece of this plan (`isValidEntryName`,
+`relocatePath`) is covered by a real, passing, contract-derived test in
+`tests/paths.test.ts` instead.
+
+**The `^context-menu-dispatch` footnote's ordering claim is wrong, and
+`FileTree.handleBackgroundContextMenu` was changed to not depend on it.** The
+footnote asserts `Tree`'s own subtree listener for `"contextmenu"` "is
+registered inside `Tree`'s constructor," always finishing "before any
+statement in `FileTree`'s own constructor body executes." It isn't: tracing
+`Tree.ts` shows that registration
+(`Event.addSubtreeListener(this, "contextmenu", this._handleContextMenu)`)
+lives in `Tree.init()`, not `Tree`'s constructor — `init()` runs only from
+`Component.render()`, itself invoked lazily on first `getElement(true)`
+(i.e. first real DOM mount), which for `FileTree` happens well after its own
+constructor has already run (in `main.ts`, `EditorShell`'s constructor —
+which builds `FileTree` — finishes fully before `Body.getInstance().
+addComponent(shell)` triggers that first mount). So `FileTree`'s own
+`Event.addSubtreeListener(this, 'contextmenu', this.handleBackgroundContextMenu)`,
+registered eagerly in its constructor, is always the *earlier* entry in
+`Event`'s shared per-`(this, 'contextmenu')` dispatch list — the reverse of
+the footnote's claim — meaning a synchronous `event.defaultPrevented` check
+in `handleBackgroundContextMenu` would always read `false`, row hits
+included.
+
+This was previously masked, not caught by manual verification, because
+`Menu.show()` unconditionally tears down and rebuilds its item list on every
+call: a row hit still ended up showing the *correct* menu, because `Tree`'s
+own row-matching handler runs second (still within the same synchronous
+dispatch) and its resulting `handleNodeContextMenu` call rebuilds the menu
+a second time before either ever paints — an accidental last-write-wins, not
+the ordering guarantee the footnote describes, and fragile against a future
+change to either `Menu`'s rebuild-per-call behaviour or `Tree`'s own
+handler. `handleBackgroundContextMenu` now defers its check to a
+`queueMicrotask`, which drains only once the whole synchronous dispatch for
+that event — `Tree`'s handler included — has already run, so
+`event.defaultPrevented` is reliably settled by the time it's read,
+regardless of which listener happened to register first. This makes the
+row/background split correct by construction instead of by coincidence,
+without changing any of the plan's `## Expected Behaviour` outcomes. The
+`{ prevent: true }` return `handleBackgroundContextMenu` previously gave on
+a background hit is dropped along with the synchronous check — reading
+`core/Body.ts`'s `setNativeContextMenu` confirms Loom's own
+`Body.init({ layoutManager: Fit(), favicon: APP_FAVICON })` call (no
+`nativeContextMenu` override) already suppresses the browser's native
+context menu page-wide unconditionally, so that return value was always
+redundant here, not the mechanism keeping the native menu off.
