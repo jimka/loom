@@ -26,9 +26,9 @@ const PREVIEW_GLYPH = 'eye'
 const PREVIEW_LABEL = 'Preview'
 
 /** The label prefix marking a temp tab. A prefix, not a suffix like the dirty
- *  `" •"`: the tab strip caps a tab's width (`TAB_MAX_WIDTH`, in
- *  `EditorController`) and ellipsises the label's tail, so a long file name
- *  would swallow a trailing mark. */
+ *  `" •"`: the tab strip caps a tab's width (`Settings.tabMaxWidthPx`, see
+ *  `src/data/settings.ts`) and ellipsises the label's tail, so a long file
+ *  name would swallow a trailing mark. */
 const TEMPORARY_LABEL_PREFIX: string = '~'
 
 /** Constructor parameters for {@link FileEditor}. */

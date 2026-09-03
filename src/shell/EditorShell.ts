@@ -12,8 +12,10 @@ import { buildPaletteCommands } from './commands'
 import { listFilesRecursive } from '../data/fileIndex'
 import type { EditorController } from '../EditorController'
 import type { SessionState } from '../data/session'
+import type { Settings } from '../data/settings'
 import type { SessionAutosave } from './session'
 import { applySession, installSessionAutosave, loadWorkspaceState } from './session'
+import { loadResolvedSettings } from './settings'
 import { projectName, baseName, isUnderRoot, parentDir } from '../data/paths'
 import { listDirectory, tryReadTextFile, pathExists } from '../data/workspace'
 import { glyphNameForPath } from '../fileIcons'
@@ -54,6 +56,12 @@ interface MenuBarActions extends AcceleratorActions {
     isShowingIgnored: () => boolean
     /** Toggles whether the tree shows ignored entries. */
     onToggleIgnored: (value: boolean) => void
+    /** Opens the app-wide settings file, creating it first if needed. */
+    onOpenSettings: () => void
+    /** Opens the open project's own settings file, creating it first if needed. */
+    onOpenWorkspaceSettings: () => void
+    /** Whether a project folder is currently open — greys out *Open Workspace Settings* when not. */
+    hasProjectRoot: () => boolean
 }
 
 /**
@@ -74,8 +82,9 @@ class EditorShell extends Container {
     /**
      * @param controller - Owns the tab strip, the status bar, and every editor command.
      * @param session - The stored session; its split entries seed the `Split`.
+     * @param settings - The resolved settings; seed the tree's Show Hidden/Show Ignored defaults.
      */
-    constructor(controller: EditorController, session: SessionState) {
+    constructor(controller: EditorController, session: SessionState, settings: Settings) {
         const openFolder = (): void => { void controller.openProjectFolder() }
         const tree = FileTree({
             onSelectFile:  (path: string) => { void controller.openFile(path, 'temporary') },
@@ -83,6 +92,10 @@ class EditorShell extends Container {
             onPathDeleted: (path: string) => controller.closeFilesUnder(path),
             onPathRenamed: (oldPath: string, newPath: string) => controller.relocateOpenFiles(oldPath, newPath),
         })
+
+        void tree.setShowHidden(settings.showHiddenFiles)
+        void tree.setShowIgnored(settings.showIgnoredFiles)
+
         const welcome = WelcomeScreen({
             onOpenFolder: openFolder,
             recentProjects: controller.getRecentProjects(),
@@ -120,9 +133,18 @@ class EditorShell extends Container {
             onOpenRecentProject: (path: string) => { void this.confirmAndOpenProject(path) },
             onOpenRecentFile: (path: string) => { void controller.openFile(path) },
             isShowingHidden: () => tree.isShowingHidden(),
-            onToggleHidden: (value: boolean) => tree.setShowHidden(value),
+            onToggleHidden: (value: boolean) => { void tree.setShowHidden(value) },
             isShowingIgnored: () => tree.isShowingIgnored(),
-            onToggleIgnored: (value: boolean) => tree.setShowIgnored(value),
+            onToggleIgnored: (value: boolean) => { void tree.setShowIgnored(value) },
+            hasProjectRoot: () => tree.getProjectRoot() !== null,
+            onOpenSettings: () => { void controller.openGlobalSettings() },
+            onOpenWorkspaceSettings: () => {
+                const root = tree.getProjectRoot()
+
+                if (root !== null) {
+                    void controller.openWorkspaceSettings(root)
+                }
+            },
         }
 
         const menuBar = buildMenuBar(actions)
@@ -177,21 +199,39 @@ class EditorShell extends Container {
 
     /**
      * `setProjectRootListener`'s callback: flushes the outgoing project's own
-     * pending autosave, points the tree at the newly chosen folder, restores
-     * that folder's saved tree expansion (if it has any), then schedules a
-     * session save. No `catch` around the listing itself — a failed listing
-     * rejects up through the `async` callback registered in the constructor,
-     * which `EditorController.openProjectFolder` awaits and reports via
-     * `Dialog.error`; `openRecentProject` still leaves it as an unhandled
-     * rejection, unchanged from before this method existed. Tabs, the active
-     * file, and the split are deliberately left untouched by a live switch —
-     * only tree expansion restores outside a cold start.
+     * pending autosave, points the tree at the newly chosen folder, reloads
+     * and reapplies that folder's own resolved settings (the tree's Show
+     * Hidden/Show Ignored defaults and the controller's format-on-save/title
+     * template/tab width), restores that folder's saved tree expansion (if
+     * it has any), then schedules a session save. Settings reapplication is
+     * `await`ed and finishes *before* the expansion restore starts, not just
+     * ordered before it in source: `FileTree.setShowHidden`/`setShowIgnored`
+     * each reload the tree from its root — which collapses every expansion —
+     * and both now return the reload's own promise (mirroring
+     * `FileTree.setProjectRoot`) precisely so this method can await that
+     * completion rather than racing it; restoring expansion first, or
+     * firing the settings reload without awaiting it, would each let a
+     * still-in-flight reload land after the expansion restore and collapse
+     * it right back. No `catch` around the listing itself — a failed
+     * listing rejects up through the `async` callback registered in the
+     * constructor, which `EditorController.openProjectFolder` awaits and
+     * reports via `Dialog.error`; `openRecentProject` still leaves it as an
+     * unhandled rejection, unchanged from before this method existed. Tabs,
+     * the active file, and the split are deliberately left untouched by a
+     * live switch — only tree expansion and settings resolution restore
+     * outside a cold start.
      *
      * @param root - The newly chosen project folder.
      */
     private async openProjectRoot(root: string): Promise<void> {
         await this._autosave?.flush()
         await this._tree.setProjectRoot(root)
+
+        const resolved = await loadResolvedSettings(root)
+
+        await this._tree.setShowHidden(resolved.showHiddenFiles)
+        await this._tree.setShowIgnored(resolved.showIgnoredFiles)
+        this._controller.applySettings(resolved)
 
         const workspace = await loadWorkspaceState(root)
 
@@ -354,6 +394,9 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
                 { text: 'Save', glyph: 'floppy-disk', shortcut: SAVE_SHORTCUT, enabled: actions.canSaveActive(), action: actions.onSave },
                 { text: 'Save As…', glyph: 'floppy-disk', shortcut: SAVE_AS_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onSaveAs },
                 { text: 'Close File', glyph: 'times', shortcut: CLOSE_FILE_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onCloseFile },
+                { separator: true },
+                { text: 'Open Settings', glyph: 'gear', action: actions.onOpenSettings },
+                { text: 'Open Workspace Settings', glyph: 'gear', enabled: actions.hasProjectRoot(), action: actions.onOpenWorkspaceSettings },
                 { separator: true },
                 { text: 'Exit', glyph: 'right-from-bracket', shortcut: EXIT_SHORTCUT, action: actions.onExit },
             ] },

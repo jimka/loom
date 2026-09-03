@@ -48,8 +48,14 @@ const CONFIG_DIR_NAME = platform() === 'linux' ? APP_NAME.toLowerCase() : APP_NA
 /** The session file's name inside {@link CONFIG_DIR_NAME}. */
 const SESSION_FILE_NAME = 'session.json'
 
+/** The app-wide settings file's name inside {@link CONFIG_DIR_NAME}. */
+const SETTINGS_FILE_NAME = 'settings.json'
+
 /** The workspace state file's name inside {@link WORKSPACE_DIR_NAME}. */
 const WORKSPACE_STATE_FILE_NAME = 'workspace.json'
+
+/** The per-workspace settings file's name inside {@link WORKSPACE_DIR_NAME}. */
+const WORKSPACE_SETTINGS_FILE_NAME = 'settings.json'
 
 /** Ignore-everything marker written into a project's `.loom` folder so it never appears as untracked in the project's own `git status`, without touching the project's own `.gitignore`. */
 const WORKSPACE_GITIGNORE_CONTENTS = '*\n'
@@ -286,6 +292,96 @@ export async function readWorkspaceStateText(root: string): Promise<string | nul
  * @param text - The workspace state file's new contents.
  */
 export async function writeWorkspaceStateText(root: string, text: string): Promise<void> {
+    const dir = await ensureWorkspaceDir(root)
+
+    return writeTextFile(joinPath(dir, WORKSPACE_STATE_FILE_NAME), text)
+}
+
+/**
+ * Reads the app-config settings file's text, or `null` when it is absent or
+ * unreadable. An absent file is the common case (first launch, or no global
+ * override yet) rather than an error, so any read failure degrades to `null`
+ * instead of throwing.
+ *
+ * @returns The settings file's text, or `null`.
+ */
+export async function readSettingsText(): Promise<string | null> {
+    try {
+        return await readTextFile(`${CONFIG_DIR_NAME}/${SETTINGS_FILE_NAME}`, { baseDir: BaseDirectory.Config })
+    } catch {
+        return null
+    }
+}
+
+/**
+ * Writes `text` to the app-config settings file, creating the directory if
+ * needed.
+ *
+ * @param text - The settings file's new contents.
+ */
+export async function writeSettingsText(text: string): Promise<void> {
+    const dir = await join(await configDir(), CONFIG_DIR_NAME)
+
+    await mkdir(dir, { recursive: true })
+
+    return writeTextFile(`${CONFIG_DIR_NAME}/${SETTINGS_FILE_NAME}`, text, { baseDir: BaseDirectory.Config })
+}
+
+/** The app-wide settings file's absolute path. */
+export async function globalSettingsPath(): Promise<string> {
+    return join(await configDir(), CONFIG_DIR_NAME, SETTINGS_FILE_NAME)
+}
+
+/**
+ * Reads `root`'s own settings file's text, or `null` when it (or its `.loom`
+ * folder) is absent or unreadable. A project with no `.loom` folder yet is
+ * the common case rather than an error, so any read failure degrades to
+ * `null` instead of throwing.
+ *
+ * @param root - The project folder to read the settings override from.
+ * @returns The settings file's text, or `null`.
+ */
+export async function readWorkspaceSettingsText(root: string): Promise<string | null> {
+    try {
+        return await readTextFile(workspaceSettingsPath(root))
+    } catch {
+        return null
+    }
+}
+
+/**
+ * Writes `text` to `root`'s own settings file, creating its `.loom` folder —
+ * and a matching `.gitignore` inside it, the first time — if needed.
+ *
+ * @param root - The project folder to write the settings override into.
+ * @param text - The settings file's new contents.
+ */
+export async function writeWorkspaceSettingsText(root: string, text: string): Promise<void> {
+    const dir = await ensureWorkspaceDir(root)
+
+    return writeTextFile(joinPath(dir, WORKSPACE_SETTINGS_FILE_NAME), text)
+}
+
+/**
+ * `root`'s own settings file's absolute path — no I/O, pure path arithmetic.
+ *
+ * @param root - The project folder.
+ * @returns The path `root`'s own settings file lives (or would live) at.
+ */
+export function workspaceSettingsPath(root: string): string {
+    return joinPath(joinPath(root, WORKSPACE_DIR_NAME), WORKSPACE_SETTINGS_FILE_NAME)
+}
+
+/**
+ * Ensures `root`'s `.loom` folder exists, with its `.gitignore` marker
+ * written the first time, and returns its path. Shared by
+ * {@link writeWorkspaceStateText} and {@link writeWorkspaceSettingsText} so
+ * the mkdir-plus-`.gitignore` setup isn't duplicated between them.
+ *
+ * @param root - The project folder whose `.loom` directory to ensure.
+ * @returns The `.loom` directory's path.
+ */
+async function ensureWorkspaceDir(root: string): Promise<string> {
     const dir = joinPath(root, WORKSPACE_DIR_NAME)
 
     await mkdir(dir, { recursive: true })
@@ -296,7 +392,7 @@ export async function writeWorkspaceStateText(root: string, text: string): Promi
         await writeTextFile(gitignorePath, WORKSPACE_GITIGNORE_CONTENTS)
     }
 
-    return writeTextFile(joinPath(dir, WORKSPACE_STATE_FILE_NAME), text)
+    return dir
 }
 
 /**

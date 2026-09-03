@@ -462,13 +462,17 @@ class FileTree extends Tree {
     /**
      * Sets whether hidden entries are shown, and reloads the tree from its
      * root to apply the change — which collapses every expansion (see the
-     * plan's `## Potential Challenges`).
+     * plan's `## Potential Challenges`). Returns the reload's own promise, so
+     * a caller that needs to sequence work after the reload actually
+     * completes (e.g. restoring tree expansion afterward) can `await` it
+     * instead of racing it — mirroring {@link setProjectRoot}'s own
+     * awaitable reload.
      *
      * @param value - Whether to show hidden entries.
      */
-    setShowHidden(value: boolean): void {
+    async setShowHidden(value: boolean): Promise<void> {
         this._showHidden = value
-        void this.reload()
+        await this.reload()
     }
 
     /** Whether `.gitignore`-ignored entries are currently shown. */
@@ -478,13 +482,14 @@ class FileTree extends Tree {
 
     /**
      * Sets whether ignored entries are shown, and reloads the tree from its
-     * root to apply the change.
+     * root to apply the change. Returns the reload's own promise, for the
+     * same reason {@link setShowHidden} does.
      *
      * @param value - Whether to show ignored entries.
      */
-    setShowIgnored(value: boolean): void {
+    async setShowIgnored(value: boolean): Promise<void> {
         this._showIgnored = value
-        void this.reload()
+        await this.reload()
     }
 
     /** Reloads the tree from `_root` using `_rootChain`; a no-op before any root is set. */
