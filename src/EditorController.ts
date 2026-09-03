@@ -706,11 +706,15 @@ class EditorController {
     }
 
     /**
-     * Closes the temp tab, if the strip has one. `Tab.closeTab` is the unguarded
-     * programmatic path, which is safe here precisely because a temp tab is always
-     * clean — the first edit pins it — so there is never anything to prompt about.
+     * Closes the strip's temp tab, if it has one. Public so a preview surface
+     * outside this class — the command palette's cancel path is the first —
+     * can undo an unconfirmed `'temporary'` open without knowing which file, if
+     * any, is currently temporary. A no-op when nothing is temporary, including
+     * when the previewed path was already open as a permanent tab (`openFile`'s
+     * existing-file branch never marks a file temporary, so there is nothing
+     * here to close).
      */
-    private closeTemporaryTab(): void {
+    closeTemporaryTab(): void {
         const temporary = this._openFiles.find(file => file.isTemporary())
 
         if (temporary) {

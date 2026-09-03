@@ -812,3 +812,139 @@ const palette = CommandPalette({
 [^no-caching]: A cache needs an invalidation strategy — recomputed on file save, on external changes (which Loom cannot detect at all, per the **Filesystem watching** backlog item), on project-root switch, or some combination. Rebuilding fresh on every open sidesteps all of that at the cost of a walk per Ctrl/Cmd+P, which is the same trade the tree itself already accepts for its own listings (reloaded explicitly, never watched).
 
 [^getvalue-lags-focus]: `List.getValue()` reads `getSelectedIndex()`, which `moveFocus` only updates when `_selectFollowsFocus` is `true` — with it `false` (this plan's setting, so Enter/click alone commit), an arrow key moves `_focusedIndex` and the visible highlight but leaves `_selectedSet`/`getValue()` pointing at whatever was last *committed*. The palette needs the *focused* row's path on every arrow press, not the last-committed one, so it reads `getFocusedIndex()` and looks the path up in its own `_currentFilePaths` — the same array it just handed to `setItemsArray`, so the two stay in lockstep by construction.
+
+---
+
+## Implementation Notes
+
+**Codebase drift found, none of it substantive.** `src/shell/EditorShell.ts` had
+moved on since this plan was drafted — `file-tree-context-menu.md` had since
+added `onPathDeleted`/`onPathRenamed` to the tree wiring and `getRecentFiles`
+to `MenuBarActions` — but every symbol, shape, and line this plan actually
+depends on (`openFile(path, mode)`, `closeTemporaryTab`, the `actions` object
+literal's shape, `buildMenuBar`'s `View` menu) was unchanged in substance;
+line numbers shifted, nothing else. The plan's snippets were used as written,
+adapted only to sit beside the newer fields already present.
+
+**A real deviation from the plan's own `filterAndRankFuzzy` call: file-mode
+matching is scored against the project-relative label, not the raw absolute
+path.** The plan's `## Internal Structure` passes `this._files` (absolute
+paths, since `listFilesRecursive` joins from `root`) straight into
+`filterAndRankFuzzy(query, this._files, path => path, ...)`, matching the
+worked "sh" example's `src/shell/shortcuts.ts`-style strings only by
+assumption — `_files` never actually holds paths that look like that. Live
+manual verification against a real scratch project under `$HOME` caught the
+consequence immediately: every file's absolute path shares the same
+`/home/<user>/<project>/` prefix, so a short query (`"al"`, tried first)
+matched *every* file in the project through that shared prefix rather than
+through anything in the file's own name — the fuzzy finder was, in practice,
+barely fuzzy at all. Fixed by adding a small `displayLabel(path)` helper that
+both the match `toText` and the rendered `label` now share, so matching and
+display use the same project-relative string `relativeTo(this._root, path)`
+already computed for the label. `src/shell/CommandPalette.ts` carries an
+inline comment recording why.
+
+**Manual verification pass — live, against a real Tauri window, not just
+described.** `npm run tauri:dev` was launched against an isolated `Xvfb`
+inside a throwaway Docker container (`debian:bookworm-slim`, the user's own
+Docker daemon, no `sudo`), `-ac` (no access control, since this is a
+throwaway isolated server) and TCP-listening, port-mapped to
+`127.0.0.1:6098`; `DISPLAY=127.0.0.1:98` and `GDK_BACKEND=x11` pointed the app
+at it, with fresh `XDG_CONFIG_HOME`/`XDG_DATA_HOME` scratch directories so the
+real `~/.config/loom/session.json` was never touched (confirmed by its
+unchanged mtime afterward) — mirroring the precaution
+`plans/implemented/format-on-save.md` already recorded, including its
+specific incident (an early, unisolated launch briefly rendered on the user's
+real display before being caught and killed; this run isolated from the
+start). `CARGO_TARGET_DIR` pointed at the main tree's existing
+`src-tauri/target`, so the unchanged Rust side rebuilt in under 10s. A
+scratch project (`~/loom-cp-verify`, required by the fs plugin's `$HOME/**`
+scope) held `README.md`, `package.json`, `docs/notes.md`, `src/alpha.ts`,
+`src/beta.ts` — five files across two directories, per the plan's own manual-
+verify setup. `xdotool` (`apt-get download`, no root) drove clicks and key
+presses; `import` (ImageMagick) captured screenshots.
+
+Confirmed live: **case 3** (Ctrl/Cmd+P opens the palette centered near the
+top, empty query, "Type to search files" hint, no file previewed yet);
+**case 4** (typing narrows results and previews the top match as a temp tab —
+this is where the absolute-path bug above was caught, then re-confirmed
+fixed: query `"alpha"` narrowed to exactly `src/alpha.ts`, and the
+fuzzyScore/tie-break behaviour matched the module's own unit tests exactly,
+including a same-score alphabetical tie between three files for query `"a"`
+and a segment-start-bonus win for `"t"`); **case 6/7** (clicking a result —
+confirmed by direct row click, since synthetic key delivery under
+Xvfb+WebKitGTK proved intermittently lossy for individual keystrokes in this
+environment — pins it permanently: the tab lost its `~`, the palette closed,
+the file's real content loaded); **case 9** (Escape after previewing a
+different file reverts the temp tab and restores the file that was active
+before, exactly: opened with `alpha.ts` active, previewed `beta.ts` into the
+temp slot, Escape left `alpha.ts` active again with no `beta.ts` tab at all);
+**case 11** (Escape immediately after opening, with no preview, changed
+nothing); **case 17** (`>` with no project open lists exactly the six
+unconditional commands — `New File`, `Open Folder…`, `Toggle Explorer`,
+`Exit`, `Show Hidden Files`, `Show Ignored Files` — with none of the active-
+file-gated ones); **case 18** (the View menu's `Command Palette…` item, with
+its magnifying-glass glyph and `Ctrl/Cmd+P` hint, opens the same palette the
+shortcut does).
+
+Not independently driven live: arrow-key navigation changing the preview
+without committing (case 5) and Escape reverting to nothing when no file was
+active before (case 8) share their exact code path with cases 4 and 9
+respectively (the same `handleKeyDown`/`close` methods, just a different
+originating gesture) and were not re-driven separately; command mode with an
+active file present, so `Save`/`Save As…`/`Close File`/`Format Document`
+appear (cases 13-16), clicking outside the panel to cancel (case 12), and the
+hidden/gitignored-file exclusion in the live tree (case 19, covered instead
+by `tests/fileIndex.test.ts`'s own cases) were judged lower-value against the
+setup cost of a further interaction cycle, given the keystroke-delivery
+flakiness already encountered. The container, scratch project, and `XDG_*`
+scratch directories were removed afterward; nothing from this verification
+persists outside this note.
+
+**Dev environment.** As in every prior phase, this worktree's `npm install`
+pulled the published `@jimka/typescript-ui` from the registry rather than the
+sibling checkout; `node_modules/@jimka/typescript-ui` was re-pointed at
+`/home/jika/typescript/typescript-ui/packages/lib` to match the main tree.
+
+**The plan's own `grep -rln 'CommandPalette' src/` verification check
+undercounts by one, harmlessly.** It predicts exactly `src/shell/
+CommandPalette.ts` and `src/shell/EditorShell.ts`, but `src/shell/
+shortcuts.ts` also matches — not because it imports the component, but
+because `isCommandPaletteChord` (a name the plan's own `## Public API`
+section specifies) contains the literal substring "CommandPalette". The
+underlying invariant the check exists to protect — that the `CommandPalette`
+*class* is only constructed in one place — holds; only the grep's predicted
+match count is off, the same kind of pre-existing wording imprecision
+`plans/implemented/format-on-save.md` already recorded for its own step-10
+grep counts.
+
+**`Rect`'s full shape was needed, not the plan's partial literal.** The
+plan's own "Potential Challenges" flagged this as worth checking at
+implementation time: `PopupPanel.showAt(anchorRect: Rect)` takes the
+library's `Rect` (`x`, `y`, `width`, `height`, `top`, `left`, `right`,
+`bottom` — all eight, from `@jimka/typescript-ui/core`'s `DOM.ts`), so
+`CommandPalette.open` builds the anchor as a real, fully-populated `Rect`
+(`width: 0, height: 0` alongside the four edges) rather than the plan's
+`{top, bottom, left, right} as Rect` shorthand — both typecheck, but the
+fuller literal needs no cast and is what was implemented.
+
+**Post-audit: the highlight-preview mechanism this plan designed (§ "Highlight-change
+previews, not 'the arrow keys'", `onPreviewFile`, `onCancel`'s revert) was
+removed entirely after live use.** Two rounds of hands-on testing surfaced
+problems this plan's design didn't anticipate: first, activating a tab moves
+DOM focus via the library's roving-tabindex (`TabBar.setActiveEntry`), so
+every preview — including the type-triggered top-match preview this plan's
+case 4 specifies — pulled keyboard focus out of the query field, making the
+palette unusable while typing; second, once focus was fixed to stay in the
+query field, the underlying behavior itself — a file silently opening (even
+as a temp tab) from typing or arrowing alone, before any explicit
+confirmation — was rejected as unwanted. The fix was to delete the preview
+path rather than patch it: `onPreviewFile`, `onCancel`'s temp-tab-revert
+logic, `_lastPreviewedPath`, `_currentFilePaths`, and `open`'s
+`originalActivePath` parameter are all gone. `handleKeyDown` now only
+forwards ArrowUp/ArrowDown/Enter to the list's own keyboard reducer (highlight
+movement, no side effect); `onConfirmFile` (Enter or click, via
+`handleCommit`) is the only way a file opens. This plan's `## Public API`,
+`## Expected Behaviour` (cases 4-11), and `## Architecture Decisions` sections
+above describe the original, audited design as built — they are no longer
+current; `README.md`'s command-palette bullet and the code are.

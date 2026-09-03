@@ -7,15 +7,15 @@ The original plan lives in `typescript-ui`'s
 nothing below has a plan yet.
 
 ## High
-- **Commmand palette / fuzzy file finder (Ctrl+P)** — distinct from cross-file
-  content search, above: this is file-name navigation, not content search.
-  We should add ability to execute commands from here as well. What commands
-  make sense to start with? Which could we add?
 - **Library `Tab.setTabGlyph` / `TabBar.setEntryGlyph`.** Neither exists
   today — `Tab` has `setTabName` but no glyph counterpart, and the
   `TabButton` that owns the icon is built once from the `glyph` option
   passed to `addTab`. Without it, a *Save As* that changes a file's
   extension cannot re-icon its already-open tab.
+- **Library `List` row-level enabled/disabled state.** `AbstractSelectableList`
+  has no per-row disabled flag, only the whole list's `enabled`/`readOnly`, so
+  the command palette filters out a disabled command instead of greying it
+  out the way the menu bar does.
 - **Library per-tab label styling.** `Tab.setTabName` sets a tab's text but
   nothing styles it, and `Tab` keeps its `TabBar` private, so Loom marks a
   temp tab with a `~` prefix instead of the italics VS Code uses.

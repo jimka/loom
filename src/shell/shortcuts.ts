@@ -23,6 +23,7 @@ export const CLOSE_FILE_SHORTCUT = 'Ctrl/Cmd+W'
 export const FORMAT_SHORTCUT = 'Alt+Shift+F'
 export const TOGGLE_EXPLORER_SHORTCUT = 'Ctrl/Cmd+B'
 export const EXIT_SHORTCUT = 'Ctrl/Cmd+Q'
+export const COMMAND_PALETTE_SHORTCUT = 'Ctrl/Cmd+P'
 
 /**
  * Whether a keydown is a `Ctrl/Cmd(+Shift)+<key>` chord with no other
@@ -84,6 +85,11 @@ export function isExitChord(event: KeyboardEvent): boolean {
     return isCtrlChord(event, 'q')
 }
 
+/** Whether a keydown is the Command-Palette chord (Ctrl/Cmd+P). */
+export function isCommandPaletteChord(event: KeyboardEvent): boolean {
+    return isCtrlChord(event, 'p')
+}
+
 /** The accelerator callbacks `installAccelerators` dispatches each chord to. */
 export interface AcceleratorActions {
     /** Ctrl/Cmd+N — opens a new untitled buffer. */
@@ -102,6 +108,8 @@ export interface AcceleratorActions {
     onToggleExplorer: () => void
     /** Ctrl/Cmd+Q — requests the window close. */
     onExit: () => void
+    /** Ctrl/Cmd+P — opens the command palette. */
+    onOpenCommandPalette: () => void
 }
 
 /**
@@ -130,6 +138,8 @@ export function installAccelerators(actions: AcceleratorActions): void {
             actions.onFormat()
         } else if (isToggleExplorerChord(event)) {
             actions.onToggleExplorer()
+        } else if (isCommandPaletteChord(event)) {
+            actions.onOpenCommandPalette()
         } else if (isExitChord(event)) {
             actions.onExit()
         } else {

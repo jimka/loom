@@ -14,6 +14,7 @@ import { bars } from '@jimka/typescript-ui/glyphs/solid/bars'
 import { code } from '@jimka/typescript-ui/glyphs/solid/code'
 import { right_from_bracket } from '@jimka/typescript-ui/glyphs/solid/right_from_bracket'
 import { clock_rotate_left } from '@jimka/typescript-ui/glyphs/solid/clock_rotate_left'
+import { magnifying_glass } from '@jimka/typescript-ui/glyphs/solid/magnifying_glass'
 import { APP_FAVICON } from './appIdentity'
 import { FILE_ICON_GLYPHS } from './fileIcons'
 import { EditorController } from './EditorController'
@@ -26,7 +27,7 @@ import { applyWorkspaceOverlay } from './data/workspaceState'
 // here at the composition root.
 Glyph.register(
     folder, folder_plus, file_circle_plus, floppy_disk, times, pen_to_square, trash, copy, eye, bars, code,
-    right_from_bracket, clock_rotate_left, ...FILE_ICON_GLYPHS,
+    right_from_bracket, clock_rotate_left, magnifying_glass, ...FILE_ICON_GLYPHS,
 )
 
 Body.init({ layoutManager: Fit(), favicon: APP_FAVICON })
