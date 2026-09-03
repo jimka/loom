@@ -926,3 +926,104 @@ through the app; nothing between them breaks the typecheck.
     project-switch point `EditorShell.openProjectRoot` already has costs
     nothing new to build and gives almost the same result for the common
     case of tuning a per-project setting.
+
+---
+
+## Implementation Notes
+
+- **A real deviation from the plan's own claim that `FileTree` gains no new
+  public API.** `## Architecture Decisions`'s "Full call-site routing" table
+  states `setShowHidden`/`setShowIgnored` are "reused as-is," and
+  `src/explorer/FileTree.ts` is absent from the frontmatter's
+  `touches-shared` list. The audit loop's third and fourth rounds found
+  this doesn't hold: `EditorShell.openProjectRoot` calls those two setters
+  and then awaits `expandPaths` to restore saved tree expansion, but the
+  setters were `void`-returning and fired their own reload
+  (`FileTree.reload()` → `Tree.setNodes()`, which collapses all expansion)
+  without exposing it to the caller. Round 3's first fix — reordering the
+  calls so the setters ran before `expandPaths` — only *narrowed* the
+  window instead of closing it, since the reload was still an unawaited,
+  in-flight promise racing the subsequent `await`ed `expandPaths()`; a
+  workspace with two or more nested expanded directories (each level in
+  `expandPaths` awaiting its own `listChildren` round trip) could plausibly
+  let the late-resolving reload land after `expandPaths` finished and
+  collapse the tree right back — the exact regression this plan was meant
+  not to introduce, against `workspace-session-persistence.md`'s
+  expansion-restore guarantee. The real fix changes
+  `FileTree.setShowHidden`/`setShowIgnored` from `void` to `async ...:
+  Promise<void>`, `await`ing `reload()` internally instead of firing it
+  loose — mirroring `FileTree.setProjectRoot`'s own already-awaitable
+  reload, the established shape for "a setter that reloads" in this file.
+  `EditorShell.openProjectRoot` now `await`s both calls before touching
+  workspace state or expansion; its other two call sites (the constructor's
+  initial seed, and the View menu's toggle handlers) wrap the call in
+  `void`, matching this codebase's existing convention for an
+  intentionally-unawaited async call (`void controller.saveActive()` and
+  its many siblings in `EditorShell.ts`). Verified live against the exact
+  failure shape: two independent three-level-deep expanded directory chains
+  plus a workspace `showHiddenFiles: true` override (forcing a genuine
+  settings-driven reload on every reopen, not a same-value no-op), reopened
+  three times in a row under an isolated Xvfb display — full expansion and
+  the hidden-file listing both survived every time.
+- **`node_modules/@jimka/typescript-ui` needed re-pointing at the sibling
+  checkout.** This worktree's `npm install` pulled the published `0.8.0`
+  package from the registry rather than the local
+  `../typescript-ui/packages/lib` checkout the other worktrees symlink to.
+  The published version happened to carry every symbol this plan touches
+  (`gear`, `setMaxWidth`), so typecheck would have passed either way here,
+  but the symlink was restored anyway
+  (`ln -s /home/jika/typescript/typescript-ui/packages/lib
+  node_modules/@jimka/typescript-ui`) to match the rest of the batch's
+  environment and avoid silently drifting from the in-development library —
+  the same recurring dev-environment gap `format-on-save.md`'s own
+  Implementation Notes already recorded.
+- **The plan's own step-10 grep count undercounts by one.** `grep -rn
+  'DEFAULT_SETTINGS' src/EditorController.ts` returns four matches, not the
+  three the plan predicts, because the import line
+  (`import { DEFAULT_SETTINGS, renderTitle } from './data/settings'`) is
+  itself a match the plan's count didn't anticipate. The underlying
+  invariant — the two field initializers and the constructor's `maxWidth`
+  all read `DEFAULT_SETTINGS` — holds; only the literal grep count is off,
+  the same kind of pre-existing wording imprecision `format-on-save.md`'s
+  own notes recorded for its analogous check.
+- **Manual verification (all nine `## Expected Behaviour` cases) was
+  executed live, against an isolated display, not the user's desktop.**
+  Following the precedent set by `format-on-save.md` and
+  `command-palette.md`, an ephemeral `debian:bookworm-slim` Docker container
+  (the user's own Docker daemon, no `sudo`) ran `Xvfb :99 -listen tcp -ac`
+  plus `xdotool`/`imagemagick`, TCP-port-mapped to `127.0.0.1:6099`; the
+  real `npm run tauri:dev` ran on the host (its own Rust/WebKitGTK
+  toolchain, `CARGO_TARGET_DIR` pointed at the main tree's existing
+  `src-tauri/target` so the unchanged Rust side rebuilt in seconds) with
+  `DISPLAY=127.0.0.1:99`, `GDK_BACKEND=x11`, and fresh
+  `XDG_CONFIG_HOME`/`XDG_DATA_HOME` scratch directories, so the real
+  `~/.config/loom/session.json` was never touched (confirmed by its
+  unchanged mtime before and after). A scratch project folder
+  (`~/loom-settings-file-verify`, required by the fs plugin's `$HOME/**`
+  scope) held a messy, unformatted `.ts` file and a hidden dotfile/folder.
+  `xdotool` drove clicks, keys, and text entry; `import` (ImageMagick)
+  captured screenshots; both ran via `docker exec` into the same container.
+
+  All nine cases were confirmed across three app launches (a cold start,
+  then two restarts): case 1 (fresh install — Welcome screen, title
+  literally `Loom`); case 2 (*Open Settings* created
+  `$CONFIG/loom/settings.json` with `{"version":1}` and opened it as a tab);
+  case 3 (after a restart with a global `formatOnSave:false`, saving the
+  messy `.ts` file left it byte-for-byte unformatted); case 4 (*Open
+  Workspace Settings* greyed out on the welcome screen, enabled and creating
+  `.loom/settings.json` once a folder was open); case 5 (setting the
+  workspace file's own `formatOnSave:true` and reopening the same folder
+  made the next save reformat the file again, overriding the global
+  `false`); case 6 (the workspace's `showHiddenFiles:true` showed the
+  `.loom` folder and the hidden dotfile immediately after reopening, with
+  the View menu's *Show Hidden Files* checkbox reflecting checked); case 7
+  (a global `titleBarTemplate:"{name} [{app}]"` changed the window title to
+  exactly that, confirmed via `xdotool getwindowname`); case 8 (a global
+  `tabMaxWidthPx:100` visibly truncated tab labels that fit fully at the
+  200px default); and case 9 (a trailing-comma-corrupted global file — the
+  whole document, not just one field, degrading to unusable JSON — started
+  the app normally with no dialog or crash, falling back to the default
+  title template and tab width while the still-valid workspace file's own
+  `formatOnSave`/`showHiddenFiles` kept applying independently). The
+  container, scratch project folder, and scratch `XDG_*`/screenshot
+  directories were all removed afterward.
