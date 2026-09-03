@@ -9,6 +9,9 @@ import type { SessionState } from './session'
 /** The workspace schema's only valid `unit`s — mirrors {@link LayoutSizeUnit}. */
 const VALID_LAYOUT_SIZE_UNITS: readonly LayoutSizeUnit[] = ['px', 'ratio']
 
+/** The per-project settings folder's name, mirroring the app's own product name (`APP_NAME`) the way `.vscode` reads as VS Code's. */
+export const WORKSPACE_DIR_NAME = '.loom'
+
 /** One project's own saved state: the slice of `SessionState` that only makes sense for the project it was captured in — every field except `projectRoot`. */
 export interface WorkspaceState {
     version: 1

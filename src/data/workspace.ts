@@ -4,13 +4,15 @@
 // needs a real Tauri runtime to exercise — see plans/in-progress/
 // code-editor-desktop-app.md's "App behaviour" manual-verify checklist.
 import { open, save } from '@tauri-apps/plugin-dialog'
-import { readDir, readTextFile, writeTextFile, stat, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs'
+import { readDir, readTextFile, writeTextFile, stat, mkdir, exists, watch, BaseDirectory } from '@tauri-apps/plugin-fs'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import type { CloseRequestedEvent } from '@tauri-apps/api/window'
 import { configDir, join } from '@tauri-apps/api/path'
 import { platform } from '@tauri-apps/plugin-os'
 import { joinPath, sortDirEntries } from './paths'
 import { APP_NAME } from '../appIdentity'
+import { WORKSPACE_DIR_NAME } from './workspaceState'
+import { isContentChangeKind } from './watchEvents'
 
 /** One entry in a directory listing, as `FileTree` and `EditorController` consume it. */
 export interface DirectoryItem {
@@ -27,6 +29,12 @@ export interface DirectoryItem {
  */
 const MAX_OPEN_BYTES = 5 * 1024 * 1024
 
+/** How long the native watcher coalesces events before delivering them, in
+ *  milliseconds. Long enough that one editor's save — which arrives as a
+ *  create, a write, and a rename — crosses the IPC bridge once; short enough
+ *  that the tree still feels live. */
+const FS_WATCH_DELAY_MS = 250
+
 /**
  * The app's own subfolder name under Tauri's `$CONFIG` directory — lowercased
  * on Linux to match that platform's own convention (`~/.config/nvim`), left as
@@ -39,9 +47,6 @@ const CONFIG_DIR_NAME = platform() === 'linux' ? APP_NAME.toLowerCase() : APP_NA
 
 /** The session file's name inside {@link CONFIG_DIR_NAME}. */
 const SESSION_FILE_NAME = 'session.json'
-
-/** The per-project settings folder's name, mirroring the app's own product name (`APP_NAME`) the way `.vscode` reads as VS Code's. */
-const WORKSPACE_DIR_NAME = '.loom'
 
 /** The workspace state file's name inside {@link WORKSPACE_DIR_NAME}. */
 const WORKSPACE_STATE_FILE_NAME = 'workspace.json'
@@ -155,6 +160,27 @@ export async function pathExists(path: string): Promise<boolean> {
     } catch {
         return false
     }
+}
+
+/** Stops a watch started by {@link watchDirectory}. */
+export type StopWatching = () => void
+
+/**
+ * Watches `dir` and everything under it, calling `onChange` with the changed
+ * paths. Rejects when the platform or the app's filesystem scope refuses the
+ * watch.
+ *
+ * @param dir - The directory to watch, recursively.
+ * @param onChange - Called with the batch of changed paths the native
+ *   watcher's own debounce coalesced.
+ * @returns A function that stops the watch.
+ */
+export async function watchDirectory(dir: string, onChange: (paths: string[]) => void): Promise<StopWatching> {
+    return watch(dir, event => {
+        if (isContentChangeKind(event.type)) {
+            onChange(event.paths)
+        }
+    }, { recursive: true, delayMs: FS_WATCH_DELAY_MS })
 }
 
 /**
