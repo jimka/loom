@@ -7,11 +7,6 @@ The original plan lives in `typescript-ui`'s
 nothing below has a plan yet.
 
 ## High
-- **Filesystem watching** — the tree does not react to changes made outside
-  the app; there is not even a manual refresh today. A refresh must re-run
-  the tree's hidden/`.gitignore` filter, not just relist; a changed
-  `.gitignore` invalidates the whole subtree below its own directory, not
-  just the directory it sits in.
 - **Temp tabs.** When browsing files (single-click / tree navigation), reuse
   one transient tab instead of opening a new permanent one; a tab becomes
   permanent once the user edits the file or double-clicks it. (The common
@@ -47,7 +42,8 @@ nothing below has a plan yet.
   * Default values for Show-hidden-files and Show-ignored-files
   * What else?
 - Context menu in FileTree to operate on files, create new files and folders
-  etc.
+  etc. Each file operation should finish by calling
+  `FileTree.refreshSubtree(dir)` on the directory it touched.
 
 ## Medium
 
@@ -101,12 +97,7 @@ nothing below has a plan yet.
   `notes.txt` leaves its already-open tab showing the Markdown icon until
   the tab is closed and reopened — the library has no way to re-icon a
   `Tab` in place (see the `Tab.setTabGlyph` item above). The status bar's
-  language updates correctly; the tree, per the Filesystem watching item
-  above, shows no row for `notes.txt` at all until its directory is loaded
-  again — the project is reopened, or, if the directory was never expanded
-  in this session, expanded for the first time. Collapsing and
-  re-expanding an already-loaded directory does not reload it, so the tab
-  icon is stale for longer than the tree row even exists.
+  language updates correctly.
 
 ## Notes
 

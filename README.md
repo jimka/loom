@@ -19,7 +19,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   [`src/fileIcons.ts`](src/fileIcons.ts) for the icon map. Hidden (leading-dot)
   and `.gitignore`-ignored entries are filtered out by default; the View
   menu's **Show Hidden Files** and **Show Ignored Files** toggles bring each
-  class back independently.
+  class back independently. The tree follows changes made outside the app —
+  another editor, a `git checkout`, a build tool — and editing a
+  `.gitignore` re-filters everything below its own directory.
 - **Welcome screen** — shown in place of the tab strip whenever no file is
   open, offering *Open Folder…* and naming the current project once one is.
 - **Tabbed editing** — open several files at once, each tab carrying the
