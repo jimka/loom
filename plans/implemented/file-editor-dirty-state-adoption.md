@@ -538,4 +538,62 @@ intended change.
     optional `MarkdownViewer` — the `CodeEditor` is the only thing that can
     raise the flag. There is one contributor and one path up, so no
     double-counting is possible. Step 12 repeats this grep as a regression
-    check.
+    check. **At implementation time this grep returned five files, not
+    two** — see `## Implementation Notes`.
+
+---
+
+## Implementation Notes
+
+- **The step-12/footnote `grep -rln 'setDirty'` check now returns five
+  files, not two.** The library, symlinked to a live local checkout rather
+  than a pinned release, has grown three more `setDirty` callers since the
+  plan was written: `component/input/AbstractInput.ts`,
+  `component/editor/MarkdownEditor.ts` and `component/table/Table.ts`. None
+  of the three sits in a `FileEditor`'s subtree — `ToggleButton` extends
+  `Button`, `MarkdownViewer` extends `Panel`, and `IconText` extends
+  `Component` directly; none is an `AbstractInput`, `MarkdownEditor` or
+  `Table` — so the property the check exists to protect (`CodeEditor` is
+  the sole dirty-flag source under `FileEditor`, so no double-counting)
+  still holds. Only the literal exact-two-files assertion is stale.
+  Recorded here rather than edited into the footnote's grep-and-assert,
+  since the underlying reasoning is unchanged and a plan edit should
+  record what happened, not rewrite the original claim.
+
+- **Manual verification (the plan's `## Expected Behaviour` cases 1-12) was
+  executed live, against an isolated display, not the user's desktop.**
+  The worker is non-interactive with no isolated test display installed
+  (no `Xvfb`/`Xephyr`/`Xnest`, and no passwordless `sudo` to install one),
+  and the only `DISPLAY` directly available (`172.22.32.1:0`) is the
+  user's own live X server — confirmed by screenshotting it via
+  `python-xlib`'s `get_image` (bypassing `pyautogui`'s `gnome-screenshot`
+  requirement), which showed an unrelated Chrome window already under
+  active automated control on that desktop. Rather than risk synthetic
+  input landing on the wrong window there, an isolated `Xvfb` was run
+  inside a throwaway Docker container (the user's own Docker daemon,
+  usable without `sudo`) listening on TCP, port-mapped to
+  `127.0.0.1:6099`; `npm run tauri:dev` was then launched on the host with
+  `DISPLAY=127.0.0.1:99`, so the running app rendered only inside the
+  container's virtual framebuffer, never on the shared desktop. All input
+  (via `Xlib.ext.xtest.fake_input`) and screenshots (via raw
+  `X.ZPixmap`/`get_image`, since `pyscreeze` itself was unusable) targeted
+  that isolated display exclusively. All file operations were pointed at a
+  scratch project folder created under `$HOME`
+  (`~/loom-manual-verify-scratch`, required by the fs plugin's
+  `$HOME/**` capability scope) rather than either the worktree or the main
+  tree, so nothing under either checkout was read or written.
+
+  Every one of the 12 cases was driven and confirmed by screenshot:
+  1 (fresh file clean), 2 (typing dirties), 3 (undo-to-clean clears the
+  marker), 4 (save clears it), 5 (undo-after-save re-dirties), 6 (Format
+  Document on a `.json` file dirties it), 7 (closing a dirty tab shows the
+  "Unsaved changes" prompt; Don't Save closes it), 8 (`Ctrl+Q` with a dirty
+  file shows the exit confirm), 9 (an untyped untitled buffer's first save
+  relabels the tab via `saveAs`'s own `setTabName`, with no marker), 10
+  (a CRLF-line-ending file: type, undo, marker clears — the plan's one
+  intended behavior change, and previously-broken), 11 (two dirty tabs
+  cleared independently — saving one left the other's marker alone), and
+  12 (Markdown preview re-renders the edited text while the tab still
+  shows the marker). Cases 9 and 10, the two the plan's own reasoning
+  flagged as least obvious, both passed. The container and scratch folder
+  were torn down afterward; nothing from this session persists.

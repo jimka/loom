@@ -35,24 +35,24 @@ export interface FileEditorParams {
     text: string
     /** The open project folder, or `null` when none is open. */
     projectRoot: string | null
-    /** Notified whenever this editor's dirty state changes — including a `markClean` after save. */
-    onDirtyChange: (file: FileEditor) => void
 }
 
 /**
  * One open file: a breadcrumb band NORTH of a `CodeEditor`, stacked via a
- * `Border` layout, plus the file's path and dirty flag. `EditorController`
- * addresses `Tab` operations (`setTabName`, `closeTab`, `getActiveContent`)
- * through this wrapper, never the bare editor.
+ * `Border` layout, plus the file's path. `EditorController` addresses `Tab`
+ * operations (`setTabName`, `closeTab`, `getActiveContent`) through this
+ * wrapper, never the bare editor.
+ *
+ * The dirty flag is the wrapped `CodeEditor`'s own — it is not tracked here.
+ * `Component`'s parent-to-child relay folds the editor's flag up through
+ * `_body` into this component's inherited `isDirty()`, so `FileEditor` does
+ * not declare an `isDirty()` override.
  */
 class FileEditor extends Container {
     private _path: string | null
     private _name: string
-    private _dirty = false
-    private _cleanText: string
     private readonly _editor: CodeEditor
     private readonly _breadcrumbs: FileBreadcrumbs
-    private readonly _onDirtyChange: (file: FileEditor) => void
     private readonly _body: Container
     private readonly _card: Card
     private readonly _previewToggle: ToggleButton
@@ -84,10 +84,8 @@ class FileEditor extends Container {
 
         this._path = params.path
         this._name = params.name
-        this._cleanText = params.text
         this._editor = editor
         this._breadcrumbs = breadcrumbs
-        this._onDirtyChange = params.onDirtyChange
         this._body = body
         this._card = card
         this._previewToggle = previewToggle
@@ -97,30 +95,11 @@ class FileEditor extends Container {
         this.syncPreviewAvailability()
     }
 
-    /**
-     * The wrapped editor's `"change"` handler — re-syncs the dirty flag, then
-     * arms a debounced preview refresh if the preview page is showing.
-     */
+    /** The wrapped editor's `"change"` handler — arms a debounced preview refresh
+     *  if the preview page is showing. The dirty flag is the editor's own now, so
+     *  nothing here touches it. */
     private handleChange = (): void => {
-        this.syncDirty()
         this.schedulePreviewRefresh()
-    }
-
-    /**
-     * Dirties the file whenever its text no longer matches the
-     * last-loaded-or-saved snapshot, and clears the flag again if an edit
-     * brings it back to exactly that snapshot (e.g. an undo, or manually
-     * retyping what was removed).
-     */
-    private syncDirty(): void {
-        const dirty = this._editor.getValue() !== this._cleanText
-
-        if (dirty === this._dirty) {
-            return
-        }
-
-        this._dirty = dirty
-        this._onDirtyChange(this)
     }
 
     // An arrow-function field, not a method: passed as a bare `this.handler`
@@ -244,26 +223,24 @@ class FileEditor extends Container {
         return this._editor
     }
 
-    /** Whether the document has unsaved changes. */
-    isDirty(): boolean {
-        return this._dirty
-    }
-
     /** Whether Save would do anything: the document is dirty, or has no path yet. */
     needsSave(): boolean {
-        return this._dirty || this._path === null
+        return this.isDirty() || this._path === null
     }
 
-    /** Clears the dirty flag (after a successful save) and notifies the owner. */
+    /**
+     * Accepts the editor's current document as clean, after a successful save.
+     * Clearing the wrapped editor's own flag clears this component's `isDirty()`
+     * through the framework's parent-to-child relay, which is what notifies the
+     * owner.
+     */
     markClean(): void {
-        this._cleanText = this._editor.getValue()
-        this._dirty = false
-        this._onDirtyChange(this)
+        this._editor.markClean()
     }
 
     /** The tab label: the file's display name, with `" •"` appended while dirty. */
     getLabel(): string {
-        return this._dirty ? `${this._name} •` : this._name
+        return this.isDirty() ? `${this._name} •` : this._name
     }
 
     /**

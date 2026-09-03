@@ -6,23 +6,6 @@ The original plan lives in `typescript-ui`'s
 [`plans/implemented/code-editor-desktop-app.md`](../typescript-ui/plans/implemented/code-editor-desktop-app.md) —
 nothing below has a plan yet.
 
-## High
-
-- **Library `component-dirty-state` support** — a generic dirty-flag
-  propagation mechanism on `Component` itself, so a parent can expose "a
-  descendant has unsaved changes" without every consumer hand-rolling it the
-  way `FileEditor`/`EditorController` currently do. Implemented upstream in
-  `typescript-ui` (`Component.isDirty()`/`setDirty()`/`onDirtyChange()` plus
-  an automatic parent-relay), but only on the unmerged `feature/component-
-  dirty-state` branch — `typescript-ui`'s `master` doesn't have it yet. A
-  follow-on plan, `plans/code-editor-dirty-state-adoption.md`, is in
-  progress on its own stacked branch to wire it into `CodeEditor` itself.
-  Loom depends on `@jimka/typescript-ui` via a plain npm semver range
-  (`^0.8.0`), not a workspace link, so none of this reaches Loom until it's
-  released and Loom upgrades — and `FileEditor`/`EditorController` would
-  still need their own adoption pass to drop the hand-rolled `_dirty` flag
-  in favor of it.
-
 ## Medium
 
 - **Opening dotfiles in a workspace outside `$HOME`/`$CONFIG`.** Fixed for
