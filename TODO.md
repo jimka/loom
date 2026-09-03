@@ -6,8 +6,29 @@ The original plan lives in `typescript-ui`'s
 [`plans/implemented/code-editor-desktop-app.md`](../typescript-ui/plans/implemented/code-editor-desktop-app.md) —
 nothing below has a plan yet.
 
-## Medium
-
+## High
+- **Filesystem watching** — the tree does not react to changes made outside
+  the app; there is not even a manual refresh today. A refresh must re-run
+  the tree's hidden/`.gitignore` filter, not just relist; a changed
+  `.gitignore` invalidates the whole subtree below its own directory, not
+  just the directory it sits in.
+- **Temp tabs.** When browsing files (single-click / tree navigation), reuse
+  one transient tab instead of opening a new permanent one; a tab becomes
+  permanent once the user edits the file or double-clicks it. (The common
+  "preview tab" pattern.)
+- **Commmand palette / fuzzy file finder (Ctrl+P)** — distinct from cross-file
+  content search, above: this is file-name navigation, not content search.
+  We should add ability to execute commands from here as well. What commands
+  make sense to start with? Which could we add?
+- **Format-on-save.** `CodeEditor.format()` is already exposed and wired to
+  a manual *Format* menu action; running it automatically before write is
+  the natural follow-on.
+- **Drag-and-drop to open** a file or folder onto the window.
+- **Library `Tab.setTabGlyph` / `TabBar.setEntryGlyph`.** Neither exists
+  today — `Tab` has `setTabName` but no glyph counterpart, and the
+  `TabButton` that owns the icon is built once from the `glyph` option
+  passed to `addTab`. Without it, a *Save As* that changes a file's
+  extension cannot re-icon its already-open tab.
 - **Opening dotfiles in a workspace outside `$HOME`/`$CONFIG`.** Fixed for
   the common case by `plugins.fs.requireLiteralLeadingDot: false` in
   `src-tauri/tauri.conf.json` (see commit `ed29f86`): the capability-
@@ -19,6 +40,17 @@ nothing below has a plan yet.
   Unix default and never reads this config value, so a workspace opened
   from entirely outside `$HOME`/`$CONFIG` would still have its dotfiles
   blocked.
+- Transition hard-coded settings to a settings file (both global and per-session)
+  What settings should we move?
+  * Title bar template
+  * Format-on-save
+  * Default values for Show-hidden-files and Show-ignored-files
+  * What else?
+- Context menu in FileTree to operate on files, create new files and folders
+  etc.
+
+## Medium
+
 - **Split-pane multi-file editing.** `Dock` is the natural upgrade path if
   wanted later — it composes `Split` and `Tab` already, at the cost of
   tear-off windows, a panel registry, and `DockRegion` drop targets that
@@ -26,35 +58,6 @@ nothing below has a plan yet.
 - **IntelliSense / LSP** or any language service.
 - **In-file or cross-file search.**
 - **Git integration**, including a dirty-vs-committed indicator in the tree.
-- **Filesystem watching** — the tree does not react to changes made outside
-  the app; there is not even a manual refresh today. A refresh must re-run
-  the tree's hidden/`.gitignore` filter, not just relist; a changed
-  `.gitignore` invalidates the whole subtree below its own directory, not
-  just the directory it sits in.
-- **Temp tabs.** When browsing files (single-click / tree navigation), reuse
-  one transient tab instead of opening a new permanent one; a tab becomes
-  permanent once the user edits the file or double-clicks it. (The common
-  "preview tab" pattern.)
-- **Reselect tab when reselecting a file in the tree.** Re-clicking a tree
-  row that's already the sole selection does nothing today — the library's
-  `Tree` only emits `"selection"` on a change to the selected-node set, not
-  on a same-selection re-click. This is already called out as a known
-  limitation in the implementation plan's `## Implementation Notes`, which
-  found `"dblclick"` doesn't close the gap either (fires on double-click, not
-  the single click this needs). Likely does need a library change: a
-  click-level `Tree` event distinct from selection-level, or a deliberately
-  scoped exception to reach past `Tree`'s own event surface.
-- **Quick-open / fuzzy file finder (Ctrl+P)** — distinct from cross-file
-  content search, above: this is file-name navigation, not content search.
-- **Format-on-save.** `CodeEditor.format()` is already exposed and wired to
-  a manual *Format* menu action; running it automatically before write is
-  the natural follow-on.
-- **Drag-and-drop to open** a file or folder onto the window.
-- **Library `Tab.setTabGlyph` / `TabBar.setEntryGlyph`.** Neither exists
-  today — `Tab` has `setTabName` but no glyph counterpart, and the
-  `TabButton` that owns the icon is built once from the `glyph` option
-  passed to `addTab`. Without it, a *Save As* that changes a file's
-  extension cannot re-icon its already-open tab.
 
 ## Low
 
