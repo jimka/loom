@@ -7,10 +7,11 @@ The original plan lives in `typescript-ui`'s
 nothing below has a plan yet.
 
 ## High
+
 - **Library `Tab.setTabGlyph` / `TabBar.setEntryGlyph`.** Neither exists
   today — `Tab` has `setTabName` but no glyph counterpart, and the
   `TabButton` that owns the icon is built once from the `glyph` option
-  passed to `addTab`. Without it, a *Save As* that changes a file's
+  passed to `addTab`. Without it, a _Save As_ that changes a file's
   extension cannot re-icon its already-open tab.
 - **Library `List` row-level enabled/disabled state.** `AbstractSelectableList`
   has no per-row disabled flag, only the whole list's `enabled`/`readOnly`, so
@@ -30,6 +31,36 @@ nothing below has a plan yet.
   Unix default and never reads this config value, so a workspace opened
   from entirely outside `$HOME`/`$CONFIG` would still have its dotfiles
   blocked.
+- **Double-clicking a temp tab should pin it.** Today the only way to
+  promote the strip's one temp tab to permanent is double-clicking the file
+  in the tree, editing its content, or _Save As_ — double-clicking the tab
+  itself in the strip does nothing special. VS Code's preview tabs pin the
+  same way; `EditorController.pinTab` already exists, it just isn't wired to
+  a tab-strip double-click yet.
+- **Refresh an open file when it changes on disk.** `FileTree`'s filesystem
+  watcher (`FileTree.refreshSubtree`) only updates the tree — it never
+  touches an already-open `FileEditor`'s buffer. Two related gaps: a file
+  edited externally while it's the _active_ tab should reload live, and
+  switching to a tab whose file changed while unfocused should reload at
+  that point too. Needs a real design decision for the conflict case first —
+  an externally-changed file with unsaved local edits can't just silently
+  overwrite either side.
+- **Configurable formatting style.** `formatOnSave`/_Format Document_ only
+  toggle _whether_ `CodeEditor.format()` runs — there's no control over
+  _how_ it formats (indent width, quote style, line length, and so on).
+  Needs research into what each per-language formatter `CodeEditor` wraps
+  (JS/TS, JSON, HTML, SQL, Markdown) actually accepts as options, then
+  surfacing whatever's available through the settings file.
+- **Right clicking on empty space in FileTree** should show a context menu
+  with options for creating a new file or folder, at the root of the
+  workspace.
+- **When typing in the command palette** I can't directly press enter to
+  activate the first item. However, when I press down, the second item is
+  selected. If I then press up again, I can then select the first row.
+  This seems like a bug in the List component, or is it a behaviour in Loom?
+- **Saving a file that I'm currently editing**, reloads the entire file and
+  moves the scrollbar to the top, loosing the current work state.
+- **In-file or cross-file search.**
 
 ## Medium
 
@@ -38,7 +69,6 @@ nothing below has a plan yet.
   tear-off windows, a panel registry, and `DockRegion` drop targets that
   phase one deliberately avoided.
 - **IntelliSense / LSP** or any language service.
-- **In-file or cross-file search.**
 - **Git integration**, including a dirty-vs-committed indicator in the tree.
 
 ## Low
@@ -79,7 +109,7 @@ nothing below has a plan yet.
   ruling out a code-level cause. WebKitGTK has a known history of not
   repainting the cursor promptly (or at all) on script-driven style changes.
   No fix planned; recorded so it isn't mistaken for a regression later.
-- **Stale tab icon after a cross-type *Save As*.** Saving `notes.md` as
+- **Stale tab icon after a cross-type _Save As_.** Saving `notes.md` as
   `notes.txt` leaves its already-open tab showing the Markdown icon until
   the tab is closed and reopened — the library has no way to re-icon a
   `Tab` in place (see the `Tab.setTabGlyph` item above). The status bar's
