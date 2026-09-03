@@ -23,6 +23,9 @@ const TAB_MAX_WIDTH = 200
 /** How long the "Saved <name>" status message stays up, in milliseconds — long enough to notice, short enough not to linger. */
 const SAVE_MESSAGE_DURATION_MS = 2000
 
+/** How an {@link EditorController.openFile} request should treat the tab it lands in. */
+export type OpenMode = 'temporary' | 'permanent'
+
 /**
  * Owns the tab strip, the status bar, the open-file registry, and every
  * editor command (open/save/close/format). Holds no UI arrangement of its
@@ -34,6 +37,14 @@ class EditorController {
     readonly statusBar: StatusBar
 
     private readonly _openFiles: FileEditor[] = []
+    /**
+     * Paths whose disk read is in flight, mapped to the mode their tab will get.
+     * A second request for the same path joins the entry instead of starting a
+     * second read, and a `'permanent'` request upgrades a `'temporary'` one — so
+     * the tree's click-then-double-click pair produces exactly one, pinned, tab
+     * however the read and the double-click interleave.
+     */
+    private readonly _pendingOpens: Map<string, OpenMode> = new Map()
     private readonly _languageText: Text
     private _recentProjects: string[] = []
     private _recentFiles: string[] = []
@@ -259,36 +270,78 @@ class EditorController {
      * Opens `path` — activating its existing tab if already open, otherwise
      * reading it from disk and adding a new one. A read that fails (missing
      * file, over the size limit, not valid text) shows a `Dialog.error` and
-     * opens nothing.
+     * opens nothing. `mode` says which kind of tab the caller wants:
+     * `'temporary'` recycles the strip's one temp tab, `'permanent'` gets a
+     * tab of its own; defaults to `'permanent'`. A repeat call for a path
+     * already being read joins the first call rather than starting a second
+     * read, and a `'permanent'` request upgrades a `'temporary'` one already
+     * in flight for the same path. A `'permanent'` open also moves keyboard
+     * focus into the file's editor, ready to type; `'temporary'` leaves focus
+     * wherever it was, since that mode exists for browsing without leaving
+     * the caller (the tree, the command palette's query field).
      *
      * @param path - The file to open.
+     * @param mode - Which kind of tab to open it in.
      */
-    async openFile(path: string): Promise<void> {
+    async openFile(path: string, mode: OpenMode = 'permanent'): Promise<void> {
         const existing = this._openFiles.find(candidate => candidate.getPath() === path)
 
         if (existing) {
-            this.recordRecentFile(path)
+            if (mode === 'permanent') {
+                this.recordRecentFile(path)
+                this.pinTab(existing)
+            }
+
             this.tabs.getTab().setActiveContent(existing)
+
+            if (mode === 'permanent') {
+                existing.getEditor().focus()
+            }
 
             return
         }
+
+        const pending = this._pendingOpens.get(path)
+
+        if (pending !== undefined) {
+            if (mode === 'permanent') {
+                this._pendingOpens.set(path, 'permanent')
+            }
+
+            return
+        }
+
+        this._pendingOpens.set(path, mode)
 
         let text: string
 
         try {
             text = await readFileText(path)
         } catch (error) {
+            this._pendingOpens.delete(path)
             await Dialog.error('Could not open file', messageOf(error))
 
             return
         }
 
-        this.recordRecentFile(path)
+        const settled = this._pendingOpens.get(path) ?? mode
 
-        const file = this.addFileTab(path, text)
+        this._pendingOpens.delete(path)
+
+        if (settled === 'temporary') {
+            this.closeTemporaryTab()
+        } else {
+            this.recordRecentFile(path)
+        }
+
+        const file = this.addFileTab(path, text, settled === 'temporary')
 
         this.tabs.getTab().setActiveContent(file)
         this.syncActive()
+
+        if (settled === 'permanent') {
+            file.getEditor().focus()
+        }
     }
 
     /**
@@ -299,11 +352,13 @@ class EditorController {
      *
      * @param path - The file's path.
      * @param text - The file's already-read contents.
+     * @param temporary - Whether the new tab is the strip's temp tab.
      * @returns The new tab's `FileEditor`.
      */
-    private addFileTab(path: string, text: string): FileEditor {
+    private addFileTab(path: string, text: string, temporary: boolean = false): FileEditor {
         const file = FileEditor({ path, name: baseName(path), text, projectRoot: this._projectRoot })
 
+        file.setTemporary(temporary)
         file.onDirtyChange(() => this.handleDirtyChange(file))
         this.tabs.addTab(file, file.getLabel(), { closeable: true, glyph: glyphNameForPath(path) })
         this._openFiles.push(file)
@@ -427,6 +482,7 @@ class EditorController {
 
         file.setPath(target)
         file.markClean()
+        this.pinTab(file)
         this.recordRecentFile(target)
         this.tabs.getTab().setTabName(file, file.getLabel())
         this.statusBar.setMessage(`Saved ${file.getLabel()}`, SAVE_MESSAGE_DURATION_MS)
@@ -532,8 +588,52 @@ class EditorController {
         return content ? (content as FileEditor) : null
     }
 
-    /** Registered as a `Component` dirty-state listener on each open file: relabels its tab and resyncs the title/status bar. */
+    /**
+     * Pins `file`'s tab, so a later temporary open leaves it alone, and records it
+     * in the recent-files list — reaching this point means the user did something
+     * deliberate with the file. A no-op on an already-pinned tab.
+     *
+     * @param file - The open file whose tab to pin.
+     */
+    private pinTab(file: FileEditor): void {
+        if (!file.isTemporary()) {
+            return
+        }
+
+        const path = file.getPath()
+
+        file.setTemporary(false)
+
+        if (path !== null) {
+            this.recordRecentFile(path)
+        }
+
+        this.tabs.getTab().setTabName(file, file.getLabel())
+    }
+
+    /**
+     * Closes the temp tab, if the strip has one. `Tab.closeTab` is the unguarded
+     * programmatic path, which is safe here precisely because a temp tab is always
+     * clean — the first edit pins it — so there is never anything to prompt about.
+     */
+    private closeTemporaryTab(): void {
+        const temporary = this._openFiles.find(file => file.isTemporary())
+
+        if (temporary) {
+            this.tabs.getTab().closeTab(temporary)
+        }
+    }
+
+    /**
+     * Registered as a `Component` dirty-state listener on each open file:
+     * pins the file's tab on its first edit, then relabels the tab and
+     * resyncs the title/status bar.
+     */
     private handleDirtyChange = (file: FileEditor): void => {
+        if (file.isDirty()) {
+            this.pinTab(file)
+        }
+
         this.tabs.getTab().setTabName(file, file.getLabel())
         this.syncActive()
     }

@@ -27,7 +27,9 @@ interface FileTreeNodeData {
 
 /** Constructor parameters for {@link FileTree}. */
 export interface FileTreeParams {
-    /** Invoked with a file's path when a file row (not a directory) is selected. */
+    /** Invoked with a file's path when a file row is selected — a single click or an arrow-key move. */
+    onSelectFile: (path: string) => void
+    /** Invoked with a file's path when a file row is double-clicked. */
     onOpenFile: (path: string) => void
 }
 
@@ -36,6 +38,7 @@ export interface FileTreeParams {
  * expansion — nothing is read ahead of what the user opens.
  */
 class FileTree extends Tree {
+    private readonly _onSelectFile: (path: string) => void
     private readonly _onOpenFile: (path: string) => void
     private _root: string | null = null
     private _rootChain: IgnoreChain = EMPTY_IGNORE_CHAIN
@@ -56,6 +59,7 @@ class FileTree extends Tree {
             preferredSize: { width: 300, height: 0 },
         })
 
+        this._onSelectFile = params.onSelectFile
         this._onOpenFile = params.onOpenFile
 
         this.setRendererFactory(() => new IconLabelTreeNodeRenderer(
@@ -67,11 +71,21 @@ class FileTree extends Tree {
         ))
 
         this.on('selection', this.handleSelection)
+        this.on('dblclick', this.handleDblClick)
     }
 
-    /** Opens the selected node's file; a directory selection opens nothing. */
+    /** `"selection"`: browses the selected node's file in the temp tab; a directory selection opens nothing. */
     private handleSelection = (nodes: TreeNode[]): void => {
         const data = nodes[0]?.data as FileTreeNodeData | undefined
+
+        if (data && !data.isDir) {
+            this._onSelectFile(data.path)
+        }
+    }
+
+    /** `"dblclick"`: opens the node's file for keeps; a directory double-click opens nothing. */
+    private handleDblClick = (node: TreeNode): void => {
+        const data = node.data as FileTreeNodeData | undefined
 
         if (data && !data.isDir) {
             this._onOpenFile(data.path)
