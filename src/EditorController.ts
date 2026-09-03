@@ -6,16 +6,12 @@ import type { TabCloseController } from '@jimka/typescript-ui/layout'
 import { FileEditor } from './editor/FileEditor'
 import { languageForPath, hasFormatter } from './editor/languages'
 import { glyphNameForPath } from './fileIcons'
-import { baseName, joinPath, isUnderRoot } from './data/paths'
+import { baseName, joinPath, isUnderRoot, relocatePath } from './data/paths'
 import { readFileText, writeFileText, pickProjectFolder, pickSaveTarget, setWindowTitle, closeWindow, onCloseRequested } from './data/workspace'
 import { promptUnsavedChanges } from './shell/unsavedPrompt'
 import { APP_NAME } from './appIdentity'
 import { withRecent } from './data/session'
-
-/** Turns a caught value into a display-safe message for a `Dialog.error` call. */
-function messageOf(error: unknown): string {
-    return error instanceof Error ? error.message : String(error)
-}
+import { messageOf } from './errors'
 
 /** Per-tab width cap for the "content" width mode — long enough for most file names, short enough that several tabs still fit the strip. */
 const TAB_MAX_WIDTH = 200
@@ -180,6 +176,48 @@ class EditorController {
             .sort((a, b) => tab.indexOfContent(a) - tab.indexOfContent(b))
             .map(file => file.getPath())
             .filter((path): path is string => path !== null)
+    }
+
+    /**
+     * Closes every open tab whose file is `path` itself or lies under it —
+     * called after the tree deletes a file or folder. No unsaved-changes
+     * prompt: the delete was already confirmed, and the file no longer
+     * exists to save back to.
+     *
+     * @param path - The deleted file or folder's path.
+     */
+    closeFilesUnder(path: string): void {
+        const affected = this._openFiles.filter(file => {
+            const filePath = file.getPath()
+
+            return filePath !== null && isUnderRoot(path, filePath)
+        })
+
+        for (const file of affected) {
+            this.tabs.getTab().closeTab(file)
+        }
+    }
+
+    /**
+     * Repoints every open tab under `oldPath` (inclusive) onto its new
+     * location after the tree renames a file or folder. Keeps each buffer's
+     * content and dirty state; only the tracked path, tab label, and (where
+     * the tab strip supports it) icon change.
+     *
+     * @param oldPath - The renamed entry's previous path.
+     * @param newPath - The renamed entry's new path.
+     */
+    relocateOpenFiles(oldPath: string, newPath: string): void {
+        for (const file of this._openFiles) {
+            const filePath = file.getPath()
+
+            if (filePath !== null && isUnderRoot(oldPath, filePath)) {
+                file.setPath(relocatePath(filePath, oldPath, newPath))
+                this.tabs.getTab().setTabName(file, file.getLabel())
+            }
+        }
+
+        this.syncActive()
     }
 
     /**

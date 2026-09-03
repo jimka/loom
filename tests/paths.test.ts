@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { baseName, extensionOf, joinPath, sortDirEntries, isUnderRoot, projectName, pathSegments, relativeTo, parentDir, relativePath } from '../src/data/paths'
+import {
+    baseName, extensionOf, joinPath, sortDirEntries, isUnderRoot, projectName, pathSegments, relativeTo, parentDir,
+    relativePath, isValidEntryName, relocatePath,
+} from '../src/data/paths'
 
 describe('baseName', () => {
     it('takes the last segment of a forward-slash path', () => {
@@ -222,5 +225,45 @@ describe('relativePath', () => {
 
     it('returns null for the parent plus a bare trailing separator, same as the parent itself', () => {
         expect(relativePath('/p', '/p/')).toBeNull()
+    })
+})
+
+describe('isValidEntryName', () => {
+    it('accepts an ordinary name', () => {
+        expect(isValidEntryName('notes.md')).toBe(true)
+    })
+
+    it('rejects an empty name', () => {
+        expect(isValidEntryName('')).toBe(false)
+    })
+
+    it('rejects a whitespace-only name', () => {
+        expect(isValidEntryName('   ')).toBe(false)
+    })
+
+    it('rejects a name containing a forward slash', () => {
+        expect(isValidEntryName('a/b')).toBe(false)
+    })
+
+    it('rejects a name containing a backslash', () => {
+        expect(isValidEntryName('a\\b')).toBe(false)
+    })
+
+    it('accepts a name with surrounding whitespace, trimmed before the check', () => {
+        expect(isValidEntryName('  notes.md  ')).toBe(true)
+    })
+})
+
+describe('relocatePath', () => {
+    it('rewrites the renamed entry itself onto the new directory', () => {
+        expect(relocatePath('/p/old', '/p/old', '/p/new')).toBe('/p/new')
+    })
+
+    it('rewrites a file directly under a renamed directory', () => {
+        expect(relocatePath('/p/old/a.ts', '/p/old', '/p/new')).toBe('/p/new/a.ts')
+    })
+
+    it('rewrites a nested descendant under a renamed directory', () => {
+        expect(relocatePath('/p/old/sub/a.ts', '/p/old', '/p/new')).toBe('/p/new/sub/a.ts')
     })
 })

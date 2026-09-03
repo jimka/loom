@@ -2,10 +2,13 @@ import { Body } from '@jimka/typescript-ui/core'
 import { Fit } from '@jimka/typescript-ui/layout'
 import { Glyph } from '@jimka/typescript-ui/component/display'
 import { folder } from '@jimka/typescript-ui/glyphs/solid/folder'
+import { folder_plus } from '@jimka/typescript-ui/glyphs/solid/folder_plus'
 import { file_circle_plus } from '@jimka/typescript-ui/glyphs/solid/file_circle_plus'
 import { floppy_disk } from '@jimka/typescript-ui/glyphs/solid/floppy_disk'
 import { times } from '@jimka/typescript-ui/glyphs/solid/times'
 import { pen_to_square } from '@jimka/typescript-ui/glyphs/solid/pen_to_square'
+import { trash } from '@jimka/typescript-ui/glyphs/solid/trash'
+import { copy } from '@jimka/typescript-ui/glyphs/solid/copy'
 import { eye } from '@jimka/typescript-ui/glyphs/solid/eye'
 import { bars } from '@jimka/typescript-ui/glyphs/solid/bars'
 import { code } from '@jimka/typescript-ui/glyphs/solid/code'
@@ -21,7 +24,10 @@ import { applyWorkspaceOverlay } from './data/workspaceState'
 // Every glyph the shell, the tree, and the unsaved-changes prompt reference
 // by name, plus the per-file-type set from fileIcons.ts, registered once
 // here at the composition root.
-Glyph.register(folder, file_circle_plus, floppy_disk, times, pen_to_square, eye, bars, code, right_from_bracket, clock_rotate_left, ...FILE_ICON_GLYPHS)
+Glyph.register(
+    folder, folder_plus, file_circle_plus, floppy_disk, times, pen_to_square, trash, copy, eye, bars, code,
+    right_from_bracket, clock_rotate_left, ...FILE_ICON_GLYPHS,
+)
 
 Body.init({ layoutManager: Fit(), favicon: APP_FAVICON })
 

@@ -1,16 +1,22 @@
-import { callable } from '@jimka/typescript-ui/core'
+import { callable, Event } from '@jimka/typescript-ui/core'
 import { Tree, IconLabelTreeNodeRenderer } from '@jimka/typescript-ui/component/tree'
 import type { TreeNode } from '@jimka/typescript-ui/component/tree'
-import { listDirectory, tryReadTextFile, pathExists, watchDirectory } from '../data/workspace'
+import { Menu, Notification, Dialog } from '@jimka/typescript-ui/overlay'
+import type { MenuItemConfig } from '@jimka/typescript-ui/component/container'
+import {
+    listDirectory, tryReadTextFile, pathExists, watchDirectory, writeFileText, createDirectory, renamePath, removePath,
+} from '../data/workspace'
 import type { DirectoryItem, StopWatching } from '../data/workspace'
 import { expansionOrder } from '../data/session'
 import { refreshTargets, minimalRoots } from '../data/watchEvents'
 import { glyphNameForPath } from '../fileIcons'
-import { joinPath } from '../data/paths'
+import { joinPath, parentDir } from '../data/paths'
 import {
     GITIGNORE_NAME, EMPTY_IGNORE_CHAIN, isHiddenName, extendIgnoreChain, isIgnoredByChain, buildRootIgnoreChain,
 } from '../data/gitignore'
 import type { IgnoreChain } from '../data/gitignore'
+import { messageOf } from '../errors'
+import { promptNewEntryName, promptRenameName, confirmDelete } from './fileTreePrompts'
 
 /** How long changed paths accumulate before the tree refreshes, in
  *  milliseconds. Batches the several messages one native flush still delivers
@@ -31,6 +37,10 @@ export interface FileTreeParams {
     onSelectFile: (path: string) => void
     /** Invoked with a file's path when a file row is double-clicked. */
     onOpenFile: (path: string) => void
+    /** Called after the tree deletes a file or folder, with its path. */
+    onPathDeleted: (path: string) => void
+    /** Called after the tree renames a file or folder, with its old and new paths. */
+    onPathRenamed: (oldPath: string, newPath: string) => void
 }
 
 /**
@@ -40,6 +50,9 @@ export interface FileTreeParams {
 class FileTree extends Tree {
     private readonly _onSelectFile: (path: string) => void
     private readonly _onOpenFile: (path: string) => void
+    private readonly _onPathDeleted: (path: string) => void
+    private readonly _onPathRenamed: (oldPath: string, newPath: string) => void
+    private readonly _menu = Menu()
     private _root: string | null = null
     private _rootChain: IgnoreChain = EMPTY_IGNORE_CHAIN
     private _showHidden = false
@@ -61,6 +74,8 @@ class FileTree extends Tree {
 
         this._onSelectFile = params.onSelectFile
         this._onOpenFile = params.onOpenFile
+        this._onPathDeleted = params.onPathDeleted
+        this._onPathRenamed = params.onPathRenamed
 
         this.setRendererFactory(() => new IconLabelTreeNodeRenderer(
             node => {
@@ -72,6 +87,8 @@ class FileTree extends Tree {
 
         this.on('selection', this.handleSelection)
         this.on('dblclick', this.handleDblClick)
+        this.on('contextmenu', this.handleNodeContextMenu)
+        Event.addSubtreeListener(this, 'contextmenu', this.handleBackgroundContextMenu)
     }
 
     /** `"selection"`: browses the selected node's file in the temp tab; a directory selection opens nothing. */
@@ -89,6 +106,187 @@ class FileTree extends Tree {
 
         if (data && !data.isDir) {
             this._onOpenFile(data.path)
+        }
+    }
+
+    /** `Tree`'s own `"contextmenu"` event: fires only when a row is right-clicked, with that row's node already resolved. */
+    private handleNodeContextMenu = (node: TreeNode, event: MouseEvent): void => {
+        const data = node.data as FileTreeNodeData
+        const items = data.isDir ? this.buildDirectoryMenuItems(data.path) : this.buildFileMenuItems(data.path)
+
+        this._menu.show(event.clientX, event.clientY, items)
+    }
+
+    /**
+     * Raw `contextmenu` listener that fires for every right-click inside the
+     * tree, row hits included. `Tree`'s own row-matching listener is
+     * registered lazily, from `Tree.init()` on first render, while this one
+     * registers eagerly in the constructor — so this entry is always the
+     * *earlier* of the two in `Event`'s shared per-`(this, 'contextmenu')`
+     * dispatch list, not the later one (see the Implementation Notes
+     * superseding this plan's `^context-menu-dispatch` footnote). Checking
+     * `event.defaultPrevented` synchronously would therefore always see
+     * `false`, row hits included. Deferring the check to a microtask fixes
+     * that: microtasks drain only after the whole synchronous dispatch for
+     * this event — every listener, `Tree`'s row-matching handler included —
+     * has already run, so `event.defaultPrevented` is reliably settled by
+     * the time this reads it, regardless of registration order.
+     */
+    private handleBackgroundContextMenu = (event: MouseEvent): void => {
+        queueMicrotask(() => {
+            if (event.defaultPrevented || this._root === null) {
+                return
+            }
+
+            this._menu.show(event.clientX, event.clientY, this.buildRootMenuItems(this._root))
+        })
+    }
+
+    /** A file row's menu: rename, delete, and copy its path. */
+    private buildFileMenuItems(path: string): MenuItemConfig[] {
+        return [
+            { text: 'Rename', glyph: 'pen-to-square', action: () => { void this.renameEntry(path, false) } },
+            { text: 'Delete', glyph: 'trash', action: () => { void this.deleteEntry(path, false) } },
+            { separator: true },
+            { text: 'Copy Path', glyph: 'copy', action: () => { void this.copyPath(path) } },
+        ]
+    }
+
+    /** A directory row's menu: create inside it, then rename, delete, and copy its own path. */
+    private buildDirectoryMenuItems(path: string): MenuItemConfig[] {
+        return [
+            { text: 'New File', glyph: 'file-circle-plus', action: () => { void this.createFile(path) } },
+            { text: 'New Folder', glyph: 'folder-plus', action: () => { void this.createFolder(path) } },
+            { separator: true },
+            { text: 'Rename', glyph: 'pen-to-square', action: () => { void this.renameEntry(path, true) } },
+            { text: 'Delete', glyph: 'trash', action: () => { void this.deleteEntry(path, true) } },
+            { separator: true },
+            { text: 'Copy Path', glyph: 'copy', action: () => { void this.copyPath(path) } },
+        ]
+    }
+
+    /** Empty tree space's menu: create at the workspace root. */
+    private buildRootMenuItems(root: string): MenuItemConfig[] {
+        return [
+            { text: 'New File', glyph: 'file-circle-plus', action: () => { void this.createFile(root) } },
+            { text: 'New Folder', glyph: 'folder-plus', action: () => { void this.createFolder(root) } },
+        ]
+    }
+
+    /**
+     * Prompts for a new file's name inside `dir`, creates it, and opens it.
+     * `selectPath` reveals it even when `dir` was collapsed or never loaded:
+     * `refreshSubtree` is then a no-op (see `## Architecture Decisions`), but
+     * `selectPath`'s own existing fallback — already used to sync the tree to
+     * the active tab — expands and loads whatever is needed to find the new
+     * path, so no separate "expand the directory" step is needed here.
+     *
+     * @param dir - The directory to create the new file inside.
+     */
+    private async createFile(dir: string): Promise<void> {
+        const path = await promptNewEntryName(dir, 'file')
+
+        if (path === null) {
+            return
+        }
+
+        try {
+            await writeFileText(path, '')
+        } catch (error) {
+            await Dialog.error('Could not create file', messageOf(error))
+
+            return
+        }
+
+        await this.refreshSubtree(dir)
+        await this.selectPath(path)
+        this._onOpenFile(path)
+    }
+
+    /**
+     * Prompts for a new folder's name inside `dir` and creates it. Mirrors
+     * {@link createFile} but does not open a tab for the result.
+     *
+     * @param dir - The directory to create the new folder inside.
+     */
+    private async createFolder(dir: string): Promise<void> {
+        const path = await promptNewEntryName(dir, 'folder')
+
+        if (path === null) {
+            return
+        }
+
+        try {
+            await createDirectory(path)
+        } catch (error) {
+            await Dialog.error('Could not create folder', messageOf(error))
+
+            return
+        }
+
+        await this.refreshSubtree(dir)
+        await this.selectPath(path)
+    }
+
+    /** Prompts for `path`'s new name, renames it on disk, relocates any open tab under it, and refreshes/reselects the tree.
+     *
+     * @param path - The file or folder to rename.
+     * @param isDir - Whether `path` is a directory.
+     */
+    private async renameEntry(path: string, isDir: boolean): Promise<void> {
+        const newPath = await promptRenameName(path, isDir)
+
+        if (newPath === null) {
+            return
+        }
+
+        try {
+            await renamePath(path, newPath)
+        } catch (error) {
+            await Dialog.error('Could not rename', messageOf(error))
+
+            return
+        }
+
+        this._onPathRenamed(path, newPath)
+        await this.refreshSubtree(parentDir(path))
+        await this.selectPath(newPath)
+    }
+
+    /**
+     * Confirms, then deletes `path` from disk, closes any open tab under it,
+     * and refreshes the tree.
+     *
+     * @param path - The file or folder to delete.
+     * @param isDir - Whether `path` is a directory.
+     */
+    private async deleteEntry(path: string, isDir: boolean): Promise<void> {
+        if (!(await confirmDelete(path, isDir))) {
+            return
+        }
+
+        try {
+            await removePath(path, isDir)
+        } catch (error) {
+            await Dialog.error('Could not delete', messageOf(error))
+
+            return
+        }
+
+        this._onPathDeleted(path)
+        await this.refreshSubtree(parentDir(path))
+    }
+
+    /** Copies `path` to the clipboard and shows a brief success toast — the only action with no visible tree change of its own.
+     *
+     * @param path - The path to copy.
+     */
+    private async copyPath(path: string): Promise<void> {
+        try {
+            await navigator.clipboard.writeText(path)
+            Notification.show('Path copied.', 'success')
+        } catch (error) {
+            await Dialog.error('Could not copy path', messageOf(error))
         }
     }
 

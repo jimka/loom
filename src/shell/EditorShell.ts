@@ -72,8 +72,10 @@ class EditorShell extends Container {
     constructor(controller: EditorController, session: SessionState) {
         const openFolder = (): void => { void controller.openProjectFolder() }
         const tree = FileTree({
-            onSelectFile: (path: string) => { void controller.openFile(path, 'temporary') },
-            onOpenFile:   (path: string) => { void controller.openFile(path, 'permanent') },
+            onSelectFile:  (path: string) => { void controller.openFile(path, 'temporary') },
+            onOpenFile:    (path: string) => { void controller.openFile(path, 'permanent') },
+            onPathDeleted: (path: string) => controller.closeFilesUnder(path),
+            onPathRenamed: (oldPath: string, newPath: string) => controller.relocateOpenFiles(oldPath, newPath),
         })
         const welcome = WelcomeScreen({
             onOpenFolder: openFolder,
