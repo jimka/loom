@@ -23,7 +23,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   another editor, a `git checkout`, a build tool — and editing a
   `.gitignore` re-filters everything below its own directory. A single
   click opens a file in a reusable temp tab; a double click opens it
-  permanently.
+  permanently. Right-clicking a directory, a file, or empty tree space opens
+  a context menu offering New File/New Folder, Rename, Delete, and Copy
+  Path.
 - **Welcome screen** — shown in place of the tab strip whenever no file is
   open, offering *Open Folder…* and naming the current project once one is.
 - **Tabbed editing** — open several files at once, each tab carrying the

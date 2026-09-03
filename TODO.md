@@ -37,9 +37,6 @@ nothing below has a plan yet.
     [`src/EditorController.ts`](src/EditorController.ts)
   * Default values for Show-hidden-files and Show-ignored-files
   * What else?
-- Context menu in FileTree to operate on files, create new files and folders
-  etc. Each file operation should finish by calling
-  `FileTree.refreshSubtree(dir)` on the directory it touched.
 
 ## Medium
 
