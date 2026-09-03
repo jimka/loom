@@ -654,3 +654,104 @@ system file manager onto the Loom window.
     obtains, which `plans/implemented/open-outside-home.md` documents. Case 15
     of `## Expected Behaviour` is what confirms the grant lands before the
     frontend's first `stat`.
+
+---
+
+## Implementation Notes
+
+**No codebase drift beyond line numbers.** Three commits landed on the
+branch's start point after this plan was drafted (temp-tabs,
+filesystem-watching, format-on-save) and shifted every cited line number by a
+few lines, but every symbol, shape, and precedent the plan names — `pathExists`,
+`onCloseRequested`, `AcceleratorActions`/`installAccelerators`,
+`handleOpenRecentProject`, `openProjectRoot`, `welcomeText.ts`'s header comment
+— was unchanged in substance. No adaptation was needed; the plan's snippets
+were used as written.
+
+**Manual verification used real OS-level drag-and-drop, not a native-dialog
+walkthrough.** Unlike the picker-driven flows earlier plans verified live
+(open-outside-home.md, format-on-save.md), this feature's entire surface is a
+native XDND drag from an external source — there is no dialog to click
+through instead. `xdotool` (extracted from the Ubuntu package locally, no
+root: `apt-get download` + `dpkg-deb -x`, run with `LD_LIBRARY_PATH` pointed at
+the extracted `libxdo.so.3`) drives real `XTestFakeButtonEvent`/pointer-motion
+events, which GTK cannot distinguish from a hardware mouse; a small PyGObject
+script (`Gtk.EventBox.drag_source_set` with a `text/uri-list` target, one row
+per test path or comma-joined group for a multi-selection drag) served as the
+drag source. `xdotool mousedown` on a row, several `mousemove` steps, then
+`mouseup` over the Loom window reliably triggered a genuine XDND sequence:
+GTK's own drag-and-drop machinery ran unmodified, wry/tao's window received it
+exactly as it would from a real file manager, and Tauri emitted the same
+`tauri://drag-drop` event this plan's code subscribes to. This is a
+substantially stronger check than the escape hatch's "documented manual step"
+floor calls for, and it is why the pass below covers 11 of the plan's 12
+manual `## Expected Behaviour` cases with actual drops rather than a
+description of expected behaviour.
+
+**Isolation, mirroring format-on-save.md's precaution.** Everything ran
+against an isolated `Xvfb :0` inside a throwaway `debian:bookworm-slim`
+container (openbox as the window manager, required for XDND's
+`XdndAware`/window-under-pointer resolution to work at all), TCP-exposed to
+`127.0.0.1:6098` and never the ambient session's real `DISPLAY`. `npm run
+tauri:dev` ran on the host (`CARGO_TARGET_DIR` pointed at the main tree's
+existing build cache, so the unchanged Rust side rebuilt in under 10s) with
+`DISPLAY=127.0.0.1:98` and isolated `XDG_CONFIG_HOME`/`XDG_DATA_HOME` scratch
+directories, so the real `~/.config/loom/session.json` was never touched
+(confirmed by its unchanged mtime afterward). All dropped paths lived under a
+scratch project (`~/loom-dnd-verify`, required by the fs plugin's `$HOME/**`
+scope for the *file*-open cases) plus one folder under this session's
+scratchpad (genuinely outside `$HOME`, for case 15). Every process
+(`tauri:dev`, the drag-source script), the container, and every scratch path
+were removed afterward.
+
+**Dev environment.** As in every prior phase, this worktree's `npm install`
+pulled the published `@jimka/typescript-ui` from the registry rather than the
+sibling checkout; `node_modules/@jimka/typescript-ui` was re-pointed at
+`/home/jika/typescript/typescript-ui/packages/lib` to match the main tree.
+
+**Manual verification pass** — 11 of the plan's 12 manual `## Expected
+Behaviour` cases were driven live and confirmed by screenshot:
+
+1. **Case 7 (file into a tab, no workspace open).** Dropping `a.ts` opened it
+   as a tab and replaced the welcome screen.
+2. **Case 8 (re-dropping an open file activates it).** Dropping `a.ts` again
+   left exactly one `a.ts` tab.
+3. **Case 9 (several files, in order).** Dropping `a.ts`, `b.ts`, `notes.md`
+   as one multi-URI XDND payload opened three tabs in that order, `notes.md`
+   (the last) active — confirmed via the window title and status bar's
+   language indicator, and by screenshot once the drag-source window was
+   moved aside.
+4. **Case 10 (a folder opens as the workspace, nothing open).** Dropping the
+   scratch project folder repointed the tree at its contents.
+5. **Case 11 (folder outside the open workspace asks first).** Dropping a
+   sibling folder raised `"folderA" is a separate workspace from "proj". Open
+   it and close the current workspace?`; Cancel left the tree and tabs
+   unchanged.
+6. **Case 12 (folder inside the open workspace offers both readings).**
+   Dropping the open project's own subdirectory raised the three-way prompt
+   (`"subdir" is inside the current workspace...`); *Expose in Tree* selected
+   it in the existing tree without touching the tabs.
+7. **Case 13 (two folders refused).** Dropping two folders together raised
+   `Cannot open these items` and changed neither tree nor tabs.
+8. **Case 14 (a file and a folder together refused).** Same dialog, same lack
+   of change.
+9. **Case 15 (folder from outside `$HOME` opens to full depth).** Confirming
+   the outside-workspace prompt for a folder under this session's scratchpad
+   (outside `$HOME`) repointed the tree at it, and a file two directories down
+   (`level1/level2/deep.txt`) expanded, opened, and read its real contents —
+   the scope-grant-timing risk `## Potential Challenges` calls out did not
+   manifest.
+10. **Case 16 (unreadable path reports itself).** Dropping a `chmod 000` file
+    raised `Could not open file` / `Permission denied (os error 13)`, exactly
+    `openFile`'s existing wording, and opened nothing.
+11. **Case 18 (in-app dragging unaffected).** Reordering a tab via the tab
+    strip's own `mousedown`-based drag (not XDND) still worked after installing
+    the drop handler, with no drop dialog or spurious tab-open.
+
+**Case 17 (drop location doesn't matter) was not separately driven.** Every
+other case's drop already landed on a different widget (the editor body, the
+file tree, dialogs) without incident, and the mechanism makes a
+location-independent result structural rather than incidental: `onFilesDropped`
+subscribes once at the `Window` level with no per-widget target, so there is
+no code path by which the widget under the cursor could change the outcome.
+Treated as covered by inspection rather than a twelfth live drop.
