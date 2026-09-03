@@ -11,7 +11,6 @@ nothing below has a plan yet.
   content search, above: this is file-name navigation, not content search.
   We should add ability to execute commands from here as well. What commands
   make sense to start with? Which could we add?
-- **Drag-and-drop to open** a file or folder onto the window.
 - **Library `Tab.setTabGlyph` / `TabBar.setEntryGlyph`.** Neither exists
   today — `Tab` has `setTabName` but no glyph counterpart, and the
   `TabButton` that owns the icon is built once from the `glyph` option
@@ -112,8 +111,6 @@ nothing below has a plan yet.
   - `plugin-clipboard-manager`, `plugin-notification`, `plugin-global-shortcut`,
     `plugin-os`, `plugin-shell` (open-with-default-app / run commands).
   - `plugin-updater` — relevant to the code signing/auto-update item, above.
-  - Native OS drag-and-drop (`onDragDropEvent`) — relevant to the
-    drag-and-drop-to-open item, above.
   - No official plugin exists for native OS file-type icons — the tree and
     tabs draw their per-file-type icons from Font Awesome instead (see
     [`src/fileIcons.ts`](src/fileIcons.ts)); matching the OS's own icon set
