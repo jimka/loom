@@ -1,11 +1,13 @@
 // Pure watch-event decision logic — no Tauri imports, so it runs in
-// vitest's `node` environment. Two callers, each asking a different
+// vitest's `node` environment. Three callers, each asking a different
 // question: `src/explorer/FileTree.ts`'s watcher asks *which* directories a
 // batch of already-relevant changed paths means the tree must re-list
 // (`refreshTargets`/`minimalRoots`); `src/data/workspace.ts`'s
 // `watchDirectory` asks *whether* one native event is relevant at all
 // (`isContentChangeKind`), since that is the only other place a
-// `WatchEvent` is ever seen.
+// `WatchEvent` is ever seen; `EditorController`'s external-change
+// resolution asks what a change to an already-open file means for its
+// buffer (`externalChangeOutcome`).
 import { joinPath, parentDir, isUnderRoot } from './paths'
 import { WORKSPACE_DIR_NAME } from './workspaceState'
 
@@ -73,4 +75,30 @@ export function isContentChangeKind(kind: unknown): boolean {
     }
 
     return !('access' in kind)
+}
+
+/** What a watcher-reported change to an open file means for its buffer. */
+export type ExternalChangeOutcome = 'unchanged' | 'reload' | 'conflict'
+
+/**
+ * Decides what a fresh disk read of an open file means for its buffer.
+ * `diskText` equal to `syncedText` means the file on disk has not moved
+ * since Loom last read or wrote it — indistinguishable from Loom's own save
+ * — so the buffer needs nothing regardless of its dirty flag. Otherwise the
+ * disk genuinely changed, and the outcome turns on whether there are unsaved
+ * changes to lose.
+ *
+ * @param diskText - The file's content, just read from disk.
+ * @param syncedText - The file's content as Loom last read it from, or wrote it to, disk.
+ * @param dirty - Whether the open buffer has unsaved changes.
+ * @returns `'unchanged'` when disk matches what Loom last saw, `'reload'`
+ *   when disk moved and there is nothing local to lose, `'conflict'` when
+ *   disk moved and there are unsaved changes.
+ */
+export function externalChangeOutcome(diskText: string, syncedText: string, dirty: boolean): ExternalChangeOutcome {
+    if (diskText === syncedText) {
+        return 'unchanged'
+    }
+
+    return dirty ? 'conflict' : 'reload'
 }

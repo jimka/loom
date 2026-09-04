@@ -41,6 +41,8 @@ export interface FileTreeParams {
     onPathDeleted: (path: string) => void
     /** Called after the tree renames a file or folder, with its old and new paths. */
     onPathRenamed: (oldPath: string, newPath: string) => void
+    /** Called with the raw batch of changed paths the watcher reported, before any tree filtering. */
+    onPathsChanged: (paths: string[]) => void
 }
 
 /**
@@ -52,6 +54,7 @@ class FileTree extends Tree {
     private readonly _onOpenFile: (path: string) => void
     private readonly _onPathDeleted: (path: string) => void
     private readonly _onPathRenamed: (oldPath: string, newPath: string) => void
+    private readonly _onPathsChanged: (paths: string[]) => void
     private readonly _menu = Menu()
     private _root: string | null = null
     private _rootChain: IgnoreChain = EMPTY_IGNORE_CHAIN
@@ -76,6 +79,7 @@ class FileTree extends Tree {
         this._onOpenFile = params.onOpenFile
         this._onPathDeleted = params.onPathDeleted
         this._onPathRenamed = params.onPathRenamed
+        this._onPathsChanged = params.onPathsChanged
 
         this.setRendererFactory(() => new IconLabelTreeNodeRenderer(
             node => {
@@ -658,6 +662,8 @@ class FileTree extends Tree {
         if (this._root === null) {
             return
         }
+
+        this._onPathsChanged(paths)
 
         for (const dir of refreshTargets(this._root, paths)) {
             this._pendingDirs.add(dir)

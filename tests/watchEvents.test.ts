@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { refreshTargets, minimalRoots, isContentChangeKind } from '../src/data/watchEvents'
+import { refreshTargets, minimalRoots, isContentChangeKind, externalChangeOutcome } from '../src/data/watchEvents'
 
 describe('minimalRoots', () => {
     it('drops a directory whose parent is also present', () => {
@@ -96,5 +96,31 @@ describe('isContentChangeKind', () => {
 
     it('accepts the "other" string kind', () => {
         expect(isContentChangeKind('other')).toBe(true)
+    })
+})
+
+describe('externalChangeOutcome', () => {
+    it('is unchanged when disk matches synced text and the buffer is clean', () => {
+        expect(externalChangeOutcome('a', 'a', false)).toBe('unchanged')
+    })
+
+    it('is unchanged when disk matches synced text even with unsaved changes', () => {
+        expect(externalChangeOutcome('a', 'a', true)).toBe('unchanged')
+    })
+
+    it('is a reload when disk moved and there is nothing local to lose', () => {
+        expect(externalChangeOutcome('b', 'a', false)).toBe('reload')
+    })
+
+    it('is a conflict when disk moved and there are unsaved changes', () => {
+        expect(externalChangeOutcome('b', 'a', true)).toBe('conflict')
+    })
+
+    it('is a reload when an externally emptied file has no unsaved changes', () => {
+        expect(externalChangeOutcome('', 'a', false)).toBe('reload')
+    })
+
+    it('is unchanged when an empty file is what Loom itself last wrote', () => {
+        expect(externalChangeOutcome('', '', false)).toBe('unchanged')
     })
 })
