@@ -29,12 +29,6 @@ nothing below has a plan yet.
   tree empty. Fixing it means re-granting a persisted path with no user
   gesture behind it, which needs its own decision about how far that
   grant should reach.
-- **Configurable formatting style.** `formatOnSave`/_Format Document_ only
-  toggle _whether_ `CodeEditor.format()` runs — there's no control over
-  _how_ it formats (indent width, quote style, line length, and so on).
-  Needs research into what each per-language formatter `CodeEditor` wraps
-  (JS/TS, JSON, HTML, SQL, Markdown) actually accepts as options, then
-  surfacing whatever's available through the settings file.
 - **Right clicking on empty space in FileTree** should show a context menu
   with options for creating a new file or folder, at the root of the
   workspace.
