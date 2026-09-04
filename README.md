@@ -27,10 +27,11 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   a context menu offering New File/New Folder, Rename, Delete, and Copy
   Path.
 - **Command palette** — Ctrl/Cmd+P opens a fuzzy file finder over every file
-  in the project; arrow keys only move the highlight, and nothing opens or
-  runs until you activate a result with Enter or a click. Typing `>` switches
-  to a list of app commands — Save, Format Document, Toggle Explorer, and the
-  rest of the menu bar — instead.
+  in the project; the first match is highlighted as soon as you type, so
+  Enter opens it directly; arrow keys only move the highlight, and nothing
+  opens or runs until you activate a result with Enter or a click. Typing `>`
+  switches to a list of app commands — Save, Format Document, Toggle
+  Explorer, and the rest of the menu bar — instead.
 - **Welcome screen** — shown in place of the tab strip whenever no file is
   open, offering *Open Folder…* and naming the current project once one is.
 - **Tabbed editing** — open several files at once, each tab carrying the
