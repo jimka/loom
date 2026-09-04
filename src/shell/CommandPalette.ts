@@ -4,6 +4,7 @@ import { DOM } from '@jimka/typescript-ui/core'
 import { VBox } from '@jimka/typescript-ui/layout'
 import { TextField } from '@jimka/typescript-ui/component/input'
 import { List, GlyphListItemRenderer } from '@jimka/typescript-ui/component/list'
+import type { SelectableListItem } from '@jimka/typescript-ui/component/list'
 import { PopupPanel } from '@jimka/typescript-ui/overlay'
 import { filterAndRankFuzzy } from '../data/fuzzyMatch'
 import { relativeTo } from '../data/paths'
@@ -31,10 +32,11 @@ export interface CommandPaletteParams {
  * The Ctrl/Cmd+P command palette: a floating panel hosting a query field and
  * a results list, fuzzy-matching every file in the open workspace by
  * default, or a fixed list of app commands once the query starts with `>`.
- * Nothing opens or runs while browsing the list — arrow keys only move the
- * highlight — until a result is activated (Enter or click), which fires
- * {@link CommandPaletteParams.onConfirmFile} in file mode or runs the
- * command directly in command mode. Built once and never added as a child
+ * The first result is highlighted as soon as results appear, so `Enter`
+ * activates it directly. Nothing opens or runs while browsing the list —
+ * arrow keys only move the highlight — until a result is activated (Enter
+ * or click), which fires {@link CommandPaletteParams.onConfirmFile} in file
+ * mode or runs the command directly in command mode. Built once and never added as a child
  * component — like every other `Position.FIXED` overlay in the library, it
  * mounts itself directly on `document.documentElement` via the inherited
  * `showAnimated()`.
@@ -107,7 +109,8 @@ class CommandPalette extends PopupPanel {
     /**
      * Re-derives the mode from a leading `>` and re-filters/ranks against the
      * matching data source. Never opens a file or runs a command itself —
-     * that only happens on explicit activation (see {@link handleCommit}).
+     * that only happens on explicit activation (see {@link handleCommit}) —
+     * but highlights the first result so `Enter` activates it immediately.
      *
      * @param rawQuery - The query field's current raw text, `>` prefix included.
      */
@@ -122,7 +125,7 @@ class CommandPalette extends PopupPanel {
             const matches = query === '' ? this._commands : filterAndRankFuzzy(query, this._commands, c => c.title, MAX_PALETTE_RESULTS)
 
             this._resultsList.setEmptyText('No matching commands')
-            this._resultsList.setItemsArray(matches.map(command => ({
+            this.setResults(matches.map(command => ({
                 key: command.id,
                 label: command.shortcut ? `${command.title} (${command.shortcut})` : command.title,
             })))
@@ -132,7 +135,7 @@ class CommandPalette extends PopupPanel {
 
         if (query === '') {
             this._resultsList.setEmptyText('Type to search files')
-            this._resultsList.setItemsArray([])
+            this.setResults([])
 
             return
         }
@@ -147,11 +150,25 @@ class CommandPalette extends PopupPanel {
         const matches = filterAndRankFuzzy(query, this._files, path => this.displayLabel(path), MAX_PALETTE_RESULTS)
 
         this._resultsList.setEmptyText('No matching files')
-        this._resultsList.setItemsArray(matches.map(path => ({
+        this.setResults(matches.map(path => ({
             key: path,
             label: this.displayLabel(path),
             glyph: glyphNameForPath(path),
         })))
+    }
+
+    /**
+     * Replaces the results list's rows and highlights the first one, so Enter
+     * activates the top result without an arrow keypress first. Highlighting
+     * moves the list's focus mark only — the selection is untouched and no file
+     * opens or command runs until an explicit activation (see {@link handleCommit}).
+     * An empty `items` leaves nothing highlighted.
+     *
+     * @param items - The rows to show, in ranked order.
+     */
+    private setResults(items: SelectableListItem[]): void {
+        this._resultsList.setItemsArray(items)
+        this._resultsList.setFocusedIndex(0)
     }
 
     /**
