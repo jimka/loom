@@ -3,6 +3,7 @@ import { TabPanel, StatusBar } from '@jimka/typescript-ui/component/container'
 import { Text } from '@jimka/typescript-ui/component/input'
 import { Dialog } from '@jimka/typescript-ui/overlay'
 import type { TabCloseController } from '@jimka/typescript-ui/layout'
+import type { FormatOptions } from '@jimka/typescript-ui/component/editor'
 import { FileEditor } from './editor/FileEditor'
 import { languageForPath, hasFormatter } from './editor/languages'
 import { glyphNameForPath } from './fileIcons'
@@ -61,6 +62,7 @@ class EditorController {
     private _activeFileListener: ((path: string | null) => void) | null = null
     private _fileSavedListener: ((path: string) => void) | null = null
     private _formatOnSave: boolean = DEFAULT_SETTINGS.formatOnSave
+    private _formatting: FormatOptions = DEFAULT_SETTINGS.formatting
     private _titleBarTemplate: string = DEFAULT_SETTINGS.titleBarTemplate
 
     constructor() {
@@ -633,7 +635,8 @@ class EditorController {
      * written. A no-op while {@link _formatOnSave} is off, and for a language
      * with no registered formatter — that second guard is what keeps a save
      * away from `CodeEditor.format()`'s whole-document re-indent fallback,
-     * which is reserved for the manual *Format Document* action.
+     * which is reserved for the manual *Format Document* action. Runs with
+     * the resolved formatting options.
      *
      * @param file - The file about to be written.
      * @returns `true` when a formatter ran and threw, leaving the document
@@ -645,7 +648,7 @@ class EditorController {
         }
 
         try {
-            await file.getEditor().format()
+            await file.getEditor().format(this._formatting)
         } catch {
             // A formatter throws on syntactically invalid source, which is the
             // normal state of a file mid-edit. The save is what the user asked
@@ -692,20 +695,21 @@ class EditorController {
         const file = this.getActiveFile()
 
         if (file) {
-            await file.getEditor().format()
+            await file.getEditor().format(this._formatting)
         }
     }
 
     /**
-     * Applies a resolved settings snapshot: format-on-save, the title
-     * template, and the tab width cap. Callable more than once — again on
-     * every project switch, each time with that project's own resolved
-     * settings.
+     * Applies a resolved settings snapshot: format-on-save, the formatting
+     * options, the title template, and the tab width cap. Callable more than
+     * once — again on every project switch, each time with that project's
+     * own resolved settings.
      *
      * @param settings - The resolved settings to apply.
      */
     applySettings(settings: Settings): void {
         this._formatOnSave = settings.formatOnSave
+        this._formatting = settings.formatting
         this._titleBarTemplate = settings.titleBarTemplate
         this.tabs.getTab().setMaxWidth(settings.tabMaxWidthPx)
         this.syncActive()

@@ -2,11 +2,14 @@
 // in vitest's `node` environment. `src/shell/settings.ts` owns the
 // Tauri-backed read/write and the two-layer resolution this module's shape
 // feeds, mirroring the `session`/`workspaceState` split.
+import type { FormatOptions } from '@jimka/typescript-ui/component/editor'
 
 /** The fully resolved settings the app runs with — always complete, never partial. */
 export interface Settings {
     /** Whether saving reformats the document first, for a language with a registered formatter. */
     formatOnSave: boolean
+    /** Style options handed to `CodeEditor.format()`; an absent field leaves that formatter's own default alone. */
+    formatting: FormatOptions
     /** Whether the tree shows hidden (leading-dot) entries by default. */
     showHiddenFiles: boolean
     /** Whether the tree shows `.gitignore`-ignored entries by default. */
@@ -21,6 +24,7 @@ export interface Settings {
 export interface SettingsOverride {
     version: 1
     formatOnSave?: boolean
+    formatting?: FormatOptions
     showHiddenFiles?: boolean
     showIgnoredFiles?: boolean
     titleBarTemplate?: string
@@ -30,6 +34,10 @@ export interface SettingsOverride {
 /** What every setting is when no file overrides it — today's exact hardcoded behaviour. */
 export const DEFAULT_SETTINGS: Settings = {
     formatOnSave: true,
+    // Empty by design: an absent field means "leave that formatter's own
+    // default alone", so a fresh install formats exactly as it did before
+    // this setting existed and Loom restates no engine's defaults.
+    formatting: {},
     showHiddenFiles: false,
     showIgnoredFiles: false,
     titleBarTemplate: '{dirty}{name} — {app}',
@@ -58,6 +66,7 @@ export function emptySettingsOverride(): SettingsOverride {
 export function resolveSettings(global: SettingsOverride | null, workspace: SettingsOverride | null): Settings {
     return {
         formatOnSave: workspace?.formatOnSave ?? global?.formatOnSave ?? DEFAULT_SETTINGS.formatOnSave,
+        formatting: { ...DEFAULT_SETTINGS.formatting, ...global?.formatting, ...workspace?.formatting },
         showHiddenFiles: workspace?.showHiddenFiles ?? global?.showHiddenFiles ?? DEFAULT_SETTINGS.showHiddenFiles,
         showIgnoredFiles: workspace?.showIgnoredFiles ?? global?.showIgnoredFiles ?? DEFAULT_SETTINGS.showIgnoredFiles,
         titleBarTemplate: workspace?.titleBarTemplate ?? global?.titleBarTemplate ?? DEFAULT_SETTINGS.titleBarTemplate,
@@ -104,6 +113,7 @@ export function parseSettingsOverride(text: string): SettingsOverride | null {
 
     const override: SettingsOverride = { version: 1 }
     const formatOnSave = readOptionalBoolean(doc.formatOnSave)
+    const formatting = parseFormatting(doc.formatting)
     const showHiddenFiles = readOptionalBoolean(doc.showHiddenFiles)
     const showIgnoredFiles = readOptionalBoolean(doc.showIgnoredFiles)
     const titleBarTemplate = readOptionalNonEmptyString(doc.titleBarTemplate)
@@ -111,6 +121,10 @@ export function parseSettingsOverride(text: string): SettingsOverride | null {
 
     if (formatOnSave !== undefined) {
         override.formatOnSave = formatOnSave
+    }
+
+    if (formatting !== undefined) {
+        override.formatting = formatting
     }
 
     if (showHiddenFiles !== undefined) {
@@ -191,4 +205,86 @@ function readOptionalNonEmptyString(value: unknown): string | undefined {
  */
 function readOptionalPositiveNumber(value: unknown): number | undefined {
     return typeof value === 'number' && value > 0 ? value : undefined
+}
+
+/**
+ * Reads a field expected to be a positive whole number. Stricter than
+ * {@link readOptionalPositiveNumber} because Prettier rejects a fractional
+ * `tabWidth`/`printWidth` outright rather than rounding it.
+ *
+ * @param value - The field's raw value.
+ * @returns The integer, or `undefined` when absent, the wrong type, fractional, or not positive.
+ */
+function readOptionalPositiveInteger(value: unknown): number | undefined {
+    return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined
+}
+
+/**
+ * Reads a field expected to be one of a fixed set of strings.
+ *
+ * @param value - The field's raw value.
+ * @param choices - The allowed values.
+ * @returns The matching choice, or `undefined` when absent, the wrong type, or not listed.
+ */
+function readOptionalChoice<T extends string>(value: unknown, choices: readonly T[]): T | undefined {
+    return typeof value === 'string' && (choices as readonly string[]).includes(value) ? value as T : undefined
+}
+
+const TRAILING_COMMA_CHOICES = ['none', 'es5', 'all'] as const
+const ARROW_PARENS_CHOICES = ['always', 'avoid'] as const
+const PROSE_WRAP_CHOICES = ['always', 'never', 'preserve'] as const
+const HTML_WHITESPACE_CHOICES = ['css', 'strict', 'ignore'] as const
+const KEYWORD_CASE_CHOICES = ['preserve', 'upper', 'lower'] as const
+
+/**
+ * Every {@link FormatOptions} field, mapped to the reader that validates it.
+ * The `satisfies` clause is what makes this table exhaustive: a field with
+ * no reader here, or a reader whose return type doesn't match the field's,
+ * is a compile error rather than a setting that silently never applies.
+ */
+const FORMATTING_READERS = {
+    indentWidth: readOptionalPositiveInteger,
+    useTabs: readOptionalBoolean,
+    lineWidth: readOptionalPositiveInteger,
+    singleQuote: readOptionalBoolean,
+    semicolons: readOptionalBoolean,
+    trailingComma: (value: unknown) => readOptionalChoice(value, TRAILING_COMMA_CHOICES),
+    arrowParens: (value: unknown) => readOptionalChoice(value, ARROW_PARENS_CHOICES),
+    bracketSpacing: readOptionalBoolean,
+    proseWrap: (value: unknown) => readOptionalChoice(value, PROSE_WRAP_CHOICES),
+    htmlWhitespaceSensitivity: (value: unknown) => readOptionalChoice(value, HTML_WHITESPACE_CHOICES),
+    keywordCase: (value: unknown) => readOptionalChoice(value, KEYWORD_CASE_CHOICES),
+} satisfies { [K in keyof FormatOptions]-?: (value: unknown) => FormatOptions[K] | undefined }
+
+/**
+ * Reads the `formatting` block, dropping every field of the wrong type or
+ * outside its allowed values; `undefined` when the block is absent, is not
+ * an object, or has no usable field left.
+ *
+ * @param value - The raw `formatting` value from the settings document.
+ * @returns The parsed options, or `undefined` when nothing usable survived.
+ */
+function parseFormatting(value: unknown): FormatOptions | undefined {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return undefined
+    }
+
+    const doc = value as Record<string, unknown>
+    const formatting: Record<string, unknown> = {}
+
+    for (const [field, read] of Object.entries(FORMATTING_READERS)) {
+        const parsed = read(doc[field])
+
+        // Assigned only when defined, so the block never holds a key whose
+        // value is `undefined` — the merge in `resolveSettings` and
+        // `sql-formatter` downstream both depend on that.
+        if (parsed !== undefined) {
+            formatting[field] = parsed
+        }
+    }
+
+    // The reader table is the type bridge: each key was written by the
+    // reader declared for that exact field, which a string-keyed write
+    // cannot express.
+    return Object.keys(formatting).length === 0 ? undefined : formatting as FormatOptions
 }
