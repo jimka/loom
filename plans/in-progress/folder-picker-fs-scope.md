@@ -506,3 +506,58 @@ dot-prefixed entries are visible in the tree.
     allow direction would mean a future denial silently failed to apply on the
     scope that carries dotfile access, which is a security asymmetry for the
     sake of four lines.
+
+---
+
+## Implementation Notes
+
+**Manual verification.** Ran against a real `npm run tauri:dev` process
+(Linux/WSL2, `DISPLAY` forwarded to a Windows host), reusing the main tree's
+Cargo build cache (`CARGO_TARGET_DIR` pointed at
+`/home/jika/typescript/loom/src-tauri/target`), screenshotted with Pillow's
+`ImageGrab` and driven with `pyautogui`; window/dialog focus was set
+explicitly via `python-xlib` (`set_input_focus`/`configure(stack_mode=Above)`)
+before each new window's first interaction — the native GTK folder picker's
+own location bar (`Ctrl+L`) silently dropped keystrokes without this.
+
+Confirmed against a scratch project outside `$HOME` (this session's
+scratchpad) containing `README.md`, `src/nested/deep.txt`, `.gitignore`, and
+`.github/workflows/ci.yml`, with *View → Show Hidden Files* on:
+
+1. `.gitignore` opened with its content, no `Could not open file` dialog —
+   the case that fails without the mirror.
+2. `.github/workflows/ci.yml` opened after expanding both directories.
+3. Opening a file and expanding a directory, then closing the window via a
+   genuine `WM_DELETE_WINDOW` request, wrote both `.loom/workspace.json` and
+   `.loom/.gitignore` under the project root, populated with the just-set
+   expanded dirs and open file. Two false negatives along the way, both
+   pre-existing behaviour rather than anything this plan touches: *File →
+   Exit* exits the process without giving the frontend's `onCloseRequested`
+   handler a chance to flush (only a real window-manager close request
+   reaches it), and `installSessionAutosave`'s `openFilesBelongToRoot` guard
+   (`src/shell/session.ts`) skips the workspace-state write while any open
+   tab still belongs to a previously-open project — closing that stale tab
+   before triggering the autosave was necessary.
+4. `README.md` and `src/nested/deep.txt` opened unaffected.
+5. Opening this repository's own worktree (under `$HOME`) listed the tree
+   several levels deep and opened its `.gitignore`, unchanged from before
+   this plan.
+6. **Not exercised.** No OS file manager is installed in this sandboxed
+   environment (checked `nautilus`/`thunar`/`pcmanfm`/`nemo`/`dolphin`) and
+   `sudo` requires a password neither available nor appropriate to obtain
+   here, so a native OS-level drag-and-drop onto the window could not be
+   driven. Covered instead by the architecture recorded in `## Architecture
+   Decisions`: the mirror listens on the `fs` plugin's one runtime scope,
+   which drag-and-drop grows through the same `allow_directory` call the
+   picker uses, so the same listener fires regardless of which gesture grew
+   the scope — cases 1, 2, 4, and 7 already exercise that listener's only
+   code path.
+7. Renaming the scratch project to `proj [2026]` and reopening it still
+   opened `.gitignore`, confirming `Pattern::escape` handles the `[`/`]`
+   metacharacters; this same renamed project was reused for case 3 above.
+8. Cancelling the picker (its own Cancel button) left the tree, tabs, and
+   log unchanged — no new `mirrored the runtime filesystem scope` line.
+
+Each grant logged `mirrored the runtime filesystem scope for <path>` at
+`info`, one line per opened project, confirmed via the dev console's log
+output.
