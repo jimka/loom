@@ -323,3 +323,19 @@ no automated red-green cycle to run. Verify all seven in `npm run tauri:dev`.
     neither, so there is no title or status-bar state to resync. The active tab
     does not need setting either — the first click of the double-click already
     activated it.
+
+## Implementation Notes
+
+- **Step 5's `grep -c 'pinTab' src/EditorController.ts` reads 7, not the
+  predicted 5.** The plan was written against an earlier state of the file;
+  by the time this branch stacked on top of `reload-file-on-external-change`,
+  `EditorController.ts` already carried a prose comment mentioning `pinTab`
+  in `reloadFromDisk`'s docstring (the sentence explaining why the temporary
+  flag is cleared and restored around a disk reload), one occurrence `grep -c`
+  counts that isn't a call site. The new `handleTabDoubleClick` handler adds
+  two matches of its own — the call and its own docstring's mention of
+  `pinTab` — rather than the one the plan anticipated. All five originally
+  intended occurrences (the definition, the three pre-existing callers, and
+  the new handler's call) are present and correct; the extra two are both
+  comment prose, not additional call sites, so the verification's intent —
+  no stray new caller — still holds.
