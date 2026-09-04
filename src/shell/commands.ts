@@ -3,7 +3,7 @@
 // library's List has no per-row disabled state; see TODO.md).
 import {
     NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
-    FORMAT_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT,
+    FORMAT_SHORTCUT, FIND_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT,
 } from './shortcuts'
 
 /** One entry in the command palette's `>`-mode list. */
@@ -37,6 +37,7 @@ export interface PaletteCommandActions {
     onSaveAs: () => void
     onCloseFile: () => void
     onFormat: () => void
+    onFind: () => void
     isShowingHidden: () => boolean
     onToggleHidden: (value: boolean) => void
     isShowingIgnored: () => boolean
@@ -65,6 +66,7 @@ export function buildPaletteCommands(actions: PaletteCommandActions): PaletteCom
     if (actions.hasActiveFile()) {
         commands.push({ id: 'save-as',        title: 'Save As…',        shortcut: SAVE_AS_SHORTCUT,    run: actions.onSaveAs })
         commands.push({ id: 'close-file',     title: 'Close File',      shortcut: CLOSE_FILE_SHORTCUT, run: actions.onCloseFile })
+        commands.push({ id: 'find',           title: 'Find…',           shortcut: FIND_SHORTCUT,       run: actions.onFind })
         commands.push({ id: 'format-document', title: 'Format Document', shortcut: FORMAT_SHORTCUT,     run: actions.onFormat })
     }
 
