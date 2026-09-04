@@ -35,14 +35,6 @@ nothing below has a plan yet.
   itself in the strip does nothing special. VS Code's preview tabs pin the
   same way; `EditorController.pinTab` already exists, it just isn't wired to
   a tab-strip double-click yet.
-- **Refresh an open file when it changes on disk.** `FileTree`'s filesystem
-  watcher (`FileTree.refreshSubtree`) only updates the tree — it never
-  touches an already-open `FileEditor`'s buffer. Two related gaps: a file
-  edited externally while it's the _active_ tab should reload live, and
-  switching to a tab whose file changed while unfocused should reload at
-  that point too. Needs a real design decision for the conflict case first —
-  an externally-changed file with unsaved local edits can't just silently
-  overwrite either side.
 - **Configurable formatting style.** `formatOnSave`/_Format Document_ only
   toggle _whether_ `CodeEditor.format()` runs — there's no control over
   _how_ it formats (indent width, quote style, line length, and so on).
