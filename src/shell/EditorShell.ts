@@ -3,12 +3,14 @@ import type { Component } from '@jimka/typescript-ui/core'
 import { Placement } from '@jimka/typescript-ui/primitive'
 import { Border as BorderLayout, Card, Split } from '@jimka/typescript-ui/layout'
 import { MenuBar } from '@jimka/typescript-ui/component/menubar'
-import { CheckboxMenuRow } from '@jimka/typescript-ui/component/container'
+import { CheckboxMenuRow, Spacer } from '@jimka/typescript-ui/component/container'
 import type { MenuItemConfig } from '@jimka/typescript-ui/component/container'
+import { Button } from '@jimka/typescript-ui/component/button'
 import { FileTree } from '../explorer/FileTree'
 import { WelcomeScreen } from './WelcomeScreen'
 import { CommandPalette } from './CommandPalette'
 import { buildPaletteCommands } from './commands'
+import { openAboutDialog } from './aboutDialog'
 import { listFilesRecursive } from '../data/fileIndex'
 import type { EditorController } from '../EditorController'
 import type { SessionState } from '../data/session'
@@ -62,6 +64,8 @@ interface MenuBarActions extends AcceleratorActions {
     onOpenWorkspaceSettings: () => void
     /** Whether a project folder is currently open — greys out *Open Workspace Settings* when not. */
     hasProjectRoot: () => boolean
+    /** Opens the About dialog — the far-right menu-bar button. */
+    onAbout: () => void
 }
 
 /**
@@ -147,6 +151,7 @@ class EditorShell extends Container {
                     void controller.openWorkspaceSettings(root)
                 }
             },
+            onAbout: () => openAboutDialog(),
         }
 
         const menuBar = buildMenuBar(actions)
@@ -374,14 +379,15 @@ function buildRecentItems(actions: MenuBarActions): MenuItemConfig[] {
 }
 
 /**
- * The File, Edit, and View menus. Each menu's `items` is a provider
- * function, so enablement is recomputed every time the menu opens.
+ * The File, Edit, and View menus, plus the far-right About button. Each
+ * menu's `items` is a provider function, so enablement is recomputed every
+ * time the menu opens.
  *
  * @param actions - The menu action callbacks.
  * @returns The composed menu bar.
  */
 function buildMenuBar(actions: MenuBarActions): MenuBar {
-    return MenuBar({
+    const menuBar = MenuBar({
         menus: [
             { label: 'File', glyph: 'folder', items: () => [
                 { text: 'New File', glyph: 'file-circle-plus', shortcut: NEW_FILE_SHORTCUT, action: actions.onNewFile },
@@ -429,6 +435,20 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
             ] },
         ],
     })
+
+    // Pin an About button to the far right of the bar: a flex spacer eats the
+    // width between the left-aligned menus and the button, so the button sits
+    // at the trailing edge. Appended after the factory rather than through
+    // `menus` (whose entries are dropdown openers) — safe because the shell
+    // builds its menus once and never resets the bar's children afterwards,
+    // which would wipe these appended children.
+    const about = Button({ glyph: 'circle-info', text: 'About', showText: true, showDescription: false, compact: true, flat: true })
+
+    about.on('action', actions.onAbout)
+    menuBar.addComponent(Spacer.flex())
+    menuBar.addComponent(about)
+
+    return menuBar
 }
 
 const EditorShellCallable = callable(EditorShell)
