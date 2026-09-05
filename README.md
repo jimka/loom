@@ -39,7 +39,8 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   Replace one match at a time or all of them at once with *replace* and
   *replace all*.
 - **Welcome screen** — shown in place of the tab strip whenever no file is
-  open, offering *Open Folder…* and naming the current project once one is.
+  open, under the Loom mark, offering *Open Folder…* and naming the current
+  project once one is.
 - **About** — a *Close*-only dialog on the far right of the menu bar,
   naming the app and its author, with links to Loom's own repository and to
   the UI library it is built on.
