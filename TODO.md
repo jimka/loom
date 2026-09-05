@@ -20,17 +20,15 @@ nothing below has a plan yet.
 - **Library per-tab label styling.** `Tab.setTabName` sets a tab's text but
   nothing styles it, and `Tab` keeps its `TabBar` private, so Loom marks a
   temp tab with a `~` prefix instead of the italics VS Code uses.
-- **Opening dotfiles in a workspace outside `$HOME`/`$CONFIG`.** Fixed for
-  the common case by `plugins.fs.requireLiteralLeadingDot: false` in
-  `src-tauri/tauri.conf.json` (see commit `ed29f86`): the capability-
-  declared `fs:scope` (`$HOME/**`, `$CONFIG/loom/**`) now matches
-  dot-prefixed path components, so `.gitignore` etc. open normally in any
-  project under the user's home directory. The gap that's left is the
-  folder picker's own runtime scope grant (`window.try_fs_scope()` on the
-  Tauri side) — it's built once at plugin startup from Tauri's hardcoded
-  Unix default and never reads this config value, so a workspace opened
-  from entirely outside `$HOME`/`$CONFIG` would still have its dotfiles
-  blocked.
+- **Restoring a workspace outside `$HOME`/`$CONFIG` on launch.** A project
+  root outside those trees is only reachable once a native gesture has
+  granted it — the folder picker, a drag-and-drop, or the save dialog.
+  Nothing grants it at startup, so a remembered root outside
+  `$HOME`/`$CONFIG` is refused before the tree is ever listed and
+  `applySession`'s `try`/`catch` (`src/shell/session.ts:81`) leaves the
+  tree empty. Fixing it means re-granting a persisted path with no user
+  gesture behind it, which needs its own decision about how far that
+  grant should reach.
 - **Double-clicking a temp tab should pin it.** Today the only way to
   promote the strip's one temp tab to permanent is double-clicking the file
   in the tree, editing its content, or _Save As_ — double-clicking the tab
