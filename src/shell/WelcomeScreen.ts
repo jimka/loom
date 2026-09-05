@@ -2,9 +2,27 @@ import { Container, callable } from '@jimka/typescript-ui/core'
 import { VBox } from '@jimka/typescript-ui/layout'
 import { Text, Link } from '@jimka/typescript-ui/component/input'
 import { Button } from '@jimka/typescript-ui/component/button'
+import { Image } from '@jimka/typescript-ui/component/display'
 import { OPEN_FOLDER_SHORTCUT } from './shortcuts'
 import { welcomeCopy } from './welcomeText'
 import { projectName } from '../data/paths'
+import { APP_FAVICON } from '../appIdentity'
+
+/**
+ * The Loom mark's rendered edge length on the welcome screen, in pixels.
+ * Exactly a third of the mark's own 240-unit viewBox, so its 18-unit strokes
+ * land on whole pixels (6px), and large enough to read as the page's mark
+ * above the 20px heading without dominating the column.
+ */
+const MARK_SIZE_PX = 80
+
+/**
+ * The mark's locked display size. Passed as all three of `preferredSize`,
+ * `minSize` and `maxSize`: `Image.getPreferredSize` reports the picture's
+ * natural dimensions and ignores the `preferredSize` constraint, so the
+ * min/max pair is what actually holds the 240×240 artwork at MARK_SIZE_PX.
+ */
+const MARK_SIZE = { width: MARK_SIZE_PX, height: MARK_SIZE_PX }
 
 /** The heading `Text`'s font size, in pixels — large enough to read as a page title next to the muted hint line below it. */
 const HEADING_FONT_SIZE = 20
@@ -37,9 +55,9 @@ export interface WelcomeScreenParams {
  * file is open, covering both "no project folder open" and "project open,
  * no file tabs" with one component — only the heading and hint text differ
  * between them, resolved by {@link welcomeCopy}. Its body is a single
- * centred `VBox` column holding the heading, the hint, the Open Folder
- * button, and (when there is any recent-projects history) a Recent Projects
- * section, in that order.
+ * centred `VBox` column holding the Loom mark, the heading, the hint, the
+ * Open Folder button, and (when there is any recent-projects history) a
+ * Recent Projects section, in that order.
  */
 class WelcomeScreen extends Container {
     private readonly _heading: Text
@@ -48,6 +66,7 @@ class WelcomeScreen extends Container {
     private readonly _onOpenRecentProject: (path: string) => void
 
     constructor(params: WelcomeScreenParams) {
+        const mark = Image(APP_FAVICON, { preferredSize: MARK_SIZE, minSize: MARK_SIZE, maxSize: MARK_SIZE })
         const heading = new Text('', { fontSize: HEADING_FONT_SIZE, fontWeight: '600' })
         const hint = new Text('', { foregroundColor: HINT_COLOR })
 
@@ -64,7 +83,7 @@ class WelcomeScreen extends Container {
         super({
             layoutManager: new VBox({ justify: 'center', itemAlign: 'center', spacing: CONTENT_SPACING }),
             backgroundColor: 'var(--ts-ui-input-bg, rgb(255, 255, 255))',
-            components: [heading, hint, openFolder, recentList],
+            components: [mark, heading, hint, openFolder, recentList],
         })
 
         this._heading = heading
