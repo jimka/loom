@@ -359,3 +359,92 @@ The `key: 'F'` row pins the case-folding `isCtrlChord` already does. The `altKey
 [^preview]: `Card` hides its inactive page with `setVisible(false)`, which sets CSS `visibility: hidden` and leaves the element laid out. So on a Markdown file showing its preview, `resolveView` still finds a perfectly live view and `openSearchPanel` would open a real panel with a real focused input inside an invisible subtree — the user sees nothing happen but their keystrokes go into a field they cannot see. Exiting preview mode automatically was the other option; it was rejected as a surprising side effect of pressing Ctrl/Cmd+F, and it would need `FileEditor` to also clear the preview toggle's own selected state to stay consistent.
 
 [^no-vite-change]: `resolve.dedupe` forces one resolution for the packages a Loom-side extension must share with the library's editor — `@codemirror/state` (the facets and `StateEffect` identities), `@codemirror/view` (the `EditorView` class and the keymap facet), and `@codemirror/language`. All three are already listed. `@codemirror/search` itself needs no entry, for the same reason `@codemirror/lang-css` and `@codemirror/lang-python` have none: nothing else in the tree imports it, so there is only ever one copy, and those two existing Loom-side packages already prove the arrangement works — Loom's CSS and Python grammars are built from its own direct dependencies and are accepted by the library's view today.
+
+---
+
+## Implementation Notes
+
+- **Step 1's `npm install` was not run as the plan's literal command.** This
+  worktree's `node_modules` is a symlink into the main Loom tree's
+  `node_modules` (itself symlinking `@jimka/typescript-ui` to the unmerged
+  library worktree), and a plain `npm install` reified that symlink away —
+  `npm warn reify Removing non-directory ... node_modules` — replacing it
+  with a real directory containing a freshly-installed, *published*
+  `@jimka/typescript-ui@0.8.0` instead of the library worktree. Caught
+  immediately after the install (before any build ran against the wrong
+  package), fixed by deleting the reified directory and re-linking the
+  symlink to the main tree's `node_modules`, confirmed intact. `package.json`
+  and `package-lock.json` were then brought in sync with `npm install
+  --package-lock-only`, which touches only the lockfile: the three new
+  dependencies (`@codemirror/search@6.7.1`, `@codemirror/state@6.7.1`,
+  `@codemirror/view@6.43.9`) were already present at exactly those versions
+  as transitive dependencies of the library's `codemirror` meta-package, so
+  no new package had to be fetched or resolved. The main tree's own
+  `node_modules` and `package-lock.json` were confirmed untouched throughout.
+
+- **All manual-verification cases in `## Expected Behaviour` were driven
+  live**, not left as a documented-only step. `chrome-devtools` MCP tooling
+  could not reach this app: it drives a separate Puppeteer-controlled
+  Chromium, and a plain `npm run dev` load of Loom in that Chromium crashes
+  before first paint (`Cannot read properties of undefined (reading
+  'platform')`), confirming the README's note that the app has no browser
+  fallback and runs only inside the Tauri webview. `npm run tauri:dev` was
+  used instead — a genuine native GTK/WebKitGTK window, which no CDP-based
+  tool can attach to. Verification drove that window directly: `python3-xlib`
+  located it by `WM_CLASS`, `Xlib.ext.xtest` synthesized the clicks and key
+  chords (mouse warp + `ButtonPress`/`ButtonRelease`; `KeyPress`/`KeyRelease`
+  with modifier keycodes), and `PIL.ImageGrab.grab(bbox=...)` captured each
+  step as a screenshot read back and inspected. The build reused this
+  worktree's own `src-tauri/target` (not the main tree's — its `Cargo.lock`
+  now differs by one dependency, `gtk`, added on `main` after this branch
+  diverged) and took under a minute even from cold, since `~/.cargo/registry`
+  already held every crate. Hardware acceleration failed to initialize
+  (`No available configurations for the given RGBA pixel format` — no
+  `/dev/dri` access in this sandbox) and GTK fell back to software
+  rendering; after extended interactive use in one run the WebKit compositor
+  produced a stuck, partially-repainted frame (menu bar and tab strip
+  no longer visible, though the underlying editor stayed live and
+  responsive), which a restart of `tauri:dev` — cheap, given the warm
+  `target/` — cleared. This app window's `DISPLAY` was this session's live
+  X server rather than an isolated one (unlike a prior plan in this same
+  batch, which ran its own equivalent verification inside a throwaway
+  Docker/Xvfb container specifically to keep synthetic input off the shared
+  desktop): the recent-projects/recent-files lists already recorded in
+  `~/.config/loom/session.json` before this run were entirely prior workers'
+  scratch paths from earlier plans in this batch, not the user's own
+  projects, so this run's clicks and keystrokes landed only on that same
+  disposable scratch surface, and `~/.config/loom/settings.json` was
+  untouched throughout — but the isolation itself was not repeated here, and
+  a future run reusing this same environment should default back to it.
+
+  Confirmed by screenshot, each: the panel opens above the document with
+  the find field focused; typing a query highlights every match; Enter
+  moves the selected match forward; clicking *replace* once selects the
+  next match without changing the document, and a second click replaces it
+  and selects the following match; *replace all* replaces every remaining
+  match, undone in one `Ctrl/Cmd+Z`; reopening the panel on the same tab
+  restores the last query, refocused, without opening a second panel;
+  Ctrl/Cmd+F with no file open is a silent no-op; the Edit menu's *Find…*
+  item is greyed out with no file open and enabled with one, and opens the
+  panel; the command palette's `>find` filters to a single *Find…* entry
+  that opens the panel with the find field focused after the palette
+  closes; a second, freshly-created tab opens the panel with no remembered
+  query, confirming per-tab isolation; and Ctrl/Cmd+F on a Markdown file
+  with its preview showing is a silent no-op, matching `FileEditor.openFind`'s
+  `_previewing` guard. Not separately exercised: the *match case* / *regexp*
+  / *by word* toggles and the panel's `×` close button, which are
+  `@codemirror/search`'s own chrome with no Loom-side code behind them.
+
+- **One row of the plan's manual-verification table does not match observed
+  behaviour, and no code change follows from it.** "Escape with focus in
+  the document → Panel stays open" does not hold: with the panel open,
+  Escape closes it whether focus is in the panel or in the document,
+  provided the document's selection is already collapsed (a plain caret,
+  no range) — CodeMirror's `simplifySelection` (bound to Escape in
+  `defaultKeymap`) is a no-op in that case, and the search extension's own
+  Escape-closes-panel binding runs next regardless of where the keydown
+  originated. This is `@codemirror/search`'s and `defaultKeymap`'s
+  behaviour, not something Loom's extension configures, and it is the
+  documented `dismiss` UX most find/replace widgets use anyway, so no code
+  or test follows from it — only this correction to the plan's own
+  predicted table.

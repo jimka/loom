@@ -32,6 +32,12 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   opens or runs until you activate a result with Enter or a click. Typing `>`
   switches to a list of app commands — Save, Format Document, Toggle
   Explorer, and the rest of the menu bar — instead.
+- **Find & replace** — Ctrl/Cmd+F opens CodeMirror's own find/replace bar
+  over the active file's editor; every match in the document highlights as
+  you type, Enter and Shift+Enter walk to the next and previous match, and
+  the *match case*, *regexp*, and *by word* toggles refine the query.
+  Replace one match at a time or all of them at once with *replace* and
+  *replace all*.
 - **Welcome screen** — shown in place of the tab strip whenever no file is
   open, offering *Open Folder…* and naming the current project once one is.
 - **Tabbed editing** — open several files at once, each tab carrying the

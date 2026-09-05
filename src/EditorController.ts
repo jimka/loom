@@ -699,6 +699,11 @@ class EditorController {
         }
     }
 
+    /** Opens the find/replace bar over the active file's editor. */
+    findInActive(): void {
+        this.getActiveFile()?.openFind()
+    }
+
     /**
      * Applies a resolved settings snapshot: format-on-save, the formatting
      * options, the title template, and the tab width cap. Callable more than

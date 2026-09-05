@@ -34,7 +34,13 @@ nothing below has a plan yet.
   workspace.
 - **Saving a file that I'm currently editing**, reloads the entire file and
   moves the scrollbar to the top, loosing the current work state.
-- **In-file or cross-file search.**
+- **Cross-file (project-wide) search.** In-file find/replace already ships
+  (Ctrl/Cmd+F, CodeMirror's own panel — see `README.md`'s **Find & replace**
+  highlight). What project-wide search would still need on top of that:
+  content matching over every file in the project (nothing today reads file
+  bodies in bulk — `listFilesRecursive` only enumerates paths), binary-file
+  and size guards, streaming and cancellable results, a results panel in the
+  shell, and jump-to-match wiring onto `EditorController.openFile`.
 
 ## Medium
 

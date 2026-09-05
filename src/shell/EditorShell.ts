@@ -23,7 +23,7 @@ import { promptRecentDirectoryIntent, confirmOpenSeparateWorkspace } from './rec
 import { installFileDrop } from './fileDrop'
 import {
     NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
-    FORMAT_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, COMMAND_PALETTE_SHORTCUT, installAccelerators,
+    FORMAT_SHORTCUT, FIND_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, COMMAND_PALETTE_SHORTCUT, installAccelerators,
 } from './shortcuts'
 import type { AcceleratorActions } from './shortcuts'
 
@@ -124,6 +124,7 @@ class EditorShell extends Container {
             onSaveAs: () => { void controller.saveActiveAs() },
             onCloseFile: () => controller.closeActive(),
             onFormat: () => { void controller.formatActive() },
+            onFind: () => controller.findInActive(),
             onToggleExplorer: () => split.setPaneCollapsed(EXPLORER_PANE_INDEX, !split.isPaneCollapsed(EXPLORER_PANE_INDEX)),
             onExit: () => { void controller.exitApp() },
             onOpenCommandPalette: () => { void this.openCommandPalette() },
@@ -402,6 +403,8 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
                 { text: 'Exit', glyph: 'right-from-bracket', shortcut: EXIT_SHORTCUT, action: actions.onExit },
             ] },
             { label: 'Edit', glyph: 'code', items: () => [
+                { text: 'Find…', glyph: 'magnifying-glass', shortcut: FIND_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onFind },
+                { separator: true },
                 { text: 'Format Document', glyph: 'pen-to-square', shortcut: FORMAT_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onFormat },
             ] },
             { label: 'View', glyph: 'eye', items: () => [

@@ -7,6 +7,7 @@ import { MarkdownViewer } from '@jimka/typescript-ui/component/display'
 import { baseName } from '../data/paths'
 import { languageForPath, isMarkdownPath } from './languages'
 import { FileBreadcrumbs } from './FileBreadcrumbs'
+import { openFindPanel } from './editorSearch'
 
 /** How long an edit waits before the preview re-renders, in milliseconds.
  *  Shorter than `session.ts`'s 500ms save debounce: a session write is disk
@@ -238,6 +239,19 @@ class FileEditor extends Container {
     /** The wrapped `CodeEditor`. */
     getEditor(): CodeEditor {
         return this._editor
+    }
+
+    /** Opens the find/replace bar over this file's editor. A no-op while the
+     *  Markdown preview is showing: `Card` hides the editor with
+     *  `setVisible(false)`, which leaves it laid out but invisible, so the
+     *  panel and its focused find field would open where the user can't see
+     *  them. */
+    openFind(): void {
+        if (this._previewing) {
+            return
+        }
+
+        openFindPanel(this._editor)
     }
 
     /** Whether Save would do anything: the document is dirty, or has no path yet. */
