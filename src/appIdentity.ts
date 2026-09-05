@@ -1,8 +1,17 @@
-// The single source of the app's name and tab icon, so the window title and
-// the favicon can't drift apart or fall back to the library's own mark.
+// The single source of the app's name, tagline, and tab icon, so the window
+// title and the favicon can't drift apart or fall back to the library's own
+// mark.
 
 /** The canonical app name, as it should appear anywhere in the UI. */
 export const APP_NAME = 'Loom'
+
+/**
+ * A one-line description of what the app is, for the About dialog's body.
+ * Carries Markdown inline-code backticks around the library's package
+ * name: the dialog renders this string as Markdown, and that is its only
+ * consumer.
+ */
+export const APP_TAGLINE = 'A local desktop code editor built on `@jimka/typescript-ui`, packaged with Tauri.'
 
 /**
  * The app's mark: a dark, rounded-square tile carrying a light "L"-shaped
