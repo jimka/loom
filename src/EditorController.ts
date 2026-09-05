@@ -75,6 +75,7 @@ class EditorController {
         this.tabs.getTab().on('beforetabclose', this.handleBeforeTabClose)
         this.tabs.getTab().on('tabclose', this.handleTabClose)
         this.tabs.getTab().on('activate', this.handleActivate)
+        this.tabs.getTab().on('tabdblclick', this.handleTabDoubleClick)
 
         onCloseRequested(this.confirmExit)
     }
@@ -961,6 +962,15 @@ class EditorController {
         if (file) {
             void this.resolvePendingExternalChange(file)
         }
+    }
+
+    /**
+     * `"tabdblclick"`: pins the double-clicked tab, matching VS Code's
+     * preview-tab behaviour. A no-op on an already-pinned tab — `pinTab` owns
+     * that check.
+     */
+    private handleTabDoubleClick = (content: Component): void => {
+        this.pinTab(content as FileEditor)
     }
 
     /**

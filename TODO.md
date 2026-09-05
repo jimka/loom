@@ -29,12 +29,6 @@ nothing below has a plan yet.
   tree empty. Fixing it means re-granting a persisted path with no user
   gesture behind it, which needs its own decision about how far that
   grant should reach.
-- **Double-clicking a temp tab should pin it.** Today the only way to
-  promote the strip's one temp tab to permanent is double-clicking the file
-  in the tree, editing its content, or _Save As_ — double-clicking the tab
-  itself in the strip does nothing special. VS Code's preview tabs pin the
-  same way; `EditorController.pinTab` already exists, it just isn't wired to
-  a tab-strip double-click yet.
 - **Configurable formatting style.** `formatOnSave`/_Format Document_ only
   toggle _whether_ `CodeEditor.format()` runs — there's no control over
   _how_ it formats (indent width, quote style, line length, and so on).
