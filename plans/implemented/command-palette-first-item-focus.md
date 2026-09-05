@@ -257,6 +257,58 @@ project with at least six files across two directories. No new automated test is
 
 ---
 
+## Implementation Notes
+
+**Step 1's precondition held.** `node_modules/@jimka/typescript-ui` is the symlink to the
+sibling `tab-doubleclick-event` worktree's `packages/lib` (not `/home/jika/typescript/
+typescript-ui/packages/lib` as the plan's own text assumed — this batch's dependency chain
+sits on a stacked worktree, not the library's main tree), and `grep -rn 'setFocusedIndex'
+node_modules/@jimka/typescript-ui/dist/lib/types/` found it on
+`AbstractSelectableList.d.ts:139`. `npm run typecheck` confirmed it end to end.
+
+**Minor codebase drift, nothing substantive.** The plan's step 8 cites `TODO.md:57-60` for
+the backlog bullet to delete; by the time this plan reached the front of the batch queue the
+bullet had drifted two lines to `55-58` (an earlier plan in the same batch inserted lines
+above it). The bullet's own text was unchanged, so it was deleted by content rather than by
+line number, and the plan's own post-condition grep (`grep -n 'command palette' TODO.md`
+leaving only the row-disabled bullet) still passed.
+
+**Manual verification pass — live, against a real Tauri window.** `npm run tauri:dev` was
+launched against an isolated `Xvfb` inside a throwaway `debian:bookworm-slim` Docker
+container (`-listen tcp -ac`, port-mapped to `127.0.0.1:6099`), with `DISPLAY=127.0.0.1:99`
+and `GDK_BACKEND=x11` pointing the host-built app at it and fresh `XDG_CONFIG_HOME`/
+`XDG_DATA_HOME` scratch directories so the real `~/.config/loom/session.json` was never
+touched (confirmed by its unchanged mtime afterward) — the same isolation
+`plans/implemented/command-palette.md` recorded. `CARGO_TARGET_DIR` pointed at the main
+tree's existing `src-tauri/target`, so the unchanged Rust side rebuilt in 12s. A scratch
+project (`~/loom-cp-verify`, removed afterward) held six files across two directories —
+`README.md`, `package.json`, `src/alpha.ts`, `src/beta.ts`, `src/gamma.ts`,
+`docs/notes.md` — pre-registered as the session's `projectRoot` (readable without a native
+folder-picker dialog: the fs plugin's capability scope statically allows `$HOME/**`) so
+`xdotool`-driven keystrokes could drive the palette directly. `import` (ImageMagick)
+captured screenshots after each step.
+
+Confirmed live, all eleven: **case 1** (typing `alpha` narrows to `src/alpha.ts` with the
+dashed focus mark on it immediately, no arrow pressed); **case 2** (`Enter` from that state
+opens `src/alpha.ts` and closes the palette — the reported defect); **case 3** (changing the
+query from `ts` to `beta` moves the highlight to the new, sole first row); **case 4**
+(`ArrowDown` from the `ts` query's first row moves the mark to the second row exactly,
+`ArrowUp` returns it to the first); **case 5** (arrowing through the `ts` results opened
+nothing and left the tab strip unchanged); **case 6** (an empty query shows "Type to search
+files" with nothing highlighted); **case 7** (query `zzzzz` shows "No matching files",
+nothing highlighted, and `Enter` did nothing); **case 8** (`>` lists all nine commands with
+"New File" highlighted first); **case 9** (backspacing the `>` back to an empty query shows
+"Type to search files" with nothing highlighted, the empty-text branch of the case); **case
+10** (with the `ts` query's highlight sitting on `src/alpha.ts`, clicking the third row,
+`docs/notes.md`, opened *that* file, not the highlighted one); **case 11** (`Escape` from a
+`gam` query with `src/gamma.ts` highlighted closed the palette with the tab strip unchanged
+and `gamma.ts` never opened).
+
+The container, scratch project, and `XDG_*` scratch directories were removed afterward;
+nothing from this verification persists outside this note.
+
+---
+
 ## Notes
 
 [^no-side-effects]: `plans/implemented/command-palette.md`'s closing Implementation Notes

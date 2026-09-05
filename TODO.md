@@ -52,10 +52,6 @@ nothing below has a plan yet.
 - **Right clicking on empty space in FileTree** should show a context menu
   with options for creating a new file or folder, at the root of the
   workspace.
-- **When typing in the command palette** I can't directly press enter to
-  activate the first item. However, when I press down, the second item is
-  selected. If I then press up again, I can then select the first row.
-  This seems like a bug in the List component, or is it a behaviour in Loom?
 - **Saving a file that I'm currently editing**, reloads the entire file and
   moves the scrollbar to the top, loosing the current work state.
 - **In-file or cross-file search.**
