@@ -68,13 +68,16 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   [`src/editor/languages.ts`](src/editor/languages.ts) for the extension map.
 - **Format Document**, and a **Toggle Explorer** command to hide/show the
   file tree. Saving reformats the document first, for the languages that
-  have a formatter (JavaScript/TypeScript, JSON, HTML, SQL, Markdown).
+  have a formatter (JavaScript/TypeScript, JSON, HTML, SQL, Markdown), in
+  whatever style the settings file's `formatting` block asks for.
 - **Settings** — an app-wide `settings.json` under Loom's config folder,
   and an optional per-project override at `<project>/.loom/settings.json`.
   *File > Open Settings* and *File > Open Workspace Settings* create and
-  open each file directly. Covers whether saving reformats the document,
-  the tree's default Show Hidden/Show Ignored state, the window title
-  template, and the tab strip's width cap — see
+  open each file directly. Covers whether saving reformats the document and
+  in what style (indent width, line width, quote style, and the rest — per
+  language, only where that language's formatter honours the field), the
+  tree's default Show Hidden/Show Ignored state, the window title template,
+  and the tab strip's width cap — see
   [`src/data/settings.ts`](src/data/settings.ts) for the full set and each
   one's default.
 

@@ -840,3 +840,50 @@ surface.
     library-side plan uses the same exhaustive-table device over the same
     eleven fields for its own engine mapping — so the two sides of the
     feature read alike.
+
+---
+
+## Implementation Notes
+
+- **Step 1's verification path differs from the plan's literal command, by
+  design of this run's environment, not codebase drift.** The plan's `grep`
+  targets `/home/jika/typescript/typescript-ui/packages/lib/dist/...`, but
+  this worktree's `node_modules/@jimka/typescript-ui` is symlinked to
+  `/home/jika/typescript/typescript-ui/.worktrees/tab-doubleclick-event/packages/lib`
+  instead — a sibling worktree carrying the full six-plan library branch
+  chain, per this run's own dispatch instructions. Re-running the grep
+  against that path found `FormatOptions` exported exactly as the plan
+  describes, and `CodeEditor.format(options?: FormatOptions)` confirmed
+  alongside it, so the dependency check still passed; only the path changed.
+
+- **All 14 manual cases in `## Expected Behaviour` were driven live**, not
+  left as a documented-only step. `npm run tauri:dev` ran against an
+  isolated Xvfb display inside a throwaway Docker container (`debian:
+  bookworm-slim`, `Xvfb :99 -listen tcp -ac`, port-mapped to
+  `127.0.0.1:6099`, with `fluxbox` for click-to-focus), keeping every
+  synthetic input off the shared desktop — the same isolation strategy
+  `file-editor-dirty-state-adoption.md`'s notes describe, since this
+  session's own `DISPLAY` was the user's live X server. The build reused
+  the main tree's Cargo cache (`CARGO_TARGET_DIR` pointed at
+  `/home/jika/typescript/loom/src-tauri/target`), making each restart
+  (required between cases, since settings resolve only at cold start)
+  near-instant. A stray `vite` process from an earlier, unrelated worker
+  run (`.worktrees/command-palette-first-item-focus`, 52 minutes old) was
+  squatting port 1420 and had to be killed before the first launch.
+  `~/.config/loom/settings.json` and `session.json` were backed up before
+  the first run and restored byte-for-byte after the last; three scratch
+  project folders under `$HOME` (required by the fs plugin's capability
+  scope) stood in for "a project" and were deleted afterward.
+
+  Every case was confirmed by reading the formatted file back from disk
+  (Alt+Shift+F then Ctrl+S, sent via XTEST) rather than by eye, plus one
+  screenshot each for case 12 (no error dialog on a fractional
+  `indentWidth`) and case 14 (no error dialog on a malformed settings
+  file). Cases 6 and 7's second half — that `lineWidth` alone changes
+  nothing for SQL, and that Markdown without `proseWrap: "always"`
+  doesn't wrap even with `lineWidth` set — were each confirmed against a
+  same-input baseline run with no `formatting` block at all, not
+  inferred. Case 11 (`keywordCase: "Upper"`) is the one this plan's own
+  `## Architecture Decisions` calls the load-bearing case: with the bad
+  value rejected by `parseFormatting`, SQL formatted normally with its
+  keywords preserved as written, never deleted.
