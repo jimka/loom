@@ -94,6 +94,12 @@ nothing below has a plan yet.
   the tab is closed and reopened — the library has no way to re-icon a
   `Tab` in place (see the `Tab.setTabGlyph` item above). The status bar's
   language updates correctly.
+- **External links depend on the webview.** The About dialog's *Source* and
+  *UI library* links render as `target="_blank"` anchors — the library's
+  Markdown default. Loom wires no opener/shell plugin (see the plugin list
+  under `## Notes`), so whether a click reaches the system browser is up to
+  the platform's webview. Each link's text is the URL itself, so the
+  address stays readable either way.
 
 ## Notes
 

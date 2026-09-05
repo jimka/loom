@@ -40,6 +40,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   *replace all*.
 - **Welcome screen** — shown in place of the tab strip whenever no file is
   open, offering *Open Folder…* and naming the current project once one is.
+- **About** — a *Close*-only dialog on the far right of the menu bar,
+  naming the app and its author, with links to Loom's own repository and to
+  the UI library it is built on.
 - **Tabbed editing** — open several files at once, each tab carrying the
   same per-file-type icon the tree shows; a dirty-indicator dot marks
   unsaved changes per tab. A temp tab shows a `~` before its name and
