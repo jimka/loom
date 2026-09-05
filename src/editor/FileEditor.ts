@@ -63,6 +63,10 @@ class FileEditor extends Container {
     private _path: string | null
     private _name: string
     private _temporary: boolean = false
+    /** Backing field for the file's on-disk text, seeded from `params.text`. */
+    private _syncedText: string
+    /** Backing field for the pending-external-change flag. */
+    private _externalChange: boolean = false
     private readonly _editor: CodeEditor
     private readonly _breadcrumbs: FileBreadcrumbs
     private readonly _body: Container
@@ -96,6 +100,7 @@ class FileEditor extends Container {
 
         this._path = params.path
         this._name = params.name
+        this._syncedText = params.text
         this._editor = editor
         this._breadcrumbs = breadcrumbs
         this._body = body
@@ -240,14 +245,51 @@ class FileEditor extends Container {
         return this.isDirty() || this._path === null
     }
 
-    /**
-     * Accepts the editor's current document as clean, after a successful save.
-     * Clearing the wrapped editor's own flag clears this component's `isDirty()`
-     * through the framework's parent-to-child relay, which is what notifies the
-     * owner.
+    /** The file's content as Loom last read it from, or wrote it to, disk. */
+    getSyncedText(): string {
+        return this._syncedText
+    }
+
+    /** Records `text` as the file's on-disk content, leaving the document and the dirty flag alone.
+     *
+     * @param text - The text to record as the file's on-disk content.
      */
-    markClean(): void {
+    setSyncedText(text: string): void {
+        this._syncedText = text
+    }
+
+    /** Records `text` as the file's on-disk content, drops the external-change flag, and accepts the document as clean.
+     *
+     * @param text - The text to record as the file's on-disk content.
+     */
+    markSynced(text: string): void {
+        this._syncedText = text
+        this._externalChange = false
         this._editor.markClean()
+    }
+
+    /** Replaces the document with `text` and marks it synced.
+     *
+     * @param text - The disk text to adopt as the document's new content.
+     */
+    adoptDiskText(text: string): void {
+        this._editor.setValue(text)
+        this.markSynced(text)
+    }
+
+    /** Whether the watcher has reported a change to this file that is not resolved yet. */
+    hasExternalChange(): boolean {
+        return this._externalChange
+    }
+
+    /** Records that the watcher reported a change to this file. */
+    markExternalChange(): void {
+        this._externalChange = true
+    }
+
+    /** Drops the external-change flag. */
+    clearExternalChange(): void {
+        this._externalChange = false
     }
 
     /** Whether this file occupies the strip's temp tab — the one a temporary open recycles. */

@@ -38,7 +38,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   same per-file-type icon the tree shows; a dirty-indicator dot marks
   unsaved changes per tab. A temp tab shows a `~` before its name and
   becomes permanent on the first edit, on a double-click in the tree, or on
-  a *Save As*.
+  a *Save As*. Open tabs follow changes made outside the app too: a buffer
+  with no unsaved changes reloads, and one with unsaved changes asks whether
+  to reload from disk or keep them.
 - **Breadcrumbs** — a path band above each editor showing where the open
   file sits inside the project folder.
 - **Markdown preview** — a toggle on the breadcrumb band of any Markdown

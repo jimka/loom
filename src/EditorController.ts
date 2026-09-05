@@ -9,15 +9,17 @@ import { glyphNameForPath } from './fileIcons'
 import { baseName, joinPath, isUnderRoot, relocatePath } from './data/paths'
 import { readFileText, writeFileText, pickProjectFolder, pickSaveTarget, setWindowTitle, closeWindow, onCloseRequested } from './data/workspace'
 import { promptUnsavedChanges } from './shell/unsavedPrompt'
+import { promptExternalChange } from './shell/externalChangePrompt'
 import { APP_NAME } from './appIdentity'
 import { withRecent } from './data/session'
 import type { Settings } from './data/settings'
 import { DEFAULT_SETTINGS, renderTitle } from './data/settings'
 import { ensureGlobalSettingsFile, ensureWorkspaceSettingsFile } from './shell/settings'
+import { externalChangeOutcome } from './data/watchEvents'
 import { messageOf } from './errors'
 
-/** How long the "Saved <name>" status message stays up, in milliseconds — long enough to notice, short enough not to linger. */
-const SAVE_MESSAGE_DURATION_MS = 2000
+/** How long a status-bar message stays up, in milliseconds — long enough to notice, short enough not to linger. */
+const STATUS_MESSAGE_DURATION_MS = 2000
 
 /** How an {@link EditorController.openFile} request should treat the tab it lands in. */
 export type OpenMode = 'temporary' | 'permanent'
@@ -41,6 +43,13 @@ class EditorController {
      * however the read and the double-click interleave.
      */
     private readonly _pendingOpens: Map<string, OpenMode> = new Map()
+    /**
+     * Paths whose external-change resolution is in flight. A second batch naming
+     * the same path while its read or its prompt is outstanding is dropped rather
+     * than opening a second prompt for one file — the same "join, don't duplicate"
+     * role `_pendingOpens` plays for an in-flight open.
+     */
+    private readonly _resolvingExternal: Set<string> = new Set()
     private readonly _languageText: Text
     private _recentProjects: string[] = []
     private _recentFiles: string[] = []
@@ -211,6 +220,32 @@ class EditorController {
         }
 
         this.syncActive()
+    }
+
+    /**
+     * Flags every open file the batch names, and resolves the active one now.
+     * A background file's resolution is deferred until {@link handleActivate}
+     * makes it active — there is no second code path and no stashed disk text
+     * for it in the meantime.
+     *
+     * @param paths - The batch of changed paths the watcher reported.
+     */
+    markExternalChanges(paths: string[]): void {
+        const active = this.getActiveFile()
+
+        for (const path of new Set(paths)) {
+            const file = this._openFiles.find(candidate => candidate.getPath() === path)
+
+            if (!file) {
+                continue
+            }
+
+            file.markExternalChange()
+
+            if (file === active) {
+                void this.resolvePendingExternalChange(file)
+            }
+        }
     }
 
     /**
@@ -515,9 +550,10 @@ class EditorController {
         }
 
         const formatFailed = await this.formatBeforeSave(file)
+        const text = file.getEditor().getValue()
 
         try {
-            await writeFileText(target, file.getEditor().getValue())
+            await writeFileText(target, text)
         } catch (error) {
             await Dialog.error('Could not save file', messageOf(error))
 
@@ -525,11 +561,11 @@ class EditorController {
         }
 
         file.setPath(target)
-        file.markClean()
+        file.markSynced(text)
         this.pinTab(file)
         this.recordRecentFile(target)
         this.tabs.getTab().setTabName(file, file.getLabel())
-        this.statusBar.setMessage(this.savedMessage(file, formatFailed), SAVE_MESSAGE_DURATION_MS)
+        this.statusBar.setMessage(this.savedMessage(file, formatFailed), STATUS_MESSAGE_DURATION_MS)
         this.syncActive()
         this._fileSavedListener?.(target)
 
@@ -553,17 +589,18 @@ class EditorController {
         }
 
         const formatFailed = await this.formatBeforeSave(file)
+        const text = file.getEditor().getValue()
 
         try {
-            await writeFileText(path, file.getEditor().getValue())
+            await writeFileText(path, text)
         } catch (error) {
             await Dialog.error('Could not save file', messageOf(error))
 
             return false
         }
 
-        file.markClean()
-        this.statusBar.setMessage(this.savedMessage(file, formatFailed), SAVE_MESSAGE_DURATION_MS)
+        file.markSynced(text)
+        this.statusBar.setMessage(this.savedMessage(file, formatFailed), STATUS_MESSAGE_DURATION_MS)
 
         return true
     }
@@ -623,7 +660,7 @@ class EditorController {
      *
      * @param file - The file that was written; its label supplies the name.
      * @param formatFailed - Whether format-on-save ran a formatter that threw.
-     * @returns The message to show for `SAVE_MESSAGE_DURATION_MS`.
+     * @returns The message to show for `STATUS_MESSAGE_DURATION_MS`.
      */
     private savedMessage(file: FileEditor, formatFailed: boolean): string {
         return formatFailed ? `Saved ${file.getLabel()} (not formatted)` : `Saved ${file.getLabel()}`
@@ -740,6 +777,95 @@ class EditorController {
     }
 
     /**
+     * Resolves `file`'s pending external-change flag: reads it from disk and
+     * applies the outcome {@link externalChangeOutcome} decides. The flag is
+     * cleared on entry, not at the end, so a change landing while the prompt
+     * is open re-arms it — picked up the next time this file's tab is
+     * activated. A no-op when the file has no pending change, has no path, or
+     * is already being resolved (`_resolvingExternal` joins a second batch
+     * naming the same path rather than opening a second prompt for it).
+     *
+     * @param file - The open file whose pending external change to resolve.
+     */
+    private async resolvePendingExternalChange(file: FileEditor): Promise<void> {
+        const path = file.getPath()
+
+        if (path === null || !file.hasExternalChange() || this._resolvingExternal.has(path)) {
+            return
+        }
+
+        this._resolvingExternal.add(path)
+        file.clearExternalChange()
+
+        try {
+            let diskText: string
+
+            try {
+                diskText = await readFileText(path)
+            } catch {
+                // Externally deleted, unreadable, or grown past readFileText's size
+                // limit: the buffer is the only surviving copy, so it is left exactly
+                // as it is — and no dialog is raised, since the user did not ask for
+                // anything here.
+                return
+            }
+
+            const outcome = externalChangeOutcome(diskText, file.getSyncedText(), file.isDirty())
+
+            if (outcome === 'reload') {
+                this.reloadFromDisk(file, diskText)
+            } else if (outcome === 'conflict') {
+                await this.resolveExternalConflict(file, diskText)
+            }
+        } finally {
+            this._resolvingExternal.delete(path)
+        }
+    }
+
+    /**
+     * Handles the conflict case: prompts to reload or keep, and either way
+     * records `diskText` as the file's on-disk text so the same disk content
+     * cannot raise a second prompt. `'keep'` leaves the buffer and its dirty
+     * flag untouched — the next save overwrites the outside change, which is
+     * what keeping the local changes means.
+     *
+     * @param file - The open file in conflict.
+     * @param diskText - The file's freshly read disk content.
+     */
+    private async resolveExternalConflict(file: FileEditor, diskText: string): Promise<void> {
+        if (await promptExternalChange(file.getName()) === 'reload') {
+            this.reloadFromDisk(file, diskText)
+
+            return
+        }
+
+        file.setSyncedText(diskText)
+    }
+
+    /**
+     * Replaces `file`'s document with `diskText` and announces the reload in
+     * the status bar. Clears and restores the temporary flag around the swap:
+     * `CodeEditor.setValue()` reports the document dirty before `markClean()`
+     * settles it, and that transient flip reaches `handleDirtyChange`
+     * synchronously, which would otherwise pin the strip's temp tab and record
+     * the file as recently used for a change the user did not make — clearing
+     * the flag first makes `pinTab`'s own already-pinned early-out fire
+     * instead, so restoring it afterwards fully restores the tab's state.
+     *
+     * @param file - The open file to reload.
+     * @param diskText - The file's freshly read disk content.
+     */
+    private reloadFromDisk(file: FileEditor, diskText: string): void {
+        const wasTemporary = file.isTemporary()
+
+        file.setTemporary(false)
+        file.adoptDiskText(diskText)
+        file.setTemporary(wasTemporary)
+        this.tabs.getTab().setTabName(file, file.getLabel())
+        this.statusBar.setMessage(`Reloaded ${file.getLabel()}`, STATUS_MESSAGE_DURATION_MS)
+    }
+
+    /**
      * Closes the strip's temp tab, if it has one. Public so a preview surface
      * outside this class — the command palette's cancel path is the first —
      * can undo an unconfirmed `'temporary'` open without knowing which file, if
@@ -821,9 +947,20 @@ class EditorController {
         queueMicrotask(() => this.syncActive())
     }
 
-    /** `"activate"`: a genuine tab switch resyncs the title/status bar. */
+    /**
+     * `"activate"`: a genuine tab switch resyncs the title/status bar, then
+     * resolves the newly active file's pending external change, if any.
+     * {@link resolvePendingExternalChange} returns immediately when the flag
+     * is unset, so an ordinary tab switch costs one boolean read.
+     */
     private handleActivate = (): void => {
         this.syncActive()
+
+        const file = this.getActiveFile()
+
+        if (file) {
+            void this.resolvePendingExternalChange(file)
+        }
     }
 
     /**
