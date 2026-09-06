@@ -60,6 +60,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   to reload from disk or keep them.
 - **Breadcrumbs** — a path band above each editor showing where the open
   file sits inside the project folder.
+- **Status bar** — the caret's position in the active file (`Ln 12, Col 5`)
+  sits at the right of the bar, left of the file's language; save and
+  reload messages appear at the left.
 - **Markdown preview** — a toggle on the breadcrumb band of any Markdown
   file swaps the editor for a rendered view of it, with a heading outline
   and width/zoom controls, that refreshes as the document changes.
