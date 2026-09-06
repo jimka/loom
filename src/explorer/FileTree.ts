@@ -17,6 +17,7 @@ import {
 import type { IgnoreChain } from '../data/gitignore'
 import { messageOf } from '../errors'
 import { promptNewEntryName, promptRenameName, confirmDelete } from './fileTreePrompts'
+import type { SelectedEntry } from './entryProperties'
 
 /** How long changed paths accumulate before the tree refreshes, in
  *  milliseconds. Batches the several messages one native flush still delivers
@@ -35,6 +36,10 @@ interface FileTreeNodeData {
 export interface FileTreeParams {
     /** Invoked with a file's path when a file row is selected — a single click or an arrow-key move. */
     onSelectFile: (path: string) => void
+    /** Invoked with the selected row — a file or a directory — or `null` when
+     *  the selection is cleared. Fires on a single click, an arrow-key move,
+     *  and every selection the tree makes itself. */
+    onSelectEntry: (entry: SelectedEntry | null) => void
     /** Invoked with a file's path when a file row is double-clicked. */
     onOpenFile: (path: string) => void
     /** Called after the tree deletes a file or folder, with its path. */
@@ -51,6 +56,7 @@ export interface FileTreeParams {
  */
 class FileTree extends Tree {
     private readonly _onSelectFile: (path: string) => void
+    private readonly _onSelectEntry: (entry: SelectedEntry | null) => void
     private readonly _onOpenFile: (path: string) => void
     private readonly _onPathDeleted: (path: string) => void
     private readonly _onPathRenamed: (oldPath: string, newPath: string) => void
@@ -76,6 +82,7 @@ class FileTree extends Tree {
         })
 
         this._onSelectFile = params.onSelectFile
+        this._onSelectEntry = params.onSelectEntry
         this._onOpenFile = params.onOpenFile
         this._onPathDeleted = params.onPathDeleted
         this._onPathRenamed = params.onPathRenamed
@@ -102,6 +109,8 @@ class FileTree extends Tree {
         if (data && !data.isDir) {
             this._onSelectFile(data.path)
         }
+
+        this.notifySelectedEntry()
     }
 
     /** `"dblclick"`: opens the node's file for keeps; a directory double-click opens nothing. */
@@ -313,6 +322,7 @@ class FileTree extends Tree {
         this._root = root
         this._rootChain = chain
         this.startWatching(root)
+        this.notifySelectedEntry()
     }
 
     /** The folder {@link setProjectRoot} last pointed the tree at, or `null` when it never has. */
@@ -343,6 +353,7 @@ class FileTree extends Tree {
 
         if (node) {
             this.selectNode(node)
+            this.notifySelectedEntry()
         }
     }
 
@@ -443,6 +454,19 @@ class FileTree extends Tree {
     }
 
     /**
+     * Reports the anchor row — the one a plain click or an arrow-key move
+     * last landed on — to {@link _onSelectEntry}, or `null` when nothing is
+     * selected. Called from every path that changes the selection, `Tree`'s
+     * own `"selection"` event included, so the properties panel tracks the
+     * highlighted row however it got highlighted.
+     */
+    private notifySelectedEntry(): void {
+        const data = this.getSelectedNode()?.data as FileTreeNodeData | undefined
+
+        this._onSelectEntry(data === undefined ? null : { path: data.path, isDir: data.isDir })
+    }
+
+    /**
      * Re-selects `path` when the rebuild left a node for it. Deliberately not
      * `selectPath`: that falls back to `revealByPredicate`, which would load
      * every unloaded branch hunting for a path the refresh may have just
@@ -456,6 +480,8 @@ class FileTree extends Tree {
         if (node !== null) {
             this.selectNode(node)
         }
+
+        this.notifySelectedEntry()
     }
 
     /** Whether hidden (leading-dot) entries are currently shown. */
@@ -503,6 +529,7 @@ class FileTree extends Tree {
         }
 
         this.setNodes(await this.loadDirectory(this._root, this._rootChain))
+        this.notifySelectedEntry()
     }
 
     /** The absolute paths of the currently expanded directory nodes. */
