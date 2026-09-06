@@ -81,11 +81,10 @@ nothing below has a plan yet.
 - **Remembering which explorer sections are open.** The sidebar's tree and
   *Properties* accordion sections both start expanded on every launch;
   neither `session.json` nor `.loom/workspace.json` records their state.
-- **Go to Line, and selection metrics in the status bar.** The bar reports
-  the caret's line and column but nothing acts on them: there is no *Go to
-  Line* command, the readout is not clickable, and it reports no
-  selected-character or selected-line count. The library exposes the caret
-  read-only (no `setCursorPosition`), so a jump-to-line would need a new
+- **Go to Line, and selection metrics in the status bar.** The bar reports the caret's line,
+  column, and document position but nothing acts on them: there is no *Go to Line* command, the
+  readout is not clickable, and it reports no selected-character or selected-line count. The
+  library exposes the caret read-only (no `setCursorPosition`), so a jump-to-line would need a new
   library API first.
 
 ## Known issues / loose ends
