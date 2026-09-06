@@ -21,6 +21,14 @@ export interface DirectoryItem {
     isDir: boolean
 }
 
+/** A file or folder's metadata, as the properties panel consumes it. */
+export interface EntryInfo {
+    /** The entry's size in bytes, as the platform reports it. */
+    size: number
+    /** The last-modified time, or `null` when the platform does not report one. */
+    modified: Date | null
+}
+
 /**
  * The largest file `readFileText` will open, in bytes (5 MiB). CodeEditor
  * wraps a single live CodeMirror document with no virtualisation, so an
@@ -213,6 +221,24 @@ export async function isDirectory(path: string): Promise<boolean> {
         return (await stat(path)).isDirectory
     } catch {
         return false
+    }
+}
+
+/**
+ * Reads `path`'s metadata, resolving `null` when it is missing or unreadable —
+ * which includes a path outside the app's filesystem scope. Works on a
+ * directory as well as a file.
+ *
+ * @param path - The file or directory to read.
+ * @returns The entry's metadata, or `null`.
+ */
+export async function statEntry(path: string): Promise<EntryInfo | null> {
+    try {
+        const info = await stat(path)
+
+        return { size: info.size, modified: info.mtime }
+    } catch {
+        return null
     }
 }
 

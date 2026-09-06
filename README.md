@@ -16,7 +16,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
 
 - **File tree** — open a project folder, browse it, lazily loading each
   directory as it's expanded; each row shows a per-file-type icon — see
-  [`src/fileIcons.ts`](src/fileIcons.ts) for the icon map. Hidden (leading-dot)
+  [`src/fileIcons.ts`](src/fileIcons.ts) for the icon map. The tree's own
+  collapsible sidebar section is titled with the open project's name (just
+  *Files* before one is open). Hidden (leading-dot)
   and `.gitignore`-ignored entries are filtered out by default; the View
   menu's **Show Hidden Files** and **Show Ignored Files** toggles bring each
   class back independently. The tree follows changes made outside the app —
@@ -26,6 +28,10 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   permanently. Right-clicking a directory, a file, or empty tree space opens
   a context menu offering New File/New Folder, Rename, Delete, and Copy
   Path.
+- **Properties** — a second, collapsible section under the file tree,
+  showing the selected file or folder's name, path, type, size, and
+  last-modified time. Selecting a row with a click or the arrow keys updates
+  it; with nothing selected it says so.
 - **Command palette** — Ctrl/Cmd+P opens a fuzzy file finder over every file
   in the project; the first match is highlighted as soon as you type, so
   Enter opens it directly; arrow keys only move the highlight, and nothing
@@ -95,7 +101,7 @@ known limitations are tracked in [`TODO.md`](TODO.md).
 
 TypeScript + [Vite](https://vitejs.dev/) frontend, built on
 `@jimka/typescript-ui`'s layout and editor components (`Tree`, `Tab`/`TabBar`,
-`Split`, `MenuBar`, `CodeEditor`, `MarkdownViewer`); [Tauri v2](https://v2.tauri.app/) provides
+`Split`, `Accordion`, `MenuBar`, `CodeEditor`, `MarkdownViewer`); [Tauri v2](https://v2.tauri.app/) provides
 the native shell and the filesystem/dialog access the frontend calls through
 `src/data/workspace.ts`, the app's sole `@tauri-apps/*` entry point.
 

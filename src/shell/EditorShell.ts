@@ -1,12 +1,13 @@
 import { Container, callable } from '@jimka/typescript-ui/core'
 import type { Component } from '@jimka/typescript-ui/core'
 import { Placement } from '@jimka/typescript-ui/primitive'
-import { Border as BorderLayout, Card, Split } from '@jimka/typescript-ui/layout'
+import { Accordion, AccordionConstraints, Border as BorderLayout, Card, Split } from '@jimka/typescript-ui/layout'
 import { MenuBar } from '@jimka/typescript-ui/component/menubar'
 import { CheckboxMenuRow, Spacer } from '@jimka/typescript-ui/component/container'
 import type { MenuItemConfig } from '@jimka/typescript-ui/component/container'
 import { Button } from '@jimka/typescript-ui/component/button'
 import { FileTree } from '../explorer/FileTree'
+import { PropertiesPanel } from '../explorer/PropertiesPanel'
 import { WelcomeScreen } from './WelcomeScreen'
 import { CommandPalette } from './CommandPalette'
 import { buildPaletteCommands } from './commands'
@@ -18,6 +19,7 @@ import type { Settings } from '../data/settings'
 import type { SessionAutosave } from './session'
 import { applySession, installSessionAutosave, loadWorkspaceState } from './session'
 import { loadResolvedSettings } from './settings'
+import { treeSectionLabel } from './treeSectionLabel'
 import { projectName, baseName, isUnderRoot, parentDir } from '../data/paths'
 import { listDirectory, tryReadTextFile, pathExists } from '../data/workspace'
 import { glyphNameForPath } from '../fileIcons'
@@ -29,12 +31,28 @@ import {
 } from './shortcuts'
 import type { AcceleratorActions } from './shortcuts'
 
-/** The tree pane's index in the shell's `Split` — 0, the other pane being the editor deck (tab strip plus welcome screen). */
+/** The explorer accordion pane's index in the shell's `Split` — 0, the other pane being the editor deck (tab strip plus welcome screen). */
 const EXPLORER_PANE_INDEX = 0
 
 /** The `Card` deck page ids the editor pane switches between. */
 const EDITOR_PAGE_ID = 'editor-tabs'
 const WELCOME_PAGE_ID = 'welcome-screen'
+
+/** The properties section's header label. */
+const PROPERTIES_SECTION_LABEL = 'Properties'
+
+/** The tree section's accordion weight. Any positive weight makes the tree the
+ *  sole section that absorbs the sidebar's leftover height; 1 is the library's
+ *  own default share. */
+const TREE_SECTION_WEIGHT = 1
+
+/** The explorer pane's floor and starting width, in pixels. Carried over
+ *  verbatim from the `minSize`/`preferredSize` `FileTree` declares for itself
+ *  (`src/explorer/FileTree.ts:80`), so the pane keeps the width it has today
+ *  even when both accordion sections are collapsed and the accordion would
+ *  otherwise report no width of its own. */
+const EXPLORER_MIN_SIZE = { width: 160, height: 0 }
+const EXPLORER_PREFERRED_SIZE = { width: 300, height: 0 }
 
 /** The menu-bar action callbacks the shell wires to the controller and the split. */
 interface MenuBarActions extends AcceleratorActions {
@@ -70,9 +88,9 @@ interface MenuBarActions extends AcceleratorActions {
 
 /**
  * The app shell: a `Border`-laid `Container` with the menu bar NORTH, a
- * horizontal `Split` (explorer tree beside the editor deck — the tab strip
- * and the welcome screen, one visible at a time) CENTER, and the status bar
- * SOUTH — the same shape as
+ * horizontal `Split` (explorer accordion (file tree over properties panel)
+ * beside the editor deck — the tab strip and the welcome screen, one visible
+ * at a time) CENTER, and the status bar SOUTH — the same shape as
  * `../../sqladmin/frontend/src/shell/SqlAdminShell.ts`.
  */
 class EditorShell extends Container {
@@ -81,6 +99,7 @@ class EditorShell extends Container {
     private readonly _controller: EditorController
     private readonly _palette: CommandPalette
     private readonly _menuBarActions: MenuBarActions
+    private readonly _relabelTreeSection: (root: string | null) => void
     private _autosave: SessionAutosave | null = null
 
     /**
@@ -90,8 +109,10 @@ class EditorShell extends Container {
      */
     constructor(controller: EditorController, session: SessionState, settings: Settings) {
         const openFolder = (): void => { void controller.openProjectFolder() }
+        const properties = PropertiesPanel({ projectRoot: session.projectRoot })
         const tree = FileTree({
             onSelectFile:  (path: string) => { void controller.openFile(path, 'temporary') },
+            onSelectEntry: entry => properties.setEntry(entry),
             onOpenFile:    (path: string) => { void controller.openFile(path, 'permanent') },
             onPathDeleted: (path: string) => controller.closeFilesUnder(path),
             onPathRenamed: (oldPath: string, newPath: string) => controller.relocateOpenFiles(oldPath, newPath),
@@ -114,8 +135,43 @@ class EditorShell extends Container {
         })
         const splitBody = Container({ layoutManager: split })
 
-        splitBody.addComponent(tree, { weight: 0 })
+        const initialSections = buildExplorerSections(session.projectRoot)
+
+        const explorer = Container({
+            layoutManager: initialSections.accordion,
+            minSize: EXPLORER_MIN_SIZE,
+            preferredSize: EXPLORER_PREFERRED_SIZE,
+        })
+
+        explorer.addComponent(tree, initialSections.treeSection)
+        explorer.addComponent(properties, initialSections.propertiesSection)
+        splitBody.addComponent(explorer, { weight: 0 })
         splitBody.addComponent(deck, { weight: 1 })
+
+        /**
+         * Retitles the tree section from `root` by rebuilding the whole
+         * accordion. `Accordion.createSection` reads a section's `label`
+         * constraint exactly once, the first time it discovers that child, so
+         * there is no API to relabel an already-built header in place;
+         * `Container.setLayoutManager` tears down and recreates every
+         * section's header instead, which is the one documented, public way
+         * to force that rebuild. `tree` and `properties` themselves are
+         * never removed, so their own state (tree data, watchers, the
+         * properties panel's current row) survives untouched — only the
+         * accordion's header chrome and each section's open/closed state
+         * reset to `initiallyOpen`, which is `true` for both sections
+         * regardless, so this has no visible effect beyond the label.
+         *
+         * @param root - The open project folder, or `null` when none is open.
+         */
+        const relabelTreeSection = (root: string | null): void => {
+            const sections = buildExplorerSections(root)
+
+            explorer.setLayoutManager(sections.accordion)
+            explorer.setLayoutConstraints(tree, sections.treeSection)
+            explorer.setLayoutConstraints(properties, sections.propertiesSection)
+            explorer.scheduleLayout()
+        }
 
         const palette = CommandPalette({
             onConfirmFile: (path: string) => { void controller.openFile(path) },
@@ -170,11 +226,28 @@ class EditorShell extends Container {
         this._controller = controller
         this._palette = palette
         this._menuBarActions = actions
+        this._relabelTreeSection = relabelTreeSection
 
         controller.setProjectRootListener(async root => {
             welcome.setProjectRoot(root)
             welcome.setRecentProjects(controller.getRecentProjects())
-            await this.openProjectRoot(root)
+
+            // The header and the properties panel are reconciled from the
+            // tree's own post-attempt root in `finally`, not from `root`
+            // directly — `openProjectRoot` rejects on an unlistable folder
+            // (a deleted Recent Projects entry), and `this._tree`'s own root
+            // stays at whatever it was before the attempt in that case. The
+            // exception itself is left to propagate afterward, unswallowed,
+            // so `EditorController.openProjectFolder`'s own catch still
+            // reports it via `Dialog.error`.
+            try {
+                await this.openProjectRoot(root)
+            } finally {
+                const openedRoot = this._tree.getProjectRoot()
+
+                properties.setProjectRoot(openedRoot)
+                relabelTreeSection(openedRoot)
+            }
         })
         controller.setActiveFileListener(path => { void tree.selectPath(path) })
         controller.setFileSavedListener(path => { void this.handleFileSaved(path) })
@@ -189,7 +262,13 @@ class EditorShell extends Container {
      * Replays `state` into the tree and tabs, then starts autosaving. Installing
      * the autosave listeners **after** the restore is what stops the restore
      * from saving its own half-finished state — there is no suppression flag
-     * anywhere in this design, and none should be added.
+     * anywhere in this design, and none should be added. The tree section's
+     * header is reconciled against the tree's own post-restore root, not
+     * `state.projectRoot` itself, because `applySession` swallows a failed
+     * `tree.setProjectRoot` (a restored project folder that was since moved
+     * or deleted) and leaves the tree rootless — reading the tree's own root
+     * back is what stops the header from naming a project that never
+     * actually opened.
      *
      * @param state - The session to restore.
      */
@@ -197,6 +276,7 @@ class EditorShell extends Container {
         const targets = { controller: this._controller, tree: this._tree, split: this._split }
 
         await applySession(state, targets)
+        this._relabelTreeSection(this._tree.getProjectRoot())
 
         const autosave = installSessionAutosave(targets)
 
@@ -347,6 +427,32 @@ function buildEditorDeck(controller: EditorController, welcome: WelcomeScreen): 
     })
 
     return deck
+}
+
+/** A freshly-built accordion plus its two sections' constraints, in child order — see {@link buildExplorerSections}. */
+interface ExplorerSections {
+    accordion: Accordion
+    treeSection: AccordionConstraints
+    propertiesSection: AccordionConstraints
+}
+
+/**
+ * Builds a new accordion and its two sections' constraints, the tree
+ * section labelled from `root`. Called once at construction and again by
+ * `relabelTreeSection` every time the project root changes, since rebuilding
+ * the accordion is the only way to change an already-built header's label
+ * (see `relabelTreeSection`'s own doc comment).
+ *
+ * @param root - The open project folder, or `null` when none is open.
+ * @returns The new accordion and its two sections' constraints.
+ */
+function buildExplorerSections(root: string | null): ExplorerSections {
+    const accordion = new Accordion({ compact: true })
+    const treeSection = new AccordionConstraints(treeSectionLabel(root), true, 'folder')
+
+    treeSection.weight = TREE_SECTION_WEIGHT
+
+    return { accordion, treeSection, propertiesSection: new AccordionConstraints(PROPERTIES_SECTION_LABEL, true, 'circle-info') }
 }
 
 /**
