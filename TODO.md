@@ -78,6 +78,9 @@ nothing below has a plan yet.
   the window itself, so a true merge doesn't apply there; at most a
   `titleBarStyle: "overlay"` treatment to extend content under the traffic
   lights.
+- **Remembering which explorer sections are open.** The sidebar's tree and
+  *Properties* accordion sections both start expanded on every launch;
+  neither `session.json` nor `.loom/workspace.json` records their state.
 
 ## Known issues / loose ends
 
