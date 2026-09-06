@@ -841,3 +841,98 @@ the only prose surfaces.
     how to get back. `Accordion` does expose the state — `isSectionOpen`,
     `openSection`/`closeSection`, and a `sectiontoggle` event — so adding this
     later is additive, not a redesign.
+
+---
+
+## Implementation Notes
+
+- **The tree section's header shows the open project's name instead of a
+  static "Files" label**, updating live whenever the project root changes —
+  a mid-implementation scope addition beyond what this plan originally
+  specified, added at the user's request during implementation, before this
+  branch's audit round. `treeSectionLabel(root)` and its
+  `FILES_SECTION_FALLBACK_LABEL` ("Files") fallback live in a new pure
+  module, `src/shell/treeSectionLabel.ts` (with `tests/treeSectionLabel.test.ts`),
+  mirroring the `welcomeText.ts`/`tests/welcomeText.test.ts` split this plan
+  already uses for `entryProperties.ts` — both are additions beyond this
+  plan's own `## Files to Create / Modify / Delete` table.
+  `src/shell/EditorShell.ts` no longer declares `FILES_SECTION_LABEL` (plan
+  step 7); it imports `treeSectionLabel` instead. Searched `Accordion`'s full
+  public API, `AccordionConstraints`, `AccordionHeader`, and the library's
+  `Accordion.md` reference for a way to relabel an already-built section
+  header: none exists. `Accordion.createSection` reads a section's `label`
+  constraint exactly once, the first time it discovers that child in
+  `doLayout`'s `_headers.length`-gated loop, and nothing re-reads it
+  afterward — so mutating an `AccordionConstraints` instance
+  post-construction, or writing through `Container.setLayoutConstraints`,
+  has no visible effect on a header that already exists. The chosen
+  approach, `buildExplorerSections`/`relabelTreeSection` in
+  `src/shell/EditorShell.ts`, rebuilds the whole accordion on every
+  project-root change via `Container.setLayoutManager` — a public,
+  general-purpose, documented capability for swapping a container's layout
+  strategy — and re-registers both children's constraints via the equally
+  public `Container.setLayoutConstraints`. `tree` and `properties`
+  themselves are never removed or recreated, so their own state (tree data,
+  the active watcher, the properties panel's current row) is untouched; only
+  the accordion's header chrome rebuilds, which resets each section's
+  open/closed state to `initiallyOpen`. Since both sections already start
+  `initiallyOpen: true` and this plan's own Non-Goals leave that state
+  unpersisted, the reset is not a behaviour change in practice — the one
+  case it would visibly affect (a user manually collapses a section, then
+  switches projects) was not called out as a requirement, and is a minor,
+  easily-reversed side effect (one click) rather than a defect. No comparable
+  "a container's own chrome relabels itself live" precedent exists elsewhere
+  in Loom; `WelcomeScreen`'s and the window title's dynamic project-name
+  text both write into a plain `Text`/native title setter they own outright,
+  which is not available here since accordion headers are private,
+  raw-DOM-appended internals with no public accessor.
+
+  Both the header relabel and `PropertiesPanel.setProjectRoot` are reconciled
+  from the tree's own post-attempt root (`this._tree.getProjectRoot()`),
+  never from the raw `root` a caller supplied, because a project switch or a
+  session restore can both fail to actually open — a deleted Recent Projects
+  entry, or a restored `session.json` pointing at a folder since moved or
+  removed. `applySession` (`src/shell/session.ts:79-90`) swallows that
+  failure and leaves the tree rootless; `EditorShell.openProjectRoot`
+  (called from the live `setProjectRootListener` callback) does not catch
+  it, so the listener's `await this.openProjectRoot(root)` rejects and the
+  header/properties reconciliation runs from a `finally` block instead of
+  unconditionally before the attempt — otherwise either path would leave the
+  sidebar naming a project that never actually opened, while the tree itself
+  stayed on the previous (or no) root. The pre-existing
+  `welcome.setProjectRoot(root)` call has the same underlying gap on the
+  live-switch path, but is out of this plan's scope to fix: it predates this
+  branch, and the welcome screen is hidden whenever a tab is open, so it
+  carries no new user-visible symptom the way the always-visible accordion
+  header would.
+
+- **Full interactive manual verification (`npm run tauri:dev`) was not
+  completed in this environment.** `npm run typecheck`, `npm test`, and
+  `npm run build` all pass (the sole test failure, `tests/languages.test.ts`,
+  reproduces identically on `main` with no code changes at all — confirmed
+  via `git stash` — and is unrelated to this branch). This sandbox has no
+  screenshot/interaction tooling for a native Tauri window and no way to
+  drive one turn-by-turn, so the plan's own `## Expected Behaviour` →
+  *Manual verification* list (extended by this note to also cover: the tree
+  section's header shows the open project's name and updates immediately
+  when a different project folder is opened; point `session.json` at a
+  since-deleted project folder and relaunch — the header reads "Files", not
+  the dead folder's name, and the tree stays empty; and, with a project
+  already open, use *File > Open Recent* on an entry since deleted — unlike
+  the native folder picker, `EditorController.openRecentProject` does not
+  catch a failed listing, so no error dialog appears (a pre-existing gap,
+  unrelated to this branch); what this branch's fix covers is that the
+  header and tree both stay on the still-open project rather than silently
+  flipping to the dead one) stands as the
+  documented manual-verify step for a human to walk through `npm run
+  tauri:dev` before relying on this branch. One exploratory launch during
+  implementation, via
+  this sandbox's WSLg X11 passthrough, did briefly confirm the base
+  Properties panel renders and populates correctly against a real,
+  already-open project (a restored session's selected file showed correct
+  Name/Path/Type/Size/Modified values) — but that was a single incidental
+  check, not a walkthrough of the full checklist, and does not substitute
+  for the user's own pass through it (folder selection's dashed Size,
+  collapse/expand of each section, the watcher-driven Size/Modified refresh,
+  rename/delete, the long-path ellipsis, and the header's live relabel on a
+  project switch all remain unverified interactively).
