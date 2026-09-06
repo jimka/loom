@@ -333,3 +333,71 @@ surfaces, same as the precedent plan found.
     `Ln ${line}, Col ${column} · Pos ${offset} · Dirty: ...`), which is precedent to follow per
     [`pattern-conformance.md`](../../../.claude/skills/_shared/pattern-conformance.md), not a
     Loom-side convention to preserve unchanged.
+
+---
+
+## Implementation Notes
+
+**`README.md`'s Status bar bullet uses different wording than `## Documentation Impact` quotes,
+because the quoted text was factually wrong.** The plan's `## Documentation Impact` (above) says to
+write "including its **raw document offset** (`Ln 12, Col 5 · Pos 245`)" — but the rendered `Pos`
+value is `offset + 1`, not the raw `offset`, per this same plan's own
+`### offset renders as offset + 1` decision. Applying the quoted text verbatim would have shipped a
+README that tells a reader `Pos` is the library's raw 0-based index, off by one from what it
+actually is. `README.md`'s Status bar bullet instead reads "the caret's line, column, and position
+in the document (`Ln 12, Col 5 · Pos 245`)" — dropping "raw" rather than repeating the plan's error.
+`TODO.md`'s Go to Line bullet was applied as quoted; it makes no raw/rendered claim, so it carries
+no equivalent defect.
+
+**Manual verification (`## Expected Behaviour` › *Manual verification*) was run via this sandbox's
+documented QA workaround, not via `npm run tauri:dev`.** This environment has no display a real
+Tauri/WebKitGTK window can attach to, so the plan's own verification command could not run
+literally. Instead: `npm run dev` (plain Vite, no native window) plus temporary `resolve.alias`
+entries in `vite.config.ts` redirecting `@tauri-apps/plugin-os`, `@tauri-apps/plugin-fs`,
+`@tauri-apps/plugin-dialog`, `@tauri-apps/api/window`, and `@tauri-apps/api/path` to no-op stub
+modules (so the app boots in a bare browser tab instead of crashing on the top-level `platform()`
+call in `src/data/workspace.ts`), driven with the chrome-devtools MCP tools. The alias block was
+reverted before committing anything — it never landed in `vite.config.ts` on this branch.
+
+Using an in-memory *New File* buffer (`EditorController.newFile()`, no filesystem involved), four
+of the six bullets were verified directly against the running app:
+
+- **Opening a file at the document start** — a fresh `Untitled-1` buffer read `Ln 1, Col 1 · Pos 1`,
+  not `Pos 0`.
+- **Typing at the document start** — one keystroke moved the readout from `Ln 1, Col 1 · Pos 1` to
+  `Ln 1, Col 2 · Pos 2`, `Col` and `Pos` advancing together.
+- **A line starting with a literal tab** — `document.execCommand('insertText', false, '\t')` (to
+  insert one raw tab character rather than whatever the Tab *key* binding does — pressing Tab
+  itself turned out to insert a two-space indent, per this editor's formatting-style default, not a
+  literal `\t`) took the readout from `Ln 1, Col 1 · Pos 1` to `Ln 1, Col 2 · Pos 2` — one tab
+  counted as exactly one column and one position, confirming `Pos` does not expand to a tab stop.
+- **Switching tabs** — with `Untitled-1` at `Ln 2, Col 14 · Pos 40` and a second buffer,
+  `Untitled-2`, focused and edited, clicking back to `Untitled-1`'s tab immediately restored
+  `Ln 2, Col 14 · Pos 40` with no keypress.
+- **Widening `Pos` does not shift the language text** — measured via `getBoundingClientRect()`
+  rather than eyeballing: growing the readout from `Ln 2, Col 14 · Pos 40` (2-digit `Pos`) to
+  `Ln 4, Col 81 · Pos 123` (3-digit `Pos`) left the element's right edge at the same 2535px screen
+  position while its left edge moved 4px further left — confirming the readout grows leftward and
+  its anchored (right) side is stable, the same invariant the language text next to it would rely
+  on.
+
+**Two of the six bullets remain unverified, for reasons intrinsic to this sandbox rather than this
+change:**
+
+- **Format Document.** This sandbox has no way to attach a real file to a language/formatter
+  (`@tauri-apps/plugin-dialog`'s `open()`/`save()` are stubbed to return `null`, and
+  `@tauri-apps/plugin-fs`'s `readTextFile`/`stat` are stubbed to always throw, by design — there is
+  no real filesystem for them to reach), and an in-memory `Untitled-*` buffer has no language
+  attached, so no formatter registers against it. Invoking *Format Document* (`Alt+Shift+F`) against
+  such a buffer was confirmed to be a safe no-op — text and the `Ln 2, Col 14 · Pos 40` readout were
+  byte-for-byte identical before and after — but this does not exercise the documented scenario
+  (a formatter rewriting earlier text while the caret's visible line/column hold steady). That
+  scenario needs a real file on disk, which this sandbox cannot provide.
+- **Session restore.** The same `plugin-fs` stub that makes the sandbox safe to boot in a bare
+  browser tab also makes `readSessionText`/`writeSessionText` permanently fail, so a relaunch can
+  never restore a previous session here. The tab-switching half of this bullet (no keypress needed,
+  see above) was verified; the relaunch half was not.
+
+A human running `npm run tauri:dev` on a real machine remains the authoritative check for these
+two, per the plan's own `## Expected Behaviour` list — this note records what a from-first-principles
+sandbox pass could and couldn't add on top of the unit tests.
