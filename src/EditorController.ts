@@ -5,6 +5,7 @@ import { Dialog } from '@jimka/typescript-ui/overlay'
 import type { TabCloseController } from '@jimka/typescript-ui/layout'
 import type { FormatOptions } from '@jimka/typescript-ui/component/editor'
 import { FileEditor } from './editor/FileEditor'
+import { cursorLabel } from './editor/cursorLabel'
 import { languageForPath, hasFormatter } from './editor/languages'
 import { glyphNameForPath } from './fileIcons'
 import { baseName, joinPath, isUnderRoot, relocatePath } from './data/paths'
@@ -51,6 +52,7 @@ class EditorController {
      * role `_pendingOpens` plays for an in-flight open.
      */
     private readonly _resolvingExternal: Set<string> = new Set()
+    private readonly _cursorText: Text
     private readonly _languageText: Text
     private _recentProjects: string[] = []
     private _recentFiles: string[] = []
@@ -71,7 +73,9 @@ class EditorController {
         })
 
         this.statusBar = new StatusBar()
+        this._cursorText = new Text('')
         this._languageText = new Text('')
+        this.statusBar.addRight(this._cursorText)
         this.statusBar.addRight(this._languageText)
 
         this.tabs.getTab().on('beforetabclose', this.handleBeforeTabClose)
@@ -338,6 +342,7 @@ class EditorController {
         })
 
         file.onDirtyChange(() => this.handleDirtyChange(file))
+        file.getEditor().on('cursorchange', () => this.handleCursorChange(file))
         this.tabs.addTab(file, file.getLabel(), { closeable: true, glyph: glyphNameForPath(file.getName()) })
         this._openFiles.push(file)
         this.tabs.getTab().setActiveContent(file)
@@ -438,6 +443,7 @@ class EditorController {
 
         file.setTemporary(temporary)
         file.onDirtyChange(() => this.handleDirtyChange(file))
+        file.getEditor().on('cursorchange', () => this.handleCursorChange(file))
         this.tabs.addTab(file, file.getLabel(), { closeable: true, glyph: glyphNameForPath(path) })
         this._openFiles.push(file)
 
@@ -907,6 +913,19 @@ class EditorController {
     }
 
     /**
+     * Registered as a `"cursorchange"` listener on each open file's editor:
+     * repaints the status bar's caret readout. A file that is not the active one
+     * is ignored — only the active file's caret is on show.
+     */
+    private handleCursorChange = (file: FileEditor): void => {
+        if (file !== this.getActiveFile()) {
+            return
+        }
+
+        this.syncCursorPosition(file)
+    }
+
+    /**
      * `"beforetabclose"`: a clean file closes immediately. A dirty file vetoes
      * the close and starts the unsaved-changes prompt instead.
      */
@@ -1002,13 +1021,14 @@ class EditorController {
         return true
     }
 
-    /** Sets the window title and the status bar's language text from the active file. */
+    /** Sets the window title and the status bar's language text and caret readout from the active file. */
     private syncActive(): void {
         this._emptyStateListener?.(this._openFiles.length === 0)
 
         const file = this.getActiveFile()
 
         this._activeFileListener?.(file?.getPath() ?? null)
+        this.syncCursorPosition(file)
 
         if (!file) {
             void setWindowTitle(APP_NAME)
@@ -1022,6 +1042,19 @@ class EditorController {
 
         void setWindowTitle(title)
         this._languageText.setText(languageForPath(file.getPath()) ?? '')
+    }
+
+    /**
+     * Sets the status bar's caret readout from `file`'s editor, read live rather
+     * than from a `"cursorchange"` payload — the same call serves an activation,
+     * where no event fires at all.
+     *
+     * @param file - The active file, or `null` when no file is open.
+     */
+    private syncCursorPosition(file: FileEditor | null): void {
+        const position = file === null ? null : file.getEditor().getCursorPosition()
+
+        this._cursorText.setText(cursorLabel(position))
     }
 }
 
