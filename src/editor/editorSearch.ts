@@ -1,4 +1,5 @@
-// Opens CodeMirror's own find/replace panel over a Loom `CodeEditor`.
+// Opens CodeMirror's own find/replace panel over a Loom `CodeEditor`, and
+// positions its caret at a project-search match.
 //
 // `CodeEditor` wires no `@codemirror/search` extension and keeps its
 // `EditorView` private (see `mount()`'s extension list in the library's
@@ -14,6 +15,7 @@ import { EditorView, keymap } from '@codemirror/view'
 import { StateEffect } from '@codemirror/state'
 import { search, searchKeymap, openSearchPanel } from '@codemirror/search'
 import type { CodeEditor } from '@jimka/typescript-ui/component/editor'
+import type { MatchLocation } from '../data/projectSearch'
 
 /** Views whose configuration already carries the search extension. Keyed on
  *  the view rather than on the `CodeEditor`, so a rebuilt view gets a fresh
@@ -54,4 +56,34 @@ export function openFindPanel(editor: CodeEditor): void {
     }
 
     openSearchPanel(view)
+}
+
+/**
+ * Selects `at`'s range in `editor`, scrolls it into view, and focuses the
+ * editor. Deferred to `Component.onFirstLayout`: a file a search result just
+ * opened may not have built its `EditorView` yet, since `CodeEditor` mounts
+ * on its first sized layout. The three `Math.min` calls
+ * clamp against the *live* document rather than trusting the match's
+ * position outright, so a file that changed on disk since the search ran
+ * lands at the nearest valid position instead of CodeMirror throwing on an
+ * out-of-range offset.
+ *
+ * @param editor - The editor to reveal the match in.
+ * @param at - The match's location.
+ */
+export function revealRange(editor: CodeEditor, at: MatchLocation): void {
+    editor.onFirstLayout(() => {
+        const view = resolveView(editor)
+
+        if (view === null) {
+            return
+        }
+
+        const line = view.state.doc.line(Math.min(at.line, view.state.doc.lines))
+        const from = Math.min(line.from + at.column, line.to)
+        const to = Math.min(from + at.length, line.to)
+
+        view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true })
+        view.focus()
+    })
 }

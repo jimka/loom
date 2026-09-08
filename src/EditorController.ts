@@ -7,6 +7,7 @@ import type { FormatOptions, CodeEditorCursorPosition } from '@jimka/typescript-
 import { FileEditor } from './editor/FileEditor'
 import { cursorLabel } from './editor/cursorLabel'
 import { languageForPath, hasFormatter } from './editor/languages'
+import type { MatchLocation } from './data/projectSearch'
 import { glyphNameForPath } from './fileIcons'
 import { baseName, joinPath, isUnderRoot, relocatePath } from './data/paths'
 import { readFileText, writeFileText, pickProjectFolder, pickSaveTarget, setWindowTitle, closeWindow, onCloseRequested } from './data/workspace'
@@ -468,6 +469,23 @@ class EditorController {
         if (settled === 'permanent') {
             file.getEditor().focus()
         }
+    }
+
+    /**
+     * Opens `path` in a permanent tab, then reveals `at` in it — the
+     * project-search results panel's activation handler. The open file is
+     * re-read from the registry rather than trusting the tab that was active
+     * a moment ago, so a read that failed (`openFile` has already shown its
+     * `Dialog.error` and opened nothing) reveals nothing instead of
+     * scrolling whichever tab happened to stay active.
+     *
+     * @param path - The file to open.
+     * @param at - The match's location to reveal once the file is open.
+     */
+    async openFileAt(path: string, at: MatchLocation): Promise<void> {
+        await this.openFile(path, 'permanent')
+
+        this._openFiles.find(candidate => candidate.getPath() === path)?.revealMatch(at)
     }
 
     /**

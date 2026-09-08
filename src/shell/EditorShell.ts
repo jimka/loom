@@ -8,11 +8,13 @@ import type { MenuItemConfig } from '@jimka/typescript-ui/component/container'
 import { Button } from '@jimka/typescript-ui/component/button'
 import { FileTree } from '../explorer/FileTree'
 import { PropertiesPanel } from '../explorer/PropertiesPanel'
+import { SearchPanel } from '../explorer/SearchPanel'
 import { WelcomeScreen } from './WelcomeScreen'
 import { CommandPalette } from './CommandPalette'
 import { buildPaletteCommands } from './commands'
 import { openAboutDialog } from './aboutDialog'
 import { listFilesRecursive } from '../data/fileIndex'
+import type { SearchMatch } from '../data/projectSearch'
 import type { EditorController } from '../EditorController'
 import type { SessionState } from '../data/session'
 import type { Settings } from '../data/settings'
@@ -21,13 +23,13 @@ import { applySession, installSessionAutosave, loadWorkspaceState } from './sess
 import { loadResolvedSettings } from './settings'
 import { treeSectionLabel } from './treeSectionLabel'
 import { projectName, baseName, isUnderRoot, parentDir } from '../data/paths'
-import { listDirectory, tryReadTextFile, pathExists, grantProjectScope } from '../data/workspace'
+import { listDirectory, tryReadTextFile, pathExists, grantProjectScope, readFileText } from '../data/workspace'
 import { glyphNameForPath } from '../fileIcons'
 import { promptRecentDirectoryIntent, confirmOpenSeparateWorkspace } from './recentProjectPrompt'
 import { installFileDrop } from './fileDrop'
 import {
     NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
-    FORMAT_SHORTCUT, FIND_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, COMMAND_PALETTE_SHORTCUT, installAccelerators,
+    FORMAT_SHORTCUT, FIND_SHORTCUT, FIND_IN_FILES_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, COMMAND_PALETTE_SHORTCUT, installAccelerators,
 } from './shortcuts'
 import type { AcceleratorActions } from './shortcuts'
 
@@ -40,6 +42,14 @@ const WELCOME_PAGE_ID = 'welcome-screen'
 
 /** The properties section's header label. */
 const PROPERTIES_SECTION_LABEL = 'Properties'
+
+/** The search section's header label. */
+const SEARCH_SECTION_LABEL = 'Search'
+
+/** The search section's index among the accordion's children — the third,
+ *  after the tree and the properties panel. Mirrors {@link EXPLORER_PANE_INDEX}'s
+ *  role for the split's own children. */
+const SEARCH_SECTION_INDEX = 2
 
 /** The tree section's accordion weight. Any positive weight makes the tree the
  *  sole section that absorbs the sidebar's leftover height; 1 is the library's
@@ -122,6 +132,13 @@ class EditorShell extends Container {
         void tree.setShowHidden(settings.showHiddenFiles)
         void tree.setShowIgnored(settings.showIgnoredFiles)
 
+        const searchPanel = SearchPanel({
+            listFiles: () => listWorkspaceFiles(tree.getProjectRoot()),
+            readText: readFileText,
+            onOpenMatch: (match: SearchMatch) => { void controller.openFileAt(match.path, match) },
+            projectRoot: session.projectRoot,
+        })
+
         const welcome = WelcomeScreen({
             onOpenFolder: openFolder,
             recentProjects: controller.getRecentProjects(),
@@ -145,8 +162,15 @@ class EditorShell extends Container {
 
         explorer.addComponent(tree, initialSections.treeSection)
         explorer.addComponent(properties, initialSections.propertiesSection)
+        explorer.addComponent(searchPanel, initialSections.searchSection)
         splitBody.addComponent(explorer, { weight: 0 })
         splitBody.addComponent(deck, { weight: 1 })
+
+        /** The accordion currently laying out `explorer` — reassigned by
+         *  {@link relabelTreeSection} on every rebuild, so {@link revealSearchSection}
+         *  always opens a section on the live instance rather than one a later
+         *  rebuild replaced. */
+        let accordion = initialSections.accordion
 
         /**
          * Retitles the tree section from `root` by rebuilding the whole
@@ -155,12 +179,15 @@ class EditorShell extends Container {
          * there is no API to relabel an already-built header in place;
          * `Container.setLayoutManager` tears down and recreates every
          * section's header instead, which is the one documented, public way
-         * to force that rebuild. `tree` and `properties` themselves are
-         * never removed, so their own state (tree data, watchers, the
-         * properties panel's current row) survives untouched — only the
-         * accordion's header chrome and each section's open/closed state
-         * reset to `initiallyOpen`, which is `true` for both sections
-         * regardless, so this has no visible effect beyond the label.
+         * to force that rebuild. `tree`, `properties`, and `searchPanel`
+         * themselves are never removed, so their own state (tree data,
+         * watchers, the properties panel's current row) survives untouched —
+         * only the accordion's header chrome and each section's open/closed
+         * state reset to `initiallyOpen`. That resets the search section
+         * closed again even if it was open, which is correct: a project
+         * switch invalidates whatever results it was showing anyway. The
+         * tree and properties sections both stay open regardless, since
+         * `initiallyOpen` is `true` for both.
          *
          * @param root - The open project folder, or `null` when none is open.
          */
@@ -170,7 +197,19 @@ class EditorShell extends Container {
             explorer.setLayoutManager(sections.accordion)
             explorer.setLayoutConstraints(tree, sections.treeSection)
             explorer.setLayoutConstraints(properties, sections.propertiesSection)
+            explorer.setLayoutConstraints(searchPanel, sections.searchSection)
             explorer.scheduleLayout()
+            accordion = sections.accordion
+        }
+
+        /** Ctrl/Cmd+Shift+F, the Edit menu's *Find in Files…* item, and the
+         *  palette's matching command: un-collapses the explorer pane, opens
+         *  the search section, and focuses its query field — the one entry
+         *  point all three share, so they cannot drift apart. */
+        const revealSearchSection = (): void => {
+            split.setPaneCollapsed(EXPLORER_PANE_INDEX, false)
+            accordion.openSection(SEARCH_SECTION_INDEX)
+            searchPanel.focusQuery()
         }
 
         const palette = CommandPalette({
@@ -185,6 +224,7 @@ class EditorShell extends Container {
             onCloseFile: () => controller.closeActive(),
             onFormat: () => { void controller.formatActive() },
             onFind: () => controller.findInActive(),
+            onFindInFiles: revealSearchSection,
             onToggleExplorer: () => split.setPaneCollapsed(EXPLORER_PANE_INDEX, !split.isPaneCollapsed(EXPLORER_PANE_INDEX)),
             onExit: () => { void controller.exitApp() },
             onOpenCommandPalette: () => { void this.openCommandPalette() },
@@ -246,6 +286,7 @@ class EditorShell extends Container {
                 const openedRoot = this._tree.getProjectRoot()
 
                 properties.setProjectRoot(openedRoot)
+                searchPanel.setProjectRoot(openedRoot)
                 relabelTreeSection(openedRoot)
             }
         })
@@ -398,12 +439,23 @@ class EditorShell extends Container {
      */
     private async openCommandPalette(): Promise<void> {
         const root = this._tree.getProjectRoot()
-        const files = root !== null
-            ? await listFilesRecursive(root, listDirectory, tryReadTextFile, pathExists)
-            : []
+        const files = await listWorkspaceFiles(root)
 
         this._palette.open(files, buildPaletteCommands(this._menuBarActions), root)
     }
+}
+
+/**
+ * Every searchable file path under `root` — the command palette's file list,
+ * and {@link SearchPanel}'s own — or an empty list when no workspace is
+ * open. Both surfaces share this one call so they always search and list
+ * exactly the same files.
+ *
+ * @param root - The open project folder, or `null` when none is open.
+ * @returns Every file path under `root`, or `[]`.
+ */
+async function listWorkspaceFiles(root: string | null): Promise<string[]> {
+    return root === null ? [] : listFilesRecursive(root, listDirectory, tryReadTextFile, pathExists)
 }
 
 /**
@@ -433,22 +485,27 @@ function buildEditorDeck(controller: EditorController, welcome: WelcomeScreen): 
     return deck
 }
 
-/** A freshly-built accordion plus its two sections' constraints, in child order — see {@link buildExplorerSections}. */
+/** A freshly-built accordion plus its three sections' constraints, in child order — see {@link buildExplorerSections}. */
 interface ExplorerSections {
     accordion: Accordion
     treeSection: AccordionConstraints
     propertiesSection: AccordionConstraints
+    searchSection: AccordionConstraints
 }
 
 /**
- * Builds a new accordion and its two sections' constraints, the tree
+ * Builds a new accordion and its three sections' constraints, the tree
  * section labelled from `root`. Called once at construction and again by
  * `relabelTreeSection` every time the project root changes, since rebuilding
  * the accordion is the only way to change an already-built header's label
- * (see `relabelTreeSection`'s own doc comment).
+ * (see `relabelTreeSection`'s own doc comment). The search section's
+ * `initiallyOpen` is `false`, unlike the other two: an empty results panel
+ * occupying part of the sidebar on every launch would take that space from
+ * the tree for nothing, and starting closed keeps `revealSearchSection` the
+ * single entry point that opens it.
  *
  * @param root - The open project folder, or `null` when none is open.
- * @returns The new accordion and its two sections' constraints.
+ * @returns The new accordion and its three sections' constraints.
  */
 function buildExplorerSections(root: string | null): ExplorerSections {
     const accordion = new Accordion({ compact: true })
@@ -456,7 +513,12 @@ function buildExplorerSections(root: string | null): ExplorerSections {
 
     treeSection.weight = TREE_SECTION_WEIGHT
 
-    return { accordion, treeSection, propertiesSection: new AccordionConstraints(PROPERTIES_SECTION_LABEL, true, 'circle-info') }
+    return {
+        accordion,
+        treeSection,
+        propertiesSection: new AccordionConstraints(PROPERTIES_SECTION_LABEL, true, 'circle-info'),
+        searchSection: new AccordionConstraints(SEARCH_SECTION_LABEL, false, 'magnifying-glass'),
+    }
 }
 
 /**
@@ -520,6 +582,7 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
             ] },
             { label: 'Edit', glyph: 'code', items: () => [
                 { text: 'Find…', glyph: 'magnifying-glass', shortcut: FIND_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onFind },
+                { text: 'Find in Files…', glyph: 'magnifying-glass', shortcut: FIND_IN_FILES_SHORTCUT, enabled: actions.hasProjectRoot(), action: actions.onFindInFiles },
                 { separator: true },
                 { text: 'Format Document', glyph: 'pen-to-square', shortcut: FORMAT_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onFormat },
             ] },

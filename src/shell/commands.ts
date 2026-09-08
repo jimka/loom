@@ -3,7 +3,7 @@
 // same `enabled` flag the matching menu-bar item computes.
 import {
     NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
-    FORMAT_SHORTCUT, FIND_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT,
+    FORMAT_SHORTCUT, FIND_SHORTCUT, FIND_IN_FILES_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT,
 } from './shortcuts'
 
 /** One entry in the command palette's `>`-mode list. */
@@ -45,6 +45,8 @@ export interface PaletteCommandActions {
     onCloseFile: () => void
     onFormat: () => void
     onFind: () => void
+    hasProjectRoot: () => boolean
+    onFindInFiles: () => void
     isShowingHidden: () => boolean
     onToggleHidden: (value: boolean) => void
     isShowingIgnored: () => boolean
@@ -58,7 +60,9 @@ export interface PaletteCommandActions {
  * menu bar never disagree about what can run right now.
  *
  * @param actions - The subset of the shell's menu-action callbacks the palette needs.
- * @returns All eleven commands, in a fixed display order.
+ * @returns Every command, in a fixed display order. *Find in Files…* is
+ *   omitted outright with no project open, rather than merely disabled —
+ *   unlike every other entry here, which stays listed and greys out instead.
  */
 export function buildPaletteCommands(actions: PaletteCommandActions): PaletteCommand[] {
     // Read once so every command below is built against one consistent
@@ -66,7 +70,7 @@ export function buildPaletteCommands(actions: PaletteCommandActions): PaletteCom
     const hasActiveFile = actions.hasActiveFile()
     const canSaveActive = actions.canSaveActive()
 
-    return [
+    const commands: PaletteCommand[] = [
         { id: 'new-file',        title: 'New File',        shortcut: NEW_FILE_SHORTCUT,        enabled: true,          run: actions.onNewFile },
         { id: 'open-folder',     title: 'Open Folder…',    shortcut: OPEN_FOLDER_SHORTCUT,     enabled: true,          run: actions.onOpenFolder },
         { id: 'toggle-explorer', title: 'Toggle Explorer', shortcut: TOGGLE_EXPLORER_SHORTCUT, enabled: true,          run: actions.onToggleExplorer },
@@ -89,4 +93,10 @@ export function buildPaletteCommands(actions: PaletteCommandActions): PaletteCom
             run: () => actions.onToggleIgnored(!actions.isShowingIgnored()),
         },
     ]
+
+    if (actions.hasProjectRoot()) {
+        commands.push({ id: 'find-in-files', title: 'Find in Files…', shortcut: FIND_IN_FILES_SHORTCUT, enabled: true, run: actions.onFindInFiles })
+    }
+
+    return commands
 }
