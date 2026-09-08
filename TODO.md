@@ -8,12 +8,6 @@ nothing below has a plan yet.
 
 ## High
 
-- **Wire up `Tab.setTabGlyph` / `TabBar.setEntryGlyph` for _Save As_.** The
-  library now has both (`Tab.setTabGlyph`/`clearTabGlyph`,
-  `TabBar.setEntryGlyph`/`clearEntryGlyph`) — the earlier blocker (no glyph
-  counterpart to `setTabName`) is gone. Loom itself doesn't call either yet:
-  a _Save As_ that changes a file's extension still leaves its already-open
-  tab showing the old icon (see the stale-tab-icon known issue below).
 - **Wire up `List` row-level enabled/disabled state for the command
   palette.** `AbstractSelectableList`'s rows now support `setEnabled`, so the
   library-side gap is closed. Loom's command palette still filters out a
@@ -97,11 +91,6 @@ nothing below has a plan yet.
   ruling out a code-level cause. WebKitGTK has a known history of not
   repainting the cursor promptly (or at all) on script-driven style changes.
   No fix planned; recorded so it isn't mistaken for a regression later.
-- **Stale tab icon after a cross-type _Save As_.** Saving `notes.md` as
-  `notes.txt` leaves its already-open tab showing the Markdown icon until
-  the tab is closed and reopened — the library has no way to re-icon a
-  `Tab` in place (see the `Tab.setTabGlyph` item above). The status bar's
-  language updates correctly.
 - **External links depend on the webview.** The About dialog's *Source* and
   *UI library* links render as `target="_blank"` anchors — the library's
   Markdown default. Loom wires no opener/shell plugin (see the plugin list
