@@ -52,8 +52,8 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   to the UI library it is built on.
 - **Tabbed editing** — open several files at once, each tab carrying the
   same per-file-type icon the tree shows; a dirty-indicator dot marks
-  unsaved changes per tab. A temp tab shows a `~` before its name and
-  becomes permanent on the first edit, on a double-click in the tree, on a
+  unsaved changes per tab. A temp tab renders its label in italics and
+  becomes upright on the first edit, on a double-click in the tree, on a
   double-click of the tab itself, or on a *Save As*. The icon follows a
   *Save As* or a rename that changes the file's type, without the tab
   closing or reopening. Open tabs follow changes made outside the app too:

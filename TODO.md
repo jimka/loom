@@ -13,12 +13,6 @@ nothing below has a plan yet.
   library-side gap is closed. Loom's command palette still filters out a
   disabled command instead of greying it out the way the menu bar does —
   nothing in `CommandPalette.ts` calls the new API yet.
-- **Wire up `Tab.setTabItalic` for temp tabs.** The library now has
-  `Tab.setTabItalic`/`TabBar.setEntryItalic` (the VS Code-style preview-tab
-  treatment) — the earlier blocker (no styling hook, `TabBar` kept private)
-  is gone. Loom still marks a temp tab with a `~` prefix
-  (`TEMPORARY_LABEL_PREFIX` in `src/editor/FileEditor.ts`) instead of
-  switching to italics.
 - **Restoring a workspace outside `$HOME`/`$CONFIG` on launch.** A project
   root outside those trees is only reachable once a native gesture has
   granted it — the folder picker, a drag-and-drop, or the save dialog.
