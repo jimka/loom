@@ -108,6 +108,26 @@ nothing below has a plan yet.
   under `## Notes`), so whether a click reaches the system browser is up to
   the platform's webview. Each link's text is the URL itself, so the
   address stays readable either way.
+- **Inactive tabs stay in the layout tree — a standing forced-reflow trap.**
+  `Tab`'s layout manager hides every non-active tab's content with
+  `setVisible(false)`, which is `visibility: hidden`, not `display: none` —
+  so every file ever opened in a session keeps its live `CodeEditor` (gutter,
+  decorations, and all) participating in layout, even years into an editing
+  session with dozens of tabs open. This already caused one real bug: the
+  status bar's caret readout re-measured itself on every `cursorchange`
+  (`Text.setText`'s default auto-measure forces a synchronous
+  `getBoundingClientRect` reflow), and `cursorchange` fires continuously
+  during drag-select — cheap on the library's own demo panels (one or two
+  editors ever mounted), but scaling with every open tab in real Loom usage,
+  which made selection dragging feel sluggish. Fixed for that one call site
+  by fixing the readout's width and disabling auto-measure (see
+  `EditorController.ts`'s `WIDEST_CURSOR_POSITION`), but the underlying trap
+  is still there: any future feature that wires a frequent, per-keystroke or
+  per-mousemove event to a layout-forcing read (`getBoundingClientRect`,
+  `offsetWidth`, a `Text`/`Component` auto-measure, `Tree`/table
+  virtualization math) will pay a cost proportional to every open tab, not
+  just the active one. The real fix would be giving `Tab` a `display: none`
+  (or unmount) path for inactive content instead of `visibility: hidden`.
 
 ## Notes
 

@@ -3,7 +3,7 @@ import { TabPanel, StatusBar } from '@jimka/typescript-ui/component/container'
 import { Text } from '@jimka/typescript-ui/component/input'
 import { Dialog } from '@jimka/typescript-ui/overlay'
 import type { TabCloseController } from '@jimka/typescript-ui/layout'
-import type { FormatOptions } from '@jimka/typescript-ui/component/editor'
+import type { FormatOptions, CodeEditorCursorPosition } from '@jimka/typescript-ui/component/editor'
 import { FileEditor } from './editor/FileEditor'
 import { cursorLabel } from './editor/cursorLabel'
 import { languageForPath, hasFormatter } from './editor/languages'
@@ -22,6 +22,18 @@ import { messageOf } from './errors'
 
 /** How long a status-bar message stays up, in milliseconds — long enough to notice, short enough not to linger. */
 const STATUS_MESSAGE_DURATION_MS = 2000
+
+/**
+ * A caret position wide enough to size the status bar's cursor readout once
+ * at startup: 5-digit lines covers any file a code editor (rather than a log
+ * viewer) is realistically opened on, 3-digit columns covers an unreasonably
+ * long single line, and 7-digit offsets covers a 10MB document. Generous
+ * rather than exact — overshooting wastes status-bar pixels (mitigated by
+ * right-aligning the readout, see the constructor), while undershooting
+ * brings back the per-frame reflow the constructor spends this measurement
+ * to avoid (see the comment there).
+ */
+const WIDEST_CURSOR_POSITION: CodeEditorCursorPosition = { line: 99_999, column: 999, offset: 9_999_999 }
 
 /** How an {@link EditorController.openFile} request should treat the tab it lands in. */
 export type OpenMode = 'temporary' | 'permanent'
@@ -75,6 +87,37 @@ class EditorController {
         this.statusBar = new StatusBar()
         this._cursorText = new Text('')
         this._languageText = new Text('')
+
+        // `cursorchange` fires once per caret position, not once per click —
+        // dragging out a selection fires it continuously. Left on Text's default
+        // auto-measure, every one of those `setText` calls would force a
+        // synchronous DOM reflow (an off-screen probe element measured via
+        // `getBoundingClientRect`) to grow or shrink the readout by a few
+        // pixels. That reflow is a full-document layout flush, so its cost
+        // scales with everything else mounted — every open tab's editor,
+        // including the inactive ones `TabPanel` keeps `visibility: hidden`
+        // rather than unmounted — which is what makes selection drag feel
+        // sluggish once more than a couple of files are open. Measuring once
+        // against a generous worst case and fixing the width means later
+        // `setText` calls only touch the DOM text node.
+        //
+        // Right-aligned so the reserved width's slack sits between the flex
+        // spacer and the readout — merging into the spacer's own empty space —
+        // rather than between the readout's digits and the language text next
+        // to it, where it would read as a stray gap.
+        this._cursorText.setText(cursorLabel(WIDEST_CURSOR_POSITION))
+        this._cursorText.measure()
+
+        const cursorTextSize = this._cursorText.getPreferredSize()
+
+        if (cursorTextSize) {
+            this._cursorText.setPreferredSize(cursorTextSize)
+            this._cursorText.setAutoMeasure(false)
+            this._cursorText.setTextAlign('right')
+        }
+
+        this._cursorText.setText('')
+
         this.statusBar.addRight(this._cursorText)
         this.statusBar.addRight(this._languageText)
 
