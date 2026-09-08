@@ -265,7 +265,7 @@ class EditorController {
 
             if (filePath !== null && isUnderRoot(oldPath, filePath)) {
                 this.repointFile(file, relocatePath(filePath, oldPath, newPath))
-                this.tabs.getTab().setTabName(file, file.getLabel())
+                this.tabs.getTab().setTabName(file, file.getName())
             }
         }
 
@@ -386,7 +386,7 @@ class EditorController {
 
         file.onDirtyChange(() => this.handleDirtyChange(file))
         file.getEditor().on('cursorchange', () => this.handleCursorChange(file))
-        this.tabs.addTab(file, file.getLabel(), { closeable: true, glyph: glyphNameForPath(file.getName()) })
+        this.tabs.addTab(file, file.getName(), { closeable: true, glyph: glyphNameForPath(file.getName()) })
         this._openFiles.push(file)
         this.tabs.getTab().setActiveContent(file)
         this.syncActive()
@@ -488,7 +488,7 @@ class EditorController {
         file.setTemporary(temporary)
         file.onDirtyChange(() => this.handleDirtyChange(file))
         file.getEditor().on('cursorchange', () => this.handleCursorChange(file))
-        this.tabs.addTab(file, file.getLabel(), { closeable: true, glyph: glyphNameForPath(path) })
+        this.tabs.addTab(file, file.getName(), { closeable: true, glyph: glyphNameForPath(path) })
 
         // `addTab` only enqueues `file` as a container child; `Tab` promotes it
         // to an addressable entry during its own next layout pass (scheduled,
@@ -627,7 +627,7 @@ class EditorController {
         file.markSynced(text)
         this.pinTab(file)
         this.recordRecentFile(target)
-        this.tabs.getTab().setTabName(file, file.getLabel())
+        this.tabs.getTab().setTabName(file, file.getName())
         this.statusBar.setMessage(this.savedMessage(file, formatFailed), STATUS_MESSAGE_DURATION_MS)
         this.syncActive()
         this._fileSavedListener?.(target)
@@ -722,12 +722,12 @@ class EditorController {
     /**
      * The status-bar text for a completed save.
      *
-     * @param file - The file that was written; its label supplies the name.
+     * @param file - The file that was written; its name supplies the name.
      * @param formatFailed - Whether format-on-save ran a formatter that threw.
      * @returns The message to show for `STATUS_MESSAGE_DURATION_MS`.
      */
     private savedMessage(file: FileEditor, formatFailed: boolean): string {
-        return formatFailed ? `Saved ${file.getLabel()} (not formatted)` : `Saved ${file.getLabel()}`
+        return formatFailed ? `Saved ${file.getName()} (not formatted)` : `Saved ${file.getName()}`
     }
 
     /**
@@ -844,7 +844,7 @@ class EditorController {
             this.recordRecentFile(path)
         }
 
-        this.tabs.getTab().setTabName(file, file.getLabel())
+        this.tabs.getTab().setTabName(file, file.getName())
         this.tabs.getTab().setTabItalic(file, false)
     }
 
@@ -959,9 +959,9 @@ class EditorController {
         file.setTemporary(false)
         file.adoptDiskText(diskText)
         file.setTemporary(wasTemporary)
-        this.tabs.getTab().setTabName(file, file.getLabel())
+        this.tabs.getTab().setTabName(file, file.getName())
         this.tabs.getTab().setTabItalic(file, file.isTemporary())
-        this.statusBar.setMessage(`Reloaded ${file.getLabel()}`, STATUS_MESSAGE_DURATION_MS)
+        this.statusBar.setMessage(`Reloaded ${file.getName()}`, STATUS_MESSAGE_DURATION_MS)
     }
 
     /**
@@ -982,16 +982,17 @@ class EditorController {
     }
 
     /**
-     * Registered as a `Component` dirty-state listener on each open file:
-     * pins the file's tab on its first edit, then relabels the tab and
-     * resyncs the title/status bar.
+     * Registered as a `Component` dirty-state listener on each open file: pins
+     * the file's tab on its first edit, then relabels the tab, paints its
+     * modified indicator, and resyncs the title/status bar.
      */
     private handleDirtyChange = (file: FileEditor): void => {
         if (file.isDirty()) {
             this.pinTab(file)
         }
 
-        this.tabs.getTab().setTabName(file, file.getLabel())
+        this.tabs.getTab().setTabName(file, file.getName())
+        this.tabs.getTab().setTabModified(file, file.isDirty())
         this.syncActive()
     }
 
