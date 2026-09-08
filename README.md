@@ -46,6 +46,12 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   the *match case*, *regexp*, and *by word* toggles refine the query.
   Replace one match at a time or all of them at once with *replace* and
   *replace all*.
+- **Project search** — Ctrl/Cmd+Shift+F opens a **Search** section in the
+  explorer sidebar; Enter runs a case-insensitive substring search over
+  every file the command palette lists, results stream in as
+  `path:line · matched line`, and clicking one opens the file with the
+  match selected. A file too large to open, or that looks binary (a NUL
+  byte in its first 8000 characters, git's own rule), is skipped.
 - **Welcome screen** — shown in place of the tab strip whenever no file is
   open, under the Loom mark, offering *Open Folder…* and naming the current
   project once one is.

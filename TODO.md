@@ -6,16 +6,6 @@ The original plan lives in `typescript-ui`'s
 [`plans/implemented/code-editor-desktop-app.md`](../typescript-ui/plans/implemented/code-editor-desktop-app.md) —
 nothing below has a plan yet.
 
-## High
-
-- **Cross-file (project-wide) search.** In-file find/replace already ships
-  (Ctrl/Cmd+F, CodeMirror's own panel — see `README.md`'s **Find & replace**
-  highlight). What project-wide search would still need on top of that:
-  content matching over every file in the project (nothing today reads file
-  bodies in bulk — `listFilesRecursive` only enumerates paths), binary-file
-  and size guards, streaming and cancellable results, a results panel in the
-  shell, and jump-to-match wiring onto `EditorController.openFile`.
-
 ## Medium
 
 - **Split-pane multi-file editing.** `Dock` is the natural upgrade path if
@@ -24,6 +14,15 @@ nothing below has a plan yet.
   phase one deliberately avoided.
 - **IntelliSense / LSP** or any language service.
 - **Git integration**, including a dirty-vs-committed indicator in the tree.
+- **Project-wide replace.** The Search section (see `README.md`'s **Project
+  search** highlight) finds matches only. Replacing across files needs a
+  replace field on the panel, per-match and per-file apply, writing files
+  that aren't open in a tab, reconciling a replacement against a tab with
+  unsaved changes, and an undo story — CodeMirror's per-document history
+  doesn't cover an edit spanning forty files.
+- **Regular-expression and match-case project search.** The Search section
+  matches a case-insensitive plain substring today; the in-file find panel's
+  *regexp* and *match case* toggles have no counterpart there yet.
 
 ## Low
 
@@ -57,9 +56,10 @@ nothing below has a plan yet.
   neither `session.json` nor `.loom/workspace.json` records their state.
 - **Go to Line, and selection metrics in the status bar.** The bar reports the caret's line,
   column, and document position but nothing acts on them: there is no *Go to Line* command, the
-  readout is not clickable, and it reports no selected-character or selected-line count. The
-  library exposes the caret read-only (no `setCursorPosition`), so a jump-to-line would need a new
-  library API first.
+  readout is not clickable, and it reports no selected-character or selected-line count.
+  `src/editor/editorSearch.ts`'s `revealRange` now positions the caret through the live-`EditorView`
+  seam the find panel uses, so the library-API blocker is gone — what's left is a prompt for the
+  line number and a call into it.
 
 ## Known issues / loose ends
 
