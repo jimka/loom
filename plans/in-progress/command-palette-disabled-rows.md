@@ -403,6 +403,66 @@ project with several files across two directories.
 
 ---
 
+## Implementation Notes
+
+**Step 1's precondition held, after re-linking.** This worktree's `npm install` ran against a
+clean `node_modules/` (each worktree has its own) and resolved the registry version
+(`^0.8.0`); replacing `node_modules/@jimka/typescript-ui` with a symlink to
+`/home/jika/typescript/typescript-ui/packages/lib` — matching the main tree's own symlink —
+restored `enabled?: boolean` and `setItemEnabled` in
+`dist/lib/types/component/list/AbstractSelectableList.d.ts`. `node_modules/` is untracked, so
+no repository file changed.
+
+**`npm test` has one pre-existing failing suite unrelated to this plan**, matching what
+`plans/implemented/temp-tab-italic-styling.md`'s own Implementation Notes recorded for the
+same batch. `tests/languages.test.ts` fails with `ReferenceError: document is not defined`,
+thrown from `typescript-ui`'s `TextInput.ts` → `StyleTarget.ts` → `DOM.ts` chain during module
+import, in the DOM-free `node` test environment (`vitest.config.ts`). Reproduces identically
+with this branch's changes reverted (`git stash`), so it is drift in the sibling
+`typescript-ui` checkout this tree's `node_modules` symlinks to, not something this branch
+introduced or is in scope to fix. All 296 tests that do run (287 pre-existing plus the 9 new
+`tests/commands.test.ts` cases) pass.
+
+**Manual verification pass — live, in the sandboxed browser**, using the `npm run dev` +
+chrome-devtools-MCP workaround the `loom-visual-qa-in-sandbox` recipe describes (this sandbox
+has no display a real `npm run tauri:dev` window could attach to). `vite.config.ts` temporarily
+gained `resolve.alias` entries redirecting `@tauri-apps/plugin-dialog`, `@tauri-apps/plugin-fs`,
+`@tauri-apps/plugin-os`, `@tauri-apps/api/window`, and `@tauri-apps/api/path` to a scratch stub
+module backing a small in-memory fake project (`README.md`, `src/alpha.ts`, `src/beta.ts`,
+`docs/notes.md`) so file-mode search and "open a file" could be exercised too, not just command
+mode — reverted afterward, never committed (`git diff vite.config.ts` is empty on the branch).
+
+Unlike `plans/implemented/temp-tab-italic-styling.md` and
+`plans/implemented/command-palette-first-item-focus.md`, none of this plan's ten manual cases
+needed a real native dialog, real disk persistence, or an external file watcher, so all ten were
+confirmed live rather than deferred to the user's own pass:
+
+**Case 1** — with no file open, all eleven commands appeared in `>` mode in the plan's exact
+order; *Save*, *Save As…*, *Close File*, *Find…*, and *Format Document* carried the library's
+`.SelectableListRow.disabled` class (confirmed both via the DOM and a screenshot showing them
+visibly dimmer than the other six). **Case 2** — the File menu showed *Save*, *Save As…*, and
+*Close File* as `aria-disabled="true"`; the Edit menu showed *Find…* and *Format Document* the
+same way — the identical five. **Case 3** — clicking the dim *Format Document* row left the
+palette open, changed no row's state, and ran nothing. **Case 4** — `>save` matched only *Save*
+and *Save As…*, both dim, neither carrying the `focused` class; `Enter` left the query and the
+palette untouched; `Escape` then closed it. **Case 5** — arrowing down from *New File* three
+times reached *Exit*; a fourth `ArrowDown` jumped the highlight straight to *Show Hidden Files*,
+skipping all five dim rows; `ArrowUp` from there returned it to *Exit*. **Case 6** — opening `>`
+put the `focused` class on *New File* immediately, and `Enter` opened a new `Untitled-1` tab.
+**Case 7** — opening the fake project and double-clicking `src/alpha.ts` made *Save As…*,
+*Close File*, *Find…*, and *Format Document* enabled in the palette (only *Save* stayed dim, a
+clean file); running *Find…* from the palette opened CodeMirror's find bar over the active
+editor. **Case 8** — on that same clean, on-disk `alpha.ts`, *Save* was dim while the other four
+were normal; typing one character marked the tab dirty (`alpha.ts •`) and flipped *Save* to
+enabled; narrowing to `>save` highlighted it first, and `Enter` wrote the edited text through
+the stub filesystem, clearing the dirty marker and updating the reported file size. **Case 9** —
+file mode was unaffected throughout: `ts` and `beta` queries ranked and highlighted results with
+no row ever carrying `disabled`, and `Enter` on `beta` opened `src/beta.ts` in a new tab. **Case
+10** — `>` mode listed the same eleven ids in the same order both with no file open and with a
+clean file active, confirmed by re-reading the row list at each point above.
+
+---
+
 ## Notes
 
 [^library-ready]: Verified in the sibling checkout at
