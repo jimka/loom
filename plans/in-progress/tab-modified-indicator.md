@@ -602,3 +602,80 @@ isEntryModified(id: string): boolean {
 
 This plan needs no new `StyleRule`/class-rule registration (unlike `TabBusyIndicator`): `Glyph`'s
 existing rendering already covers a fixed-size, fixed-color SVG glyph with no further styling.
+
+---
+
+## Implementation Notes
+
+The code matches `## Internal Structure` verbatim: `getLabel()` and its doc comment are deleted,
+`handleDirtyChange` gains the `setTabModified` call in the exact position shown, and all nine
+`getLabel()` call sites in `src/EditorController.ts` switch to `getName()`. Every invariant grep in
+`## Verification` comes back exactly as predicted. `npm run typecheck` and `npm run build` both pass
+cleanly. `npm test` exits non-zero, but not because of this change: one pre-existing, unrelated suite
+fails to collect — `tests/languages.test.ts` (`ReferenceError: document is not defined`, thrown from
+the symlinked library's `DOM.ts`/`TextInput.ts` chain). Reproduced identically on this branch's start
+commit (`82e64f3`) in a separate detached worktree with no changes from this branch applied, so it
+predates this plan and is out of scope for it; all 336 other tests pass unchanged.
+
+**Manual verification (`## Expected Behaviour`) was run via this sandbox's documented QA workaround,
+not via `npm run tauri:dev`.** This environment has no display a real Tauri/WebKitGTK window can
+attach to, so the plan's own verification command could not run literally. Following the precedent
+set on `feature/tab-glyph-save-as` and `feature/status-bar-document-offset`: temporary `resolve.alias`
+entries in `vite.config.ts` redirecting `@tauri-apps/plugin-os`, `@tauri-apps/plugin-fs`,
+`@tauri-apps/plugin-dialog`, `@tauri-apps/api/window`, `@tauri-apps/api/path`, and `@tauri-apps/api/core`
+to no-op stub modules, plus a throwaway `src/scratch-verify.ts`/`scratch-verify.html` mounting a real
+`EditorController`'s tab strip directly (no `EditorShell` — the tree and menu bar aren't needed to
+exercise this plan) — the actual shipped code, not a reimplementation — in a plain browser tab via
+`npm run dev`, driven with the chrome-devtools MCP tools. Both the alias block and the scratch files
+were reverted/deleted before this commit; neither ever landed on this branch (confirmed via `git
+status`/`git diff` afterwards).
+
+Nine of the ten numbered manual cases were verified directly against the running app, reading each
+tab's rendered glyph off its `<use href="#ts-glyph-<name>">` element rather than trusting the
+accessibility tree alone:
+
+- **Case 1 (typing shows the dot).** A fresh `Untitled-1` buffer (`newFile()`) showed no
+  `#ts-glyph-circle`; typing one character added it immediately after the label, with `isDirty()`
+  becoming `true`.
+- **Case 2 (saving clears the dot).** Calling `file.markSynced(text)` — the exact call `save()`/
+  `saveAs()` make on a successful write, per this plan's own `[^single-callsite]` footnote — on the
+  dirty buffer flipped `isDirty()` back to `false` and removed `#ts-glyph-circle` from the DOM
+  immediately, with no separate repaint step needed.
+- **Case 3 (undo back to saved state clears the dot).** Typing a character then `Control+z` in the
+  CodeMirror view returned the document to its empty saved text; `isDirty()` read `false` and the dot
+  was gone, without any save call.
+- **Case 4 (long file name at default width still shows the dot).** Calling the controller's own
+  `addFileTab('/proj/very-long-component-name-that-keeps-going.tsx', ...)` (bypassing the disk read
+  `openFile` wraps it in, which the dialog/fs stubs can't serve) opened a tab that rendered as
+  "very-long-component-n…"; editing it showed the dot immediately after the truncated text — the
+  exact case today's `" •"` suffix fails, screenshotted for confirmation.
+- **Case 5 (the dot survives a narrow tab-width cap).** Calling
+  `tabs.getTab().setMaxWidth(60)` shrank every open tab's label to a single leading character (or
+  none); the dot stayed fully visible on every dirty tab at that width, screenshotted for
+  confirmation.
+- **Case 6 (temp tab shows italics and the dot together).** `addFileTab(path, text, true)` (the temp-
+  tab flag) rendered "temp-note.md" in italics (`isTabItalic` true); editing it added the dot
+  alongside the italic label with no visual clash, screenshotted for confirmation.
+- **Case 7 (cross-type Save As clears the dot and updates the icon together).** Calling the
+  controller's own `repointFile(file, '/proj/temp-note.txt')` followed by `file.markSynced(text)` —
+  the exact pair `saveAs()` calls after a successful write, bypassing only the outer native-dialog/
+  disk-write wrapper the stubs can't serve — cleared the dot, swapped the tab's icon from the
+  Markdown glyph to the plain-text glyph, and updated the label to `temp-note.txt`, all confirmed in
+  a single DOM read after the calls.
+- **Case 9 (several dirty tabs each show their own dot independently).** With three separate tabs
+  dirty at once, saving one (`markSynced`) left exactly two `#ts-glyph-circle` elements in the DOM —
+  the other two tabs' dots were untouched.
+- **Case 10 (closing a dirty tab is unaffected).** Clicking a dirty tab's ✕ raised the same "Unsaved
+  changes" dialog as before this plan, screenshotted for confirmation — this plan never touches the
+  close button, and this case confirms it.
+
+**One case was not run live: case 8, "an external reload that discards local changes clears the dot;
+keeping them leaves it."** This needs a real filesystem watcher detecting an out-of-band edit, which
+the fs stub (reads always throw, no real files exist) cannot produce — the same class of gap
+`plans/implemented/status-bar-document-offset.md`'s Implementation Notes hit for "Session restore."
+This is covered by construction rather than by a live repro: `resolveExternalConflict`'s *Reload*
+branch calls `file.adoptDiskText(diskText)`, which (per this plan's `[^single-callsite]` footnote)
+ends in the same `markSynced` call verified live in cases 2 and 7, and its *Keep* branch makes no
+dirty-state change at all, so the dot's behavior in both branches is exercised by the same code path
+already confirmed working, not a separate one this plan could have missed. It remains for a human's
+own `npm run tauri:dev` pass, per the plan's own `## Ordered Implementation Steps` step 13.
