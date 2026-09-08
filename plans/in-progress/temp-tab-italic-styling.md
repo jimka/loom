@@ -393,3 +393,53 @@ project folder with at least three files, none opened earlier in the session.
     implemented first, the other's change lands on a line adjacent to but distinct from
     `this.pinTab(file)` (line 617 today), so there is no line-level conflict and no reason to
     sequence the two plans relative to each other.
+
+---
+
+## Implementation Notes
+
+- **`node_modules/@jimka/typescript-ui` needed manual re-linking**, exactly as `## Potential
+  Challenges` anticipated. This worktree's `npm install` ran against a clean `node_modules/` (each
+  worktree has its own) and resolved the registry version (`^0.8.0`), which predates
+  `setTabItalic`/`isTabItalic`. Replacing it with a symlink to `/home/jika/typescript/typescript-ui/packages/lib`
+  — matching the main tree's own `node_modules/@jimka/typescript-ui` — restored the method and
+  `npm run typecheck` passed clean. `node_modules/` is untracked, so no repo file changed.
+- **`npm test` has one pre-existing failing suite unrelated to this plan.** `tests/languages.test.ts`
+  fails with `ReferenceError: document is not defined`, thrown from
+  `typescript-ui`'s `TextInput.ts` → `StyleTarget.ts` → `DOM.ts` chain during module import, in the
+  DOM-free `node` test environment (`vitest.config.ts`). This reproduces identically with none of
+  this plan's changes applied — on `main` itself, and on the sibling `feature/tab-glyph-save-as`
+  worktree — so it is drift in the sibling `typescript-ui` checkout this tree's `node_modules`
+  symlinks to, not something this branch introduced or is in scope to fix. All 287 tests that do run
+  pass unchanged.
+- **`addFileTab`'s `setTabItalic` call needed a layout flush first — the plan's assumption that
+  the whole dance is synchronous doesn't hold across `addTab` itself.** Manual verification (the
+  sandbox `npm run dev` + chrome-devtools workaround, driving a stubbed in-memory project) showed a
+  freshly-opened temp tab rendering upright, never italic — reproduced deterministically, not a
+  flaked check. Root cause: `TabPanel.addTab` only enqueues the new `FileEditor` as a container
+  child; `Tab` (the layout manager) only promotes an untabbed child into an addressable `_contents`
+  entry during its own `doLayout`, called from `Component`'s rAF-coalesced layout queue — a
+  scheduled pass, not a synchronous one (`Component.ts`'s `scheduleLayout`/`flushPendingLayouts`
+  machinery). `addFileTab`'s original `setTabItalic` call ran immediately after `addTab`, before
+  that pass had run, so `Tab.setTabItalic`'s `_contents.find(e => e.component === content)` lookup
+  always missed and the call silently no-opped (`setTabItalic` returns `false` on a miss with no
+  further signal, by design — see `## Potential Challenges`). `Tab.setActiveContent` already guards
+  the identical race with its own `_pendingActiveContent` fallback; `setTabItalic` has no such
+  affordance, so the caller must force the pass itself. The fix: call `this.tabs.flushLayout()` —
+  `Component`'s own documented synchronous escape hatch for exactly this class of race — immediately
+  before `setTabItalic` in `addFileTab`. `pinTab` and `reloadFromDisk` need no equivalent change:
+  both always run on a file whose tab was registered in an earlier task, well after its first layout
+  pass, so no race exists there. Verified in the browser by tracing the live call: before the fix,
+  `Tab.setTabItalic(file, true)` returned `false` and `TabBar.setEntryItalic`/`Text.setFontStyle`
+  were never reached; after adding the flush, the same call reached `Text.setFontStyle("italic")`
+  and the tab rendered italic, confirmed via the label span's computed `font-style`.
+- **Manual verification covered Expected Behaviour cases 1-5, 7, and 8** in the sandboxed browser
+  (a fake in-memory project with `a.ts`/`b.md`/`c.ts`/`d.ts`, driven via chrome-devtools MCP per the
+  `loom-visual-qa-in-sandbox` recipe) — all passed after the fix above, each confirmed by reading the
+  tab label's computed `font-style` rather than trusting the accessibility tree alone. Cases 6
+  (Save As), 9 (relaunch), 10, and 11 (external reload) need a native save dialog, real disk
+  persistence, or a firing filesystem watcher that the sandbox's stub can't faithfully reproduce, so
+  they remain for the user's own `npm run tauri:dev` pass per `## Ordered Implementation Steps`'
+  step 13 — unchanged from what the plan already asked for. Case 12 (no `~` anywhere) holds
+  structurally: `TEMPORARY_LABEL_PREFIX` and its only use are deleted, confirmed by the plan's own
+  `grep` checks.
