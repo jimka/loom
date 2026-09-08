@@ -2,27 +2,22 @@ import { Container, Event, callable } from '@jimka/typescript-ui/core'
 import { Insets } from '@jimka/typescript-ui/primitive'
 import { VBox } from '@jimka/typescript-ui/layout'
 import { TextField, Text } from '@jimka/typescript-ui/component/input'
-import { List, GlyphListItemRenderer } from '@jimka/typescript-ui/component/list'
+import { Tree, IconLabelTreeNodeRenderer } from '@jimka/typescript-ui/component/tree'
+import type { TreeNode } from '@jimka/typescript-ui/component/tree'
 import { searchFiles } from '../data/projectSearch'
 import type { SearchMatch, SearchLimits, ReadFileText } from '../data/projectSearch'
-import { searchResultRow, searchSummaryText } from './searchResults'
-import type { SearchResultRow, SearchStatus } from './searchResults'
+import { glyphNameForPath } from '../fileIcons'
+import { searchResultNodes, searchSummaryText } from './searchResults'
+import type { SearchTreeNodeData, SearchStatus } from './searchResults'
 
 /** The ceilings a run stops at. `maxMatches` is four times
- *  `CommandPalette.MAX_PALETTE_RESULTS` (50): `List` renders every row (it is
- *  not virtualised the way `Tree` is), so this is what stops a broad query
- *  from building thousands of row components in a sidebar, while a popup is
- *  scanned by eye rather than scrolled and can afford fewer. `maxFiles` is
- *  the read ceiling: `readFileText` costs two IPC round trips per file, so a
- *  folder larger than this stops being a search and starts feeling like a
- *  hang. */
+ *  `CommandPalette.MAX_PALETTE_RESULTS` (50): `Tree` is virtualised, so this
+ *  ceiling no longer exists to bound rendered row components the way it did
+ *  against the old flat `List` — it is kept at its current value regardless
+ *  (see the plan's `## Architecture Decisions`). `maxFiles` is the read
+ *  ceiling: `readFileText` costs two IPC round trips per file, so a folder
+ *  larger than this stops being a search and starts feeling like a hang. */
 const SEARCH_LIMITS: SearchLimits = { maxMatches: 200, maxFiles: 2000 }
-
-/** The panel's fixed height, in pixels — the query field, ten 22px `List`
- *  rows, and the status line. The section carries no accordion weight, so
- *  this is the height it keeps while the tree absorbs the sidebar's leftover
- *  space. */
-const PANEL_HEIGHT_PX = 280
 
 /** Padding around the panel's content, in pixels. Matches `PropertiesPanel`'s
  *  own `PANEL_PAD` so the sidebar's sections indent their content by one
@@ -45,32 +40,43 @@ export interface SearchPanelParams {
     listFiles: () => Promise<string[]>
     /** Reads one file as text; rejects for an unreadable or over-sized file. */
     readText: ReadFileText
-    /** Fires when a result row is activated (Enter or a click). */
+    /** Fires when a match leaf is selected (click or arrow-key move) — previews it in a temporary tab. */
     onOpenMatch: (match: SearchMatch) => void
+    /** Fires when a file branch row is selected (click or arrow-key move), with no specific match location — previews it in a temporary tab. */
+    onOpenFile: (path: string) => void
+    /** Fires when a match leaf is double-clicked — opens and reveals it for keeps, in a permanent tab. */
+    onCommitMatch: (match: SearchMatch) => void
+    /** Fires when a file branch row is double-clicked, with no specific match location — opens it for keeps, in a permanent tab. */
+    onCommitFile: (path: string) => void
     /** The open project folder, or `null` when none is open — result labels are shown relative to it. */
     projectRoot: string | null
 }
 
 /**
- * The explorer sidebar's third section: a query field over a results `List`
+ * The explorer sidebar's Search view: a query field over a results `Tree`
  * over a status line. Enter runs a case-insensitive substring search over
  * every file {@link SearchPanelParams.listFiles} returns, streaming matches
- * into the list as each file is read; activating a result (Enter or a
- * click) hands the match to {@link SearchPanelParams.onOpenMatch}. A run is
- * cancelled by the run that replaces it, by {@link setProjectRoot}, or by
- * this component being torn down — never by an explicit Stop control.
+ * into the tree as each file is read. Mirroring `FileTree`'s own two-tier
+ * convention: selecting a row (click or arrow-key move) previews it via
+ * {@link SearchPanelParams.onOpenMatch}/{@link SearchPanelParams.onOpenFile}
+ * (a temporary tab), while double-clicking a row commits it via
+ * {@link SearchPanelParams.onCommitMatch}/{@link SearchPanelParams.onCommitFile}
+ * (a permanent tab). A run is cancelled by the run that replaces it, by
+ * {@link setProjectRoot}, or by this component being torn down — never by an
+ * explicit Stop control.
  */
 class SearchPanel extends Container {
     private readonly _queryField: TextField
-    private readonly _resultsList: List
+    private readonly _resultsTree: Tree
     private readonly _statusText: Text
     private readonly _listFiles: () => Promise<string[]>
     private readonly _readText: ReadFileText
     private readonly _onOpenMatch: (match: SearchMatch) => void
+    private readonly _onOpenFile: (path: string) => void
+    private readonly _onCommitMatch: (match: SearchMatch) => void
+    private readonly _onCommitFile: (path: string) => void
 
     private _matches: SearchMatch[] = []
-    /** Index-aligned with {@link _matches}. */
-    private _rows: SearchResultRow[] = []
     private _root: string | null
     /** Bumped on every new search and on a project-root change; a run's
      *  callbacks compare against the value they captured at their own start
@@ -79,32 +85,56 @@ class SearchPanel extends Container {
 
     constructor(params: SearchPanelParams) {
         const queryField = new TextField({ placeholder: QUERY_PLACEHOLDER })
-        const resultsList = new List({ rendererFactory: () => new GlyphListItemRenderer() })
+        // expandTrigger: 'click' matches FileTree's own convention — the
+        // library default is 'dblclick', which would leave a single click on
+        // a folder branch doing nothing (selecting it, not expanding it).
+        // backgroundColor is transparent, not FileTree's grey: the panel's own
+        // background (below) now covers the whole view — query field and
+        // status text included — so the tree doesn't paint a second,
+        // independently-edged surface over just its own rows.
+        const resultsTree = new Tree({ rowOverflow: 'scroll', expandTrigger: 'click', backgroundColor: 'transparent' })
         const statusText = new Text('', { truncate: true, foregroundColor: STATUS_COLOR })
 
-        resultsList.setSelectFollowsFocus(false)
+        resultsTree.setRendererFactory(() => new IconLabelTreeNodeRenderer(node => {
+            const data = node.data as SearchTreeNodeData
+
+            return data.kind === 'folder' ? 'folder' : glyphNameForPath(data.kind === 'file' ? data.path : data.match.path)
+        }))
 
         super({
             layoutManager: new VBox({ spacing: 4, stretching: true }),
             insets: new Insets(PANEL_PAD, PANEL_PAD, PANEL_PAD, PANEL_PAD),
-            preferredSize: { width: 0, height: PANEL_HEIGHT_PX },
-            // weight: 1 makes the list absorb the panel's leftover height,
+            // weight: 1 makes the tree absorb the panel's leftover height,
             // the same role it plays in CommandPalette's own VBox.
-            components: [queryField, { component: resultsList, constraints: { weight: 1 } }, statusText],
+            components: [queryField, { component: resultsTree, constraints: { weight: 1 } }, statusText],
+            // backgroundColor matches FileTree's own tree — both rail views
+            // should read as the same surface — applied to the whole panel
+            // rather than just resultsTree so the query field and status
+            // text share it too, instead of sitting on a visible seam.
+            // The border isn't drawn by FileTree itself either — it's
+            // Accordion's own themed all-around container border. This is the
+            // same token (and fallback), applied here directly, so the two
+            // rail views frame themselves identically.
+            backgroundColor: 'rgb(245, 245, 245)',
+            border: 'var(--ts-ui-accordion-border, 1px solid rgb(214,217,222))',
         })
 
         this._queryField = queryField
-        this._resultsList = resultsList
+        this._resultsTree = resultsTree
         this._statusText = statusText
         this._listFiles = params.listFiles
         this._readText = params.readText
         this._onOpenMatch = params.onOpenMatch
+        this._onOpenFile = params.onOpenFile
+        this._onCommitMatch = params.onCommitMatch
+        this._onCommitFile = params.onCommitFile
         this._root = params.projectRoot
 
         this.paintStatus(IDLE_STATUS)
 
         Event.addListener(this._queryField, 'keydown', (e: KeyboardEvent) => this.handleKeyDown(e))
-        this._resultsList.on('action', () => this.handleActivateRow())
+        this._resultsTree.on('selection', this.handleSelection)
+        this._resultsTree.on('dblclick', this.handleDblClick)
     }
 
     /** Repoints the panel at a new project folder, cancelling any run and clearing the results. */
@@ -128,9 +158,10 @@ class SearchPanel extends Container {
     }
 
     /**
-     * Forwards ArrowUp/ArrowDown into the list's keyboard reducer, and runs a
-     * new search on Enter — CommandPalette.handleKeyDown's shape, with Enter
-     * re-pointed at the search instead of at a commit.
+     * Runs a new search on Enter. `Tree` wires its own keyboard handling
+     * directly with no public hook to forward arrow keys into the way
+     * `List.handleKey` allowed (see the plan's `## Architecture Decisions`),
+     * so this no longer has an ArrowUp/ArrowDown branch.
      *
      * @param e - The query field's keydown event.
      */
@@ -138,16 +169,6 @@ class SearchPanel extends Container {
         if (e.key === 'Enter') {
             e.preventDefault()
             void this.runSearch()
-
-            return
-        }
-
-        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') {
-            return
-        }
-
-        if (this._resultsList.handleKey(e)) {
-            e.preventDefault()
         }
     }
 
@@ -205,39 +226,62 @@ class SearchPanel extends Container {
     }
 
     /**
-     * Appends one file's matches to the results list, highlighting the first
-     * row only when the list was previously empty — so a later streamed
-     * batch never yanks the highlight back while the user is arrowing
-     * through results.
+     * Appends one file's matches to the results tree, rebuilding the whole
+     * node tree from {@link _matches} and re-expanding every branch — see
+     * the plan's `## Architecture Decisions` for why a full rebuild plus
+     * `expandAll()` replaces the old list's incremental append.
      *
      * @param batch - One file's matches, never empty.
      */
     private appendMatches(batch: SearchMatch[]): void {
-        const wasEmpty = this._matches.length === 0
-
         this._matches = [...this._matches, ...batch]
-        this._rows = [...this._rows, ...batch.map(match => searchResultRow(match, this._root))]
-        this._resultsList.setItemsArray(this._rows)
+        this._resultsTree.setNodes(searchResultNodes(this._matches, this._root))
+        this._resultsTree.expandAll()
+    }
 
-        if (wasEmpty) {
-            this._resultsList.setFocusedIndex(0)
+    /** Empties the matches and the tree — shared by {@link runSearch} and {@link setProjectRoot}. */
+    private clearResults(): void {
+        this._matches = []
+        this._resultsTree.setNodes([])
+    }
+
+    /**
+     * The tree's `"selection"` event — a click or an arrow-key move. A match
+     * leaf opens and reveals that match; a file branch opens that file with
+     * no specific location; a folder branch (or an empty selection) does
+     * nothing, mirroring `FileTree.handleSelection`'s own `nodes[0]?.data`
+     * guard.
+     *
+     * @param nodes - The tree's current selection, empty when cleared.
+     */
+    private readonly handleSelection = (nodes: TreeNode[]): void => {
+        const data = nodes[0]?.data as SearchTreeNodeData | undefined
+
+        if (data?.kind === 'match') {
+            this._onOpenMatch(data.match)
+        } else if (data?.kind === 'file') {
+            this._onOpenFile(data.path)
         }
     }
 
-    /** Empties the matches, the rows, and the list — shared by {@link runSearch} and {@link setProjectRoot}. */
-    private clearResults(): void {
-        this._matches = []
-        this._rows = []
-        this._resultsList.setItemsArray(this._rows)
-    }
+    /**
+     * The tree's `"dblclick"` event — mirrors {@link handleSelection}'s
+     * guard shape, but commits the row to a permanent tab instead of
+     * previewing it, the same selection/dblclick split
+     * `FileTree.handleSelection`/`handleDblClick` already draws. A folder
+     * branch double-click does nothing beyond whatever `Tree` itself already
+     * did with `expandTrigger: 'click'` (nothing, since that trigger is
+     * `'click'` here, not `'dblclick'`).
+     *
+     * @param node - The double-clicked node.
+     */
+    private readonly handleDblClick = (node: TreeNode): void => {
+        const data = node.data as SearchTreeNodeData | undefined
 
-    /** The list's `"action"` event — Enter or a row click. Resolves the activated row back to its match and hands it to {@link _onOpenMatch}. */
-    private handleActivateRow(): void {
-        const key = this._resultsList.getValue()
-        const index = this._rows.findIndex(row => row.key === key)
-
-        if (index !== -1) {
-            this._onOpenMatch(this._matches[index])
+        if (data?.kind === 'match') {
+            this._onCommitMatch(data.match)
+        } else if (data?.kind === 'file') {
+            this._onCommitFile(data.path)
         }
     }
 

@@ -59,19 +59,20 @@ export function openFindPanel(editor: CodeEditor): void {
 }
 
 /**
- * Selects `at`'s range in `editor`, scrolls it into view, and focuses the
- * editor. Deferred to `Component.onFirstLayout`: a file a search result just
- * opened may not have built its `EditorView` yet, since `CodeEditor` mounts
- * on its first sized layout. The three `Math.min` calls
- * clamp against the *live* document rather than trusting the match's
+ * Selects `at`'s range in `editor` and scrolls it into view, focusing the
+ * editor unless `focus` is `false`. Deferred to `Component.onFirstLayout`: a
+ * file a search result just opened may not have built its `EditorView` yet,
+ * since `CodeEditor` mounts on its first sized layout. The three `Math.min`
+ * calls clamp against the *live* document rather than trusting the match's
  * position outright, so a file that changed on disk since the search ran
  * lands at the nearest valid position instead of CodeMirror throwing on an
  * out-of-range offset.
  *
  * @param editor - The editor to reveal the match in.
  * @param at - The match's location.
+ * @param focus - Whether to also move keyboard focus into the editor. Defaults to `true`.
  */
-export function revealRange(editor: CodeEditor, at: MatchLocation): void {
+export function revealRange(editor: CodeEditor, at: MatchLocation, focus: boolean = true): void {
     editor.onFirstLayout(() => {
         const view = resolveView(editor)
 
@@ -84,6 +85,9 @@ export function revealRange(editor: CodeEditor, at: MatchLocation): void {
         const to = Math.min(from + at.length, line.to)
 
         view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true })
-        view.focus()
+
+        if (focus) {
+            view.focus()
+        }
     })
 }

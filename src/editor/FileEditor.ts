@@ -258,14 +258,15 @@ class FileEditor extends Container {
      *  already uses; `setSelected` does not re-fire the toggle's `"action"` event.
      *
      * @param at - The match's location to reveal.
+     * @param focus - Whether to also move keyboard focus into the editor. Defaults to `true`.
      */
-    revealMatch(at: MatchLocation): void {
+    revealMatch(at: MatchLocation, focus: boolean = true): void {
         if (this._previewing) {
             this._previewToggle.setSelected(false)
             this.setPreviewing(false)
         }
 
-        revealRange(this._editor, at)
+        revealRange(this._editor, at, focus)
     }
 
     /** Whether Save would do anything: the document is dirty, or has no path yet. */

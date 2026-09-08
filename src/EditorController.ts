@@ -472,20 +472,34 @@ class EditorController {
     }
 
     /**
-     * Opens `path` in a permanent tab, then reveals `at` in it — the
-     * project-search results panel's activation handler. The open file is
-     * re-read from the registry rather than trusting the tab that was active
-     * a moment ago, so a read that failed (`openFile` has already shown its
+     * Opens `path`, then reveals `at` in it — the project-search results
+     * panel's selection and dblclick handlers. `mode` defaults to
+     * `'permanent'`, but a selection (as opposed to a dblclick) passes
+     * `'temporary'`: `Tree`'s `"selection"` event fires on an arrow-key move
+     * exactly as it does on a click, so a fixed `'permanent'` here would pin
+     * one tab per match reached while arrow-browsing — recycling one temp
+     * tab instead is what mirrors `FileTree`'s own `onSelectFile` convention
+     * (also `'temporary'`) for a selection, as opposed to `onOpenFile`'s
+     * dblclick-only `'permanent'`. The reveal itself only takes keyboard
+     * focus for a `'permanent'` open — a `'temporary'` preview leaves focus
+     * wherever it was (typically the results tree), so arrow-browsing keeps
+     * advancing through the tree's own selection instead of the very next
+     * key landing in the editor it just revealed; without this, `openFile`'s
+     * own `'temporary'`-leaves-focus-alone contract would be silently
+     * violated by this method's own reveal step. The open file is re-read
+     * from the registry rather than trusting the tab that was active a
+     * moment ago, so a read that failed (`openFile` has already shown its
      * `Dialog.error` and opened nothing) reveals nothing instead of
      * scrolling whichever tab happened to stay active.
      *
      * @param path - The file to open.
      * @param at - The match's location to reveal once the file is open.
+     * @param mode - Which kind of tab to open it in. Defaults to `'permanent'`.
      */
-    async openFileAt(path: string, at: MatchLocation): Promise<void> {
-        await this.openFile(path, 'permanent')
+    async openFileAt(path: string, at: MatchLocation, mode: OpenMode = 'permanent'): Promise<void> {
+        await this.openFile(path, mode)
 
-        this._openFiles.find(candidate => candidate.getPath() === path)?.revealMatch(at)
+        this._openFiles.find(candidate => candidate.getPath() === path)?.revealMatch(at, mode === 'permanent')
     }
 
     /**

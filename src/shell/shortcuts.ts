@@ -118,7 +118,7 @@ export interface AcceleratorActions {
     onFormat: () => void
     /** Ctrl/Cmd+F — opens the find/replace bar over the active editor. */
     onFind: () => void
-    /** Ctrl/Cmd+Shift+F — opens and focuses the explorer's Search section. */
+    /** Ctrl/Cmd+Shift+F — switches to and focuses the explorer's Search view. */
     onFindInFiles: () => void
     /** Ctrl/Cmd+B — collapses/expands the explorer pane. */
     onToggleExplorer: () => void
