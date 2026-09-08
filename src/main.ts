@@ -23,6 +23,7 @@ import { EditorController } from './EditorController'
 import { EditorShell } from './shell/EditorShell'
 import { loadSession, loadWorkspaceState } from './shell/session'
 import { loadResolvedSettings } from './shell/settings'
+import { grantProjectScope } from './data/workspace'
 import { applyWorkspaceOverlay } from './data/workspaceState'
 
 // Every glyph the shell, the tree, and the unsaved-changes prompt reference
@@ -38,11 +39,21 @@ Body.init({ layoutManager: Fit(), favicon: APP_FAVICON })
 /**
  * Composes the shell and restores the last session. A wrapper function
  * rather than a top-level `await` — the shell is added to the page before
- * the restore's file reads begin, so the window paints immediately.
+ * the restore's file reads begin, so the window paints immediately. The
+ * remembered root's filesystem scope is granted first, because
+ * `.loom/workspace.json` and `.loom/settings.json` are both read here —
+ * before the tree is ever listed — and a root outside `$HOME`/`$CONFIG`
+ * refuses both until it is granted.
  */
 async function start(): Promise<void> {
     const appSession = await loadSession()
-    const workspace = appSession.projectRoot !== null ? await loadWorkspaceState(appSession.projectRoot) : null
+    const restoredRoot = appSession.projectRoot
+
+    if (restoredRoot !== null) {
+        await grantProjectScope(restoredRoot)
+    }
+
+    const workspace = restoredRoot !== null ? await loadWorkspaceState(restoredRoot) : null
     const session = applyWorkspaceOverlay(appSession, workspace)
     const settings = await loadResolvedSettings(session.projectRoot)
     const controller = new EditorController()

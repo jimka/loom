@@ -53,6 +53,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
+        .invoke_handler(tauri::generate_handler![grant_project_scope])
         .setup(|app| {
             #[cfg(any(
                 target_os = "linux",
@@ -77,6 +78,43 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Grants the app filesystem access to `path` and everything under it, for
+/// the life of this process. The frontend calls this for a project folder
+/// Loom points itself at — a restored session's root, or a Recent Projects
+/// entry — rather than one the user just handed it through the folder
+/// picker, a drag-and-drop, or the save dialog. Only those native gestures
+/// grow the `fs` plugin's runtime scope, so a remembered root outside
+/// `$HOME`/`$CONFIG` is refused before its first listing without this.
+///
+/// The grant goes into the capability scope through [`mirror_scope_entry`],
+/// not into the plugin's runtime scope, so it covers dot-prefixed paths —
+/// the project's own `.loom` folder included — exactly as a mirrored
+/// gesture grant does.
+///
+/// # Arguments
+///
+/// * `app` - The handle the capability is added through.
+/// * `path` - The project folder to grant.
+///
+/// # Returns
+///
+/// `Ok(())` once the grant is in place, or the failure's message.
+#[tauri::command]
+fn grant_project_scope<R: Runtime>(app: AppHandle<R>, path: String) -> Result<(), String> {
+    match mirror_scope_entry(&app, Path::new(&path), true) {
+        Ok(()) => {
+            log::info!("granted the filesystem scope for the remembered project root {path}");
+
+            Ok(())
+        }
+        Err(error) => {
+            log::warn!("could not grant the filesystem scope for the remembered project root {path}: {error}");
+
+            Err(error.to_string())
+        }
+    }
 }
 
 /// Copies every change the `fs` plugin makes to its in-memory runtime scope

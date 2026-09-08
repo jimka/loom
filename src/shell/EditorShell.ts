@@ -21,7 +21,7 @@ import { applySession, installSessionAutosave, loadWorkspaceState } from './sess
 import { loadResolvedSettings } from './settings'
 import { treeSectionLabel } from './treeSectionLabel'
 import { projectName, baseName, isUnderRoot, parentDir } from '../data/paths'
-import { listDirectory, tryReadTextFile, pathExists } from '../data/workspace'
+import { listDirectory, tryReadTextFile, pathExists, grantProjectScope } from '../data/workspace'
 import { glyphNameForPath } from '../fileIcons'
 import { promptRecentDirectoryIntent, confirmOpenSeparateWorkspace } from './recentProjectPrompt'
 import { installFileDrop } from './fileDrop'
@@ -286,8 +286,11 @@ class EditorShell extends Container {
 
     /**
      * `setProjectRootListener`'s callback: flushes the outgoing project's own
-     * pending autosave, points the tree at the newly chosen folder, reloads
-     * and reapplies that folder's own resolved settings (the tree's Show
+     * pending autosave, grants `root` filesystem scope — a Recent Projects
+     * entry has no native gesture behind it, unlike the picker and a drop,
+     * and the grant is harmlessly redundant when one does — points the tree
+     * at the newly chosen folder, reloads and reapplies that folder's own
+     * resolved settings (the tree's Show
      * Hidden/Show Ignored defaults and the controller's format-on-save/title
      * template/tab width), restores that folder's saved tree expansion (if
      * it has any), then schedules a session save. Settings reapplication is
@@ -312,6 +315,7 @@ class EditorShell extends Container {
      */
     private async openProjectRoot(root: string): Promise<void> {
         await this._autosave?.flush()
+        await grantProjectScope(root)
         await this._tree.setProjectRoot(root)
 
         const resolved = await loadResolvedSettings(root)
