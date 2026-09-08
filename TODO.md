@@ -8,11 +8,6 @@ nothing below has a plan yet.
 
 ## High
 
-- **Wire up `List` row-level enabled/disabled state for the command
-  palette.** `AbstractSelectableList`'s rows now support `setEnabled`, so the
-  library-side gap is closed. Loom's command palette still filters out a
-  disabled command instead of greying it out the way the menu bar does —
-  nothing in `CommandPalette.ts` calls the new API yet.
 - **Restoring a workspace outside `$HOME`/`$CONFIG` on launch.** A project
   root outside those trees is only reachable once a native gesture has
   granted it — the folder picker, a drag-and-drop, or the save dialog.

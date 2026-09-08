@@ -37,7 +37,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   Enter opens it directly; arrow keys only move the highlight, and nothing
   opens or runs until you activate a result with Enter or a click. Typing `>`
   switches to a list of app commands — Save, Format Document, Toggle
-  Explorer, and the rest of the menu bar — instead.
+  Explorer, and the rest of the menu bar — instead, with a command that can't
+  run right now (Save with nothing to save, Find… with no file open) listed
+  greyed out and doing nothing when activated, just as in the menu bar.
 - **Find & replace** — Ctrl/Cmd+F opens CodeMirror's own find/replace bar
   over the active file's editor; every match in the document highlights as
   you type, Enter and Shift+Enter walk to the next and previous match, and
