@@ -8,15 +8,6 @@ nothing below has a plan yet.
 
 ## High
 
-- **Restoring a workspace outside `$HOME`/`$CONFIG` on launch.** A project
-  root outside those trees is only reachable once a native gesture has
-  granted it — the folder picker, a drag-and-drop, or the save dialog.
-  Nothing grants it at startup, so a remembered root outside
-  `$HOME`/`$CONFIG` is refused before the tree is ever listed and
-  `applySession`'s `try`/`catch` (`src/shell/session.ts:81`) leaves the
-  tree empty. Fixing it means re-granting a persisted path with no user
-  gesture behind it, which needs its own decision about how far that
-  grant should reach.
 - **Cross-file (project-wide) search.** In-file find/replace already ships
   (Ctrl/Cmd+F, CodeMirror's own panel — see `README.md`'s **Find & replace**
   highlight). What project-wide search would still need on top of that:
@@ -106,6 +97,15 @@ nothing below has a plan yet.
   virtualization math) will pay a cost proportional to every open tab, not
   just the active one. The real fix would be giving `Tab` a `display: none`
   (or unmount) path for inactive content instead of `visibility: hidden`.
+- **A remembered tab outside the project root stays closed.** Launch
+  restore grants the remembered project root and its subtree, nothing
+  else, so a tab remembered from outside that root *and* outside
+  `$HOME`/`$CONFIG` — a file reached through *Open Recent > Files*, say —
+  is still refused on the next launch, and
+  `EditorController.restoreFiles` skips it silently the way it skips any
+  path that no longer reads. Covering it would widen the launch-time grant
+  from one directory to an unbounded list of individually remembered
+  files.
 
 ## Notes
 
