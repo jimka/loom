@@ -1,6 +1,6 @@
 // Builds the command palette's `>`-mode command list from EditorShell's own
-// menu-action callbacks — a flat list, filtered rather than greyed out (the
-// library's List has no per-row disabled state; see TODO.md).
+// menu-action callbacks — every command is always listed, each carrying the
+// same `enabled` flag the matching menu-bar item computes.
 import {
     NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
     FORMAT_SHORTCUT, FIND_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT,
@@ -14,6 +14,13 @@ export interface PaletteCommand {
     title: string
     /** Display-only shortcut hint, from `shortcuts.ts`'s exported constants. */
     shortcut?: string
+    /**
+     * Whether the command can run right now. `false` renders the palette row
+     * dim and refuses a click or an Enter/Space commit — the same treatment
+     * the matching menu-bar item gets when its own `enabled` expression is
+     * false.
+     */
+    enabled: boolean
     /** Runs the command. Synchronous — every `MenuBarActions` callback already is. */
     run: () => void
 }
@@ -46,40 +53,40 @@ export interface PaletteCommandActions {
 
 /**
  * Builds the current command list from the shell's own menu-action
- * callbacks, leaving out any that would show disabled in the menu bar.
+ * callbacks. Every command is always returned; each carries the same
+ * `enabled` flag its matching menu-bar item computes, so the palette and the
+ * menu bar never disagree about what can run right now.
  *
  * @param actions - The subset of the shell's menu-action callbacks the palette needs.
- * @returns The commands available right now, in a fixed display order.
+ * @returns All eleven commands, in a fixed display order.
  */
 export function buildPaletteCommands(actions: PaletteCommandActions): PaletteCommand[] {
-    const commands: PaletteCommand[] = [
-        { id: 'new-file',        title: 'New File',        shortcut: NEW_FILE_SHORTCUT,      run: actions.onNewFile },
-        { id: 'open-folder',     title: 'Open Folder…',    shortcut: OPEN_FOLDER_SHORTCUT,   run: actions.onOpenFolder },
-        { id: 'toggle-explorer', title: 'Toggle Explorer', shortcut: TOGGLE_EXPLORER_SHORTCUT, run: actions.onToggleExplorer },
-        { id: 'exit',            title: 'Exit',            shortcut: EXIT_SHORTCUT,          run: actions.onExit },
+    // Read once so every command below is built against one consistent
+    // snapshot of the shell's state.
+    const hasActiveFile = actions.hasActiveFile()
+    const canSaveActive = actions.canSaveActive()
+
+    return [
+        { id: 'new-file',        title: 'New File',        shortcut: NEW_FILE_SHORTCUT,        enabled: true,          run: actions.onNewFile },
+        { id: 'open-folder',     title: 'Open Folder…',    shortcut: OPEN_FOLDER_SHORTCUT,     enabled: true,          run: actions.onOpenFolder },
+        { id: 'toggle-explorer', title: 'Toggle Explorer', shortcut: TOGGLE_EXPLORER_SHORTCUT, enabled: true,          run: actions.onToggleExplorer },
+        { id: 'exit',            title: 'Exit',            shortcut: EXIT_SHORTCUT,            enabled: true,          run: actions.onExit },
+        { id: 'save',            title: 'Save',            shortcut: SAVE_SHORTCUT,            enabled: canSaveActive, run: actions.onSave },
+        { id: 'save-as',         title: 'Save As…',        shortcut: SAVE_AS_SHORTCUT,         enabled: hasActiveFile, run: actions.onSaveAs },
+        { id: 'close-file',      title: 'Close File',      shortcut: CLOSE_FILE_SHORTCUT,      enabled: hasActiveFile, run: actions.onCloseFile },
+        { id: 'find',            title: 'Find…',           shortcut: FIND_SHORTCUT,            enabled: hasActiveFile, run: actions.onFind },
+        { id: 'format-document', title: 'Format Document', shortcut: FORMAT_SHORTCUT,          enabled: hasActiveFile, run: actions.onFormat },
+        {
+            id: 'toggle-hidden-files',
+            title: actions.isShowingHidden() ? 'Hide Hidden Files' : 'Show Hidden Files',
+            enabled: true,
+            run: () => actions.onToggleHidden(!actions.isShowingHidden()),
+        },
+        {
+            id: 'toggle-ignored-files',
+            title: actions.isShowingIgnored() ? 'Hide Ignored Files' : 'Show Ignored Files',
+            enabled: true,
+            run: () => actions.onToggleIgnored(!actions.isShowingIgnored()),
+        },
     ]
-
-    if (actions.canSaveActive()) {
-        commands.push({ id: 'save', title: 'Save', shortcut: SAVE_SHORTCUT, run: actions.onSave })
-    }
-
-    if (actions.hasActiveFile()) {
-        commands.push({ id: 'save-as',        title: 'Save As…',        shortcut: SAVE_AS_SHORTCUT,    run: actions.onSaveAs })
-        commands.push({ id: 'close-file',     title: 'Close File',      shortcut: CLOSE_FILE_SHORTCUT, run: actions.onCloseFile })
-        commands.push({ id: 'find',           title: 'Find…',           shortcut: FIND_SHORTCUT,       run: actions.onFind })
-        commands.push({ id: 'format-document', title: 'Format Document', shortcut: FORMAT_SHORTCUT,     run: actions.onFormat })
-    }
-
-    commands.push({
-        id: 'toggle-hidden-files',
-        title: actions.isShowingHidden() ? 'Hide Hidden Files' : 'Show Hidden Files',
-        run: () => actions.onToggleHidden(!actions.isShowingHidden()),
-    })
-    commands.push({
-        id: 'toggle-ignored-files',
-        title: actions.isShowingIgnored() ? 'Hide Ignored Files' : 'Show Ignored Files',
-        run: () => actions.onToggleIgnored(!actions.isShowingIgnored()),
-    })
-
-    return commands
 }
