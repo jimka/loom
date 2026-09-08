@@ -14,13 +14,13 @@ nothing below has a plan yet.
   phase one deliberately avoided.
 - **IntelliSense / LSP** or any language service.
 - **Git integration**, including a dirty-vs-committed indicator in the tree.
-- **Project-wide replace.** The Search section (see `README.md`'s **Project
+- **Project-wide replace.** The Search view (see `README.md`'s **Project
   search** highlight) finds matches only. Replacing across files needs a
   replace field on the panel, per-match and per-file apply, writing files
   that aren't open in a tab, reconciling a replacement against a tab with
   unsaved changes, and an undo story — CodeMirror's per-document history
   doesn't cover an edit spanning forty files.
-- **Regular-expression and match-case project search.** The Search section
+- **Regular-expression and match-case project search.** The Search view
   matches a case-insensitive plain substring today; the in-file find panel's
   *regexp* and *match case* toggles have no counterpart there yet.
 
@@ -53,7 +53,8 @@ nothing below has a plan yet.
   lights.
 - **Remembering which explorer sections are open.** The sidebar's tree and
   *Properties* accordion sections both start expanded on every launch;
-  neither `session.json` nor `.loom/workspace.json` records their state.
+  neither `session.json` nor `.loom/workspace.json` records their state, and
+  the sidebar rail always starts on Files too.
 - **Go to Line, and selection metrics in the status bar.** The bar reports the caret's line,
   column, and document position but nothing acts on them: there is no *Go to Line* command, the
   readout is not clickable, and it reports no selected-character or selected-line count.
