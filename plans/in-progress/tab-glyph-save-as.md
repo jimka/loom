@@ -330,3 +330,76 @@ else to update.
     change than this fix, and the assertion would be about the library's rendering rather than
     Loom's logic. The part of this change that is Loom's own logic — which icon a path resolves to —
     is already pure and already unit-tested.
+
+---
+
+## Implementation Notes
+
+The code matches `## Internal Structure` verbatim: `repointFile` sits directly below `pinTab`,
+both `setPath` call sites route through it, the doc-comment fix landed, and the invariant greps
+(`grep -n '\.setPath(' src/EditorController.ts` and `grep -rn 'setEntryGlyph\|clearEntryGlyph\|
+clearTabGlyph' src/`) come back exactly as `## Verification` predicts. `npm run typecheck` and
+`npm run build` both pass cleanly. `npm test` exits non-zero, but not because of this change: one
+pre-existing, unrelated suite fails to collect — `tests/languages.test.ts`
+(`ReferenceError: document is not defined`, thrown from the library's `TextInput`/`StyleRule`
+construction reached through `@jimka/typescript-ui/component/editor`'s module-scope import). It
+reproduces identically on `main` with no changes from this branch applied, so it predates this plan
+and is out of scope for it; every other suite passes, including the two new `fileIcons` cases,
+which pass both before and after the change, as designed.
+
+**Manual verification (`## Expected Behaviour` › *Manual verification*) was run via this sandbox's
+documented QA workaround, not via `npm run tauri:dev`.** This environment has no display a real
+Tauri/WebKitGTK window can attach to, so the plan's own verification command could not run
+literally. Following the precedent set on `feature/status-bar-document-offset`
+(`plans/implemented/status-bar-document-offset.md`'s Implementation Notes): temporary `resolve.alias`
+entries in `vite.config.ts` redirecting `@tauri-apps/plugin-os`, `@tauri-apps/plugin-fs`,
+`@tauri-apps/plugin-dialog`, `@tauri-apps/api/window`, and `@tauri-apps/api/path` to no-op stub
+modules, plus a throwaway `scratch-verify.html`/`.ts` (mirroring `feature/file-breadcrumbs`'s own
+substitute) mounting a real `EditorController` — the actual shipped code, not a reimplementation —
+in a plain browser tab via `npx vite`, driven with the chrome-devtools MCP tools. Both the alias
+block and the scratch files were reverted/deleted before this commit; neither ever landed on this
+branch (confirmed clean via `git status`/`git diff` afterwards).
+
+Six of the seven numbered manual cases were verified directly against the running app, reading each
+tab's rendered icon off its `<use href="#ts-glyph-<name>">` element rather than eyeballing pixels,
+and a `Tab.setTabGlyph` spy counting calls to confirm the guard actually *skips* the redundant call
+rather than merely landing on the same-looking icon:
+
+- **Cross-type Save As** — a fresh untitled buffer saved as `/proj/notes.md` showed the Markdown
+  icon (`#ts-glyph-markdown`, 1 `setTabGlyph` call); Save As again to `/proj/notes.txt` showed the
+  lines-page icon (`#ts-glyph-file-lines`, a 2nd call). Both transitions logged.
+- **Same-type Save As** — a separate fresh buffer saved as `/proj/readme.md` (Markdown, 1 call),
+  then Save As to `/proj/draft.md`: the icon stayed Markdown and, confirmed via the spy, triggered
+  **zero** additional `setTabGlyph` calls — the guard suppressed the redundant call rather than the
+  icon coincidentally rendering the same.
+- **Untitled first save** — a fresh buffer (default `#ts-glyph-file`) saved as `hello.py` took the
+  Python icon (`#ts-glyph-python`).
+- **Cross-type tree rename** — calling `EditorController.relocateOpenFiles('/proj/draft.md',
+  '/proj/draft.txt')` directly (the exact function the tree's Rename action invokes; no tree UI was
+  mounted) re-iconed the open tab to `#ts-glyph-file-lines`, left `isDirty()` at `false` throughout,
+  and updated `getPath()`/`getName()` in step.
+- **Folder rename with several tabs open** — three files under `/myfolder/` (`a.ts`, `sub/b.py`,
+  `c.md`, one nested a directory deeper) each took their own distinct icon (js/python/markdown).
+  Calling `relocateOpenFiles('/myfolder', '/renamed')` updated every path correctly and the spy
+  recorded **zero** new calls across all three — the guard held for every open tab under the
+  renamed directory, not just a single-file case.
+- **Unaffected paths** — a plain `save()` on an already-pathed, clean file left its icon and the
+  call count untouched; a cancelled Save As (`pickSaveTarget` resolving `null`) left the path, icon,
+  and call count untouched; a Save As refused because the target was already open in another tab
+  rendered the real `Dialog.error("Cannot save here", "That file is already open in another tab.
+  Close it first.")` modal (clicked through to resolve it) and left the original tab's path and icon
+  untouched. The two remaining `## Expected Behaviour` sub-cases under this bullet — a dirty edit,
+  and an external-change reload — call neither `saveAs` nor `relocateOpenFiles` at all, so they
+  share no code path with this change and were not separately re-verified live.
+
+**One case was not run live: "Icons match the tree."** No file tree was mounted in the harness (it
+needs `readDir`/`watch` stubbed with an in-memory filesystem, a materially larger harness than the
+one built here). This is covered by construction rather than by a live screenshot comparison:
+`repointFile` and the tree row renderer both call the same `glyphNameForPath` (`src/fileIcons.ts`),
+already exercised by the existing and the two new `fileIcons.test.ts` cases, so a tab and its tree
+row can never disagree on which icon a given path resolves to.
+
+One gap remains, echoing `plans/implemented/file-breadcrumbs.md`'s own precedent note (not a
+verbatim quote — that note describes its own, different substitute, but draws the same line): the
+real native *Open Folder*/*Save As* dialog widgets, as one pair, are unchanged by this plan and stay
+covered by the app's existing Tauri-runtime manual-verify practice, not by this substitute.
