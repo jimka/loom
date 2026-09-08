@@ -8,18 +8,23 @@ nothing below has a plan yet.
 
 ## High
 
-- **Library `Tab.setTabGlyph` / `TabBar.setEntryGlyph`.** Neither exists
-  today — `Tab` has `setTabName` but no glyph counterpart, and the
-  `TabButton` that owns the icon is built once from the `glyph` option
-  passed to `addTab`. Without it, a _Save As_ that changes a file's
-  extension cannot re-icon its already-open tab.
-- **Library `List` row-level enabled/disabled state.** `AbstractSelectableList`
-  has no per-row disabled flag, only the whole list's `enabled`/`readOnly`, so
-  the command palette filters out a disabled command instead of greying it
-  out the way the menu bar does.
-- **Library per-tab label styling.** `Tab.setTabName` sets a tab's text but
-  nothing styles it, and `Tab` keeps its `TabBar` private, so Loom marks a
-  temp tab with a `~` prefix instead of the italics VS Code uses.
+- **Wire up `Tab.setTabGlyph` / `TabBar.setEntryGlyph` for _Save As_.** The
+  library now has both (`Tab.setTabGlyph`/`clearTabGlyph`,
+  `TabBar.setEntryGlyph`/`clearEntryGlyph`) — the earlier blocker (no glyph
+  counterpart to `setTabName`) is gone. Loom itself doesn't call either yet:
+  a _Save As_ that changes a file's extension still leaves its already-open
+  tab showing the old icon (see the stale-tab-icon known issue below).
+- **Wire up `List` row-level enabled/disabled state for the command
+  palette.** `AbstractSelectableList`'s rows now support `setEnabled`, so the
+  library-side gap is closed. Loom's command palette still filters out a
+  disabled command instead of greying it out the way the menu bar does —
+  nothing in `CommandPalette.ts` calls the new API yet.
+- **Wire up `Tab.setTabItalic` for temp tabs.** The library now has
+  `Tab.setTabItalic`/`TabBar.setEntryItalic` (the VS Code-style preview-tab
+  treatment) — the earlier blocker (no styling hook, `TabBar` kept private)
+  is gone. Loom still marks a temp tab with a `~` prefix
+  (`TEMPORARY_LABEL_PREFIX` in `src/editor/FileEditor.ts`) instead of
+  switching to italics.
 - **Restoring a workspace outside `$HOME`/`$CONFIG` on launch.** A project
   root outside those trees is only reachable once a native gesture has
   granted it — the folder picker, a drag-and-drop, or the save dialog.
@@ -29,11 +34,6 @@ nothing below has a plan yet.
   tree empty. Fixing it means re-granting a persisted path with no user
   gesture behind it, which needs its own decision about how far that
   grant should reach.
-- **Right clicking on empty space in FileTree** should show a context menu
-  with options for creating a new file or folder, at the root of the
-  workspace.
-- **Saving a file that I'm currently editing**, reloads the entire file and
-  moves the scrollbar to the top, loosing the current work state.
 - **Cross-file (project-wide) search.** In-file find/replace already ships
   (Ctrl/Cmd+F, CodeMirror's own panel — see `README.md`'s **Find & replace**
   highlight). What project-wide search would still need on top of that:
