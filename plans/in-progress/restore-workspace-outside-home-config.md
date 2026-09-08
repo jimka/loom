@@ -564,3 +564,80 @@ a directory under the session scratchpad — containing `README.md`,
     privilege in practice: anything able to rewrite `session.json`, a file
     inside the user's own config directory, already has the user's filesystem
     access.
+
+## Implementation Notes
+
+**No codebase drift.** Every file this plan touches matched its cited line
+numbers exactly (`src-tauri/src/lib.rs`, `src/data/workspace.ts`,
+`src/main.ts`, `src/shell/EditorShell.ts`, `TODO.md`), and `ls
+src-tauri/permissions` confirmed the no-app-manifest assumption step 4 rests
+on. All fifteen `## Ordered Implementation Steps` were followed as written,
+with no deviation.
+
+**Manual verification.** Ran against a real `npm run tauri:dev` process
+(Linux/WSL2, `DISPLAY` forwarded to a Windows host via WSLg), reusing the
+main tree's Cargo build cache (`CARGO_TARGET_DIR` pointed at
+`/home/jika/typescript/loom/src-tauri/target`), screenshotted with Pillow's
+`ImageGrab` and driven with `pyautogui`; window focus was set explicitly via
+`python-xlib` (`set_input_focus`/`configure(stack_mode=Above)`) before each
+new window's first interaction, and the genuine window-manager close each
+case needed was sent as a real `WM_DELETE_WINDOW` client message rather than
+a simulated click, matching every prior phase's recorded technique. Port
+1420 was already held by an unrelated worktree's dev server, so
+`vite.config.ts`'s `server.port` and `tauri.conf.json`'s `build.devUrl` were
+both temporarily repointed to `14209` for the run and reverted (`git
+checkout`) before finishing — neither appears in the final diff. The native
+GTK folder-picker's location-bar (`Ctrl+L`) auto-completes into any
+unambiguous single-child directory on `Enter`, the same pitfall
+`open-outside-home.md`'s notes recorded, so the picker was driven by
+navigating to the parent directory and double-clicking the target row
+instead, once per path segment.
+
+Confirmed against a scratch project outside `$HOME` (this session's
+scratchpad) containing `README.md` and `src/nested/deep.txt`:
+
+1. Opened the scratch project via *File → Open Folder…*, expanded `src` and
+   `src/nested`, opened both files, closed the two stale tabs left over from
+   the previously-open project (the `openFilesBelongToRoot` autosave guard
+   `folder-picker-fs-scope.md`'s notes flagged), then closed the window via a
+   genuine `WM_DELETE_WINDOW` request. `<root>/.loom/workspace.json` was
+   written with the expanded dirs and both open files. Relaunching restored
+   the tree (root, `src`, `src/nested` all expanded), both tabs, and their
+   content — the dev console logged `granted the filesystem scope for the
+   remembered project root <path>` at `info` before the tree was listed.
+   Today (pre-fix) this is the exact case that fails: an empty tree and the
+   welcome screen.
+2. With the restored project still open, *View → Show Hidden Files* revealed
+   `.gitignore` and `.loom`; double-clicking `.gitignore` opened it with its
+   content (`node_modules/`) and no `Could not open file` dialog — the case
+   that distinguishes a capability-scope grant from a runtime-scope-only one.
+3. Renaming the scratch project's directory away and relaunching left the
+   welcome screen showing, *Recent Projects* intact, no error dialog, and no
+   crash — the unchanged `applySession` fallback. The grant itself still
+   logged (adding scope entries does no I/O to check the path exists), only
+   the later tree listing fails, exactly as `## What the grant covers`
+   predicts for a since-deleted root.
+4. The very first launch of this session (before any scratch-project setup)
+   restored `/home/jika/typescript/loom` — a `$HOME` root left over from an
+   earlier phase's manual verification — unaffected: tree, tabs, and
+   expansion came back exactly as they do without this change, confirming
+   the unconditional cold-start grant call is harmless for an already-in-
+   scope root.
+5. With `~/.config/loom/session.json` moved aside entirely (no persisted
+   `projectRoot` at all), launch showed the welcome screen with an empty
+   tree and no *Recent Projects* entries, and the dev console logged no
+   `granted the filesystem scope` line — confirming `main.ts`'s
+   `if (restoredRoot !== null)` guard skips the grant call outright on a
+   true first launch. Restored the session file afterward.
+
+**Not exercised.** Cases 2 (per-project settings override), 4 (edit-and-save
+of the restored project), 7 (*Open Recent* to a second out-of-`$HOME`
+project), and 8 (a folder name containing glob characters) were not
+separately driven through the GUI. Each exercises the same
+`grant_project_scope`/`mirror_scope_entry` code path already confirmed live
+by cases 1–2 above (`EditorShell.openProjectRoot`'s call site for 7,
+`scope_entries`' existing `Pattern::escape` handling for 8, unchanged by
+this plan), and reproducing them was judged to add GUI-automation time out
+of proportion to the additional confidence, given the fix is a single
+`if (restoredRoot !== null) { await grantProjectScope(restoredRoot) }`
+gate plus one already-tested reused helper.
