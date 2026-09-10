@@ -1,7 +1,8 @@
 // Pure session data shape and parser — no Tauri imports, so it runs in
 // vitest's `node` environment. `src/shell/session.ts` owns the Tauri-backed
 // read/write and the live-state capture/restore this module's shape feeds.
-import type { LayoutSize, LayoutSizeUnit } from '@jimka/typescript-ui/layout'
+import type { LayoutSize, LayoutSizeUnit, LayoutState } from '@jimka/typescript-ui/layout'
+import { readLayoutState } from './editorLayout'
 
 /** The session schema's only valid `unit`s — mirrors {@link LayoutSizeUnit}. */
 const VALID_LAYOUT_SIZE_UNITS: readonly LayoutSizeUnit[] = ['px', 'ratio']
@@ -35,6 +36,8 @@ export interface SessionState {
     explorerView: ExplorerView
     /** The Files view's accordion sections' open flags, in child order (tree, then Properties). */
     explorerSectionsOpen: boolean[]
+    /** The editor dock's arrangement with panel ids rewritten to file paths, or `null` when none was captured. */
+    editorLayout: LayoutState | null
 }
 
 /**
@@ -71,6 +74,7 @@ export function emptySession(): SessionState {
         recentFiles: [],
         explorerView: 'files',
         explorerSectionsOpen: [],
+        editorLayout: null,
     }
 }
 
@@ -107,6 +111,7 @@ export function parseSession(text: string): SessionState {
         recentFiles: (readStringArray(doc.recentFiles) ?? empty.recentFiles).slice(0, MAX_RECENT_ENTRIES),
         explorerView: readExplorerView(doc.explorerView) ?? empty.explorerView,
         explorerSectionsOpen: readBooleanArray(doc.explorerSectionsOpen) ?? empty.explorerSectionsOpen,
+        editorLayout: readLayoutState(doc.editorLayout) ?? empty.editorLayout,
     }
 }
 

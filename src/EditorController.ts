@@ -1,8 +1,8 @@
-import type { Component } from '@jimka/typescript-ui/core'
-import { TabPanel, StatusBar } from '@jimka/typescript-ui/component/container'
+import { StatusBar } from '@jimka/typescript-ui/component/container'
 import { Text, Link } from '@jimka/typescript-ui/component/input'
-import { Dialog, Tooltip } from '@jimka/typescript-ui/overlay'
-import type { TabCloseController } from '@jimka/typescript-ui/layout'
+import { Dialog, Tooltip, Dock } from '@jimka/typescript-ui/overlay'
+import type { DockPanelEvent } from '@jimka/typescript-ui/overlay'
+import type { TabCloseController, LayoutState } from '@jimka/typescript-ui/layout'
 import type { FormatOptions, CodeEditorCursorPosition } from '@jimka/typescript-ui/component/editor'
 import { FileEditor } from './editor/FileEditor'
 import { cursorLabel } from './editor/cursorLabel'
@@ -19,6 +19,7 @@ import { promptUnsavedChanges } from './shell/unsavedPrompt'
 import { promptExternalChange } from './shell/externalChangePrompt'
 import { APP_NAME } from './appIdentity'
 import { withRecent } from './data/session'
+import { remapPanelIds } from './data/editorLayout'
 import type { Settings } from './data/settings'
 import { DEFAULT_SETTINGS, renderTitle } from './data/settings'
 import { ensureGlobalSettingsFile, ensureWorkspaceSettingsFile } from './shell/settings'
@@ -54,16 +55,21 @@ const WIDEST_SELECTION = { characters: WIDEST_CURSOR_POSITION.offset, lines: WID
 export type OpenMode = 'temporary' | 'permanent'
 
 /**
- * Owns the tab strip, the status bar, the open-file registry, and every
+ * Owns the editor dock, the status bar, the open-file registry, and every
  * editor command (open/save/close/format/replace). Holds no UI arrangement
  * of its own — the tree and the split belong to `EditorShell`, which the
  * shell reaches through {@link setProjectRootListener}.
  */
 class EditorController {
-    readonly tabs: TabPanel
+    /** The editor workspace: one or more tab groups the user can split, rearrange, and tear off. */
+    readonly dock: Dock
     readonly statusBar: StatusBar
 
-    private readonly _openFiles: FileEditor[] = []
+    private readonly _openFiles: Map<string, FileEditor> = new Map()
+    /** The dock-wide focused panel's id, set from the dock's own `focus` event — `null` when nothing is focused. */
+    private _activePanelId: string | null = null
+    /** Mints each new panel's id, monotonically — `buf-1`, `buf-2`, … — for the buffer's whole life. */
+    private _panelIdSeq = 0
     /**
      * Paths whose disk read is in flight, mapped to the mode their tab will get.
      * A second request for the same path joins the entry instead of starting a
@@ -88,7 +94,6 @@ class EditorController {
     private _untitledCount = 0
     private _projectRootListener: ((root: string) => Promise<void>) | null = null
     private _beforeExitListener: (() => Promise<void>) | null = null
-    private _emptyStateListener: ((empty: boolean) => void) | null = null
     private _activeFileListener: ((path: string | null) => void) | null = null
     private _fileSavedListener: ((path: string) => void) | null = null
     private _formatOnSave: boolean = DEFAULT_SETTINGS.formatOnSave
@@ -96,8 +101,8 @@ class EditorController {
     private _titleBarTemplate: string = DEFAULT_SETTINGS.titleBarTemplate
 
     constructor() {
-        this.tabs = new TabPanel({
-            tabOptions: { widthMode: 'content', maxWidth: DEFAULT_SETTINGS.tabMaxWidthPx, scrollable: true, reorderable: true },
+        this.dock = new Dock({
+            tabOptions: { widthMode: 'content', maxWidth: DEFAULT_SETTINGS.tabMaxWidthPx, scrollable: true },
         })
 
         this.statusBar = new StatusBar()
@@ -114,10 +119,11 @@ class EditorController {
         // synchronous DOM reflow (an off-screen probe element measured via
         // `getBoundingClientRect`) to grow or shrink the readout by a few
         // pixels. That reflow is a full-document layout flush, so its cost
-        // scales with everything else mounted — every open tab's editor,
-        // including the inactive ones `TabPanel` keeps `visibility: hidden`
-        // rather than unmounted — which is what makes selection drag feel
-        // sluggish once more than a couple of files are open. Measuring once
+        // scales with everything else mounted — every open tab's editor in
+        // every dock group, including the inactive ones `Tab` keeps
+        // `visibility: hidden` rather than unmounted — which is what makes
+        // selection drag feel sluggish once more than a couple of files are
+        // open. Measuring once
         // against a generous worst case and fixing the width means later
         // `setText` calls only touch the DOM text node.
         //
@@ -163,10 +169,10 @@ class EditorController {
         Tooltip.attach(this._cursorText, 'Go to Line')
         this._cursorText.on('action', () => { void this.goToLineInActive() })
 
-        this.tabs.getTab().on('beforetabclose', this.handleBeforeTabClose)
-        this.tabs.getTab().on('tabclose', this.handleTabClose)
-        this.tabs.getTab().on('activate', this.handleActivate)
-        this.tabs.getTab().on('tabdblclick', this.handleTabDoubleClick)
+        this.dock.on('beforeclose', this.handleBeforePanelClose)
+        this.dock.on('close', this.handlePanelClose)
+        this.dock.on('focus', this.handlePanelFocus)
+        this.dock.on('dblclick', this.handlePanelDoubleClick)
 
         onCloseRequested(this.confirmExit)
     }
@@ -183,19 +189,6 @@ class EditorController {
     }
 
     /**
-     * Injects the shell's editor/welcome deck toggle, called once immediately
-     * with the current state and again on every change — mirrors
-     * {@link setProjectRootListener}. The argument is whether `_openFiles` is
-     * empty, not whether a tab happens to be active.
-     *
-     * @param fn - Called with `true` whenever no file is open.
-     */
-    setEmptyStateListener(fn: (empty: boolean) => void): void {
-        this._emptyStateListener = fn
-        fn(this._openFiles.length === 0)
-    }
-
-    /**
      * Injects a hook awaited on the way out, after the unsaved-changes
      * decision — {@link EditorShell.restoreSession} uses it to flush the
      * pending session save before the window actually closes.
@@ -208,9 +201,8 @@ class EditorController {
 
     /**
      * Injects the shell's tree-selection sync, called once immediately with
-     * the current state and again on every active-tab change — mirrors
-     * {@link setEmptyStateListener}. `null` covers both an empty tab strip and
-     * an active path-less (untitled) buffer.
+     * the current state and again on every active-tab change. `null` covers
+     * both an empty dock and an active path-less (untitled) buffer.
      *
      * @param fn - Called with the active tab's file path, or `null`.
      */
@@ -256,23 +248,6 @@ class EditorController {
     }
 
     /**
-     * The open, saved files' paths, in tab order. A path-less (untitled)
-     * buffer is omitted — it has nothing to reopen from, and persisting
-     * untitled buffers across restarts is out of scope (see the plan's
-     * Non-Goals). Sorted by `indexOfContent` rather than `_openFiles`' own
-     * insertion order — insertion order is the order files were *opened*, not
-     * the order a drag-reordered strip shows them in.
-     */
-    getOpenFilePaths(): string[] {
-        const tab = this.tabs.getTab()
-
-        return [...this._openFiles]
-            .sort((a, b) => tab.indexOfContent(a) - tab.indexOfContent(b))
-            .map(file => file.getPath())
-            .filter((path): path is string => path !== null)
-    }
-
-    /**
      * Closes every open tab whose file is `path` itself or lies under it —
      * called after the tree deletes a file or folder. No unsaved-changes
      * prompt: the delete was already confirmed, and the file no longer
@@ -281,14 +256,14 @@ class EditorController {
      * @param path - The deleted file or folder's path.
      */
     closeFilesUnder(path: string): void {
-        const affected = this._openFiles.filter(file => {
+        const affected = [...this._openFiles.values()].filter(file => {
             const filePath = file.getPath()
 
             return filePath !== null && isUnderRoot(path, filePath)
         })
 
         for (const file of affected) {
-            this.tabs.getTab().closeTab(file)
+            this.dock.removePanel(file.getPanelId())
         }
     }
 
@@ -302,12 +277,12 @@ class EditorController {
      * @param newPath - The renamed entry's new path.
      */
     relocateOpenFiles(oldPath: string, newPath: string): void {
-        for (const file of this._openFiles) {
+        for (const file of this._openFiles.values()) {
             const filePath = file.getPath()
 
             if (filePath !== null && isUnderRoot(oldPath, filePath)) {
                 this.repointFile(file, relocatePath(filePath, oldPath, newPath))
-                this.tabs.getTab().setTabName(file, file.getName())
+                this.dock.setPanelTitle(file.getPanelId(), file.getName())
             }
         }
 
@@ -316,7 +291,7 @@ class EditorController {
 
     /**
      * Flags every open file the batch names, and resolves the active one now.
-     * A background file's resolution is deferred until {@link handleActivate}
+     * A background file's resolution is deferred until {@link handlePanelFocus}
      * makes it active — there is no second code path and no stashed disk text
      * for it in the meantime.
      *
@@ -326,7 +301,7 @@ class EditorController {
         const active = this.getActiveFile()
 
         for (const path of new Set(paths)) {
-            const file = this._openFiles.find(candidate => candidate.getPath() === path)
+            const file = this.findByPath(path)
 
             if (!file) {
                 continue
@@ -415,11 +390,14 @@ class EditorController {
         this._projectRoot = root
     }
 
-    /** Opens an empty untitled buffer in a new tab and activates it. */
+    /** Opens an empty untitled buffer in a new panel and activates it. */
     newFile(): void {
         this._untitledCount += 1
+        this._panelIdSeq += 1
 
+        const panelId = `buf-${this._panelIdSeq}`
         const file = FileEditor({
+            panelId,
             path: null,
             name: `Untitled-${this._untitledCount}`,
             text: '',
@@ -429,9 +407,9 @@ class EditorController {
         file.onDirtyChange(() => this.handleDirtyChange(file))
         file.getEditor().on('cursorchange', () => this.handleCursorChange(file))
         file.getEditor().on('selectionchange', () => this.handleSelectionChange(file))
-        this.tabs.addTab(file, file.getName(), { closeable: true, glyph: glyphNameForPath(file.getName()) })
-        this._openFiles.push(file)
-        this.tabs.getTab().setActiveContent(file)
+        this.dock.addPanel({ id: panelId, title: file.getName(), glyph: glyphNameForPath(file.getName()), content: file })
+        this._openFiles.set(panelId, file)
+        this.dock.focusPanel(panelId)
         this.syncActive()
     }
 
@@ -453,7 +431,7 @@ class EditorController {
      * @param mode - Which kind of tab to open it in.
      */
     async openFile(path: string, mode: OpenMode = 'permanent'): Promise<void> {
-        const existing = this._openFiles.find(candidate => candidate.getPath() === path)
+        const existing = this.findByPath(path)
 
         if (existing) {
             if (mode === 'permanent') {
@@ -461,7 +439,7 @@ class EditorController {
                 this.pinTab(existing)
             }
 
-            this.tabs.getTab().setActiveContent(existing)
+            this.dock.focusPanel(existing.getPanelId())
 
             if (mode === 'permanent') {
                 existing.getEditor().focus()
@@ -505,7 +483,7 @@ class EditorController {
 
         const file = this.addFileTab(path, text, settled === 'temporary')
 
-        this.tabs.getTab().setActiveContent(file)
+        this.dock.focusPanel(file.getPanelId())
         this.syncActive()
 
         if (settled === 'permanent') {
@@ -541,15 +519,17 @@ class EditorController {
     async openFileAt(path: string, at: MatchLocation, mode: OpenMode = 'permanent'): Promise<void> {
         await this.openFile(path, mode)
 
-        this._openFiles.find(candidate => candidate.getPath() === path)?.revealMatch(at, mode === 'permanent')
+        this.findByPath(path)?.revealMatch(at, mode === 'permanent')
     }
 
     /**
-     * Builds a `FileEditor` for `path`/`text`, adds its tab, and records it in
-     * the open-file registry. Paints the new tab italic when it is the strip's
-     * temp tab, upright otherwise. Does **not** activate the new tab — the
-     * caller decides that, since {@link restoreFiles} adds several tabs before
-     * activating any of them.
+     * Builds a `FileEditor` for `path`/`text`, mints its panel id, and docks
+     * it into the group the user last worked in. Paints the new tab italic
+     * when it is the strip's temp tab, upright otherwise. `Dock.addPanel`
+     * activates the panel it adds as a side effect of the library's own
+     * behaviour, so the caller still focuses its own intended panel
+     * afterward — {@link restoreFiles} adds several panels before rearranging
+     * and activating any of them.
      *
      * @param path - The file's path.
      * @param text - The file's already-read contents.
@@ -557,24 +537,18 @@ class EditorController {
      * @returns The new tab's `FileEditor`.
      */
     private addFileTab(path: string, text: string, temporary: boolean = false): FileEditor {
-        const file = FileEditor({ path, name: baseName(path), text, projectRoot: this._projectRoot })
+        this._panelIdSeq += 1
+
+        const panelId = `buf-${this._panelIdSeq}`
+        const file = FileEditor({ panelId, path, name: baseName(path), text, projectRoot: this._projectRoot })
 
         file.setTemporary(temporary)
         file.onDirtyChange(() => this.handleDirtyChange(file))
         file.getEditor().on('cursorchange', () => this.handleCursorChange(file))
         file.getEditor().on('selectionchange', () => this.handleSelectionChange(file))
-        this.tabs.addTab(file, file.getName(), { closeable: true, glyph: glyphNameForPath(path) })
-
-        // `addTab` only enqueues `file` as a container child; `Tab` promotes it
-        // to an addressable entry during its own next layout pass (scheduled,
-        // not synchronous — see `Component`'s rAF-coalesced layout queue), so
-        // the italic call below would silently miss it without this flush.
-        // `setActiveContent` has the same race but shields it with a
-        // `_pendingActiveContent` fallback; the call below has no such
-        // fallback, so the caller must force the pass itself.
-        this.tabs.flushLayout()
-        this.tabs.getTab().setTabItalic(file, temporary)
-        this._openFiles.push(file)
+        this.dock.addPanel({ id: panelId, title: file.getName(), glyph: glyphNameForPath(path), content: file })
+        this.dock.setPanelItalic(panelId, temporary)
+        this._openFiles.set(panelId, file)
 
         return file
     }
@@ -588,7 +562,7 @@ class EditorController {
      * @param root - The newly chosen project folder.
      */
     private pushProjectRoot(root: string): void {
-        for (const file of this._openFiles) {
+        for (const file of this._openFiles.values()) {
             file.setProjectRoot(root)
         }
     }
@@ -604,19 +578,23 @@ class EditorController {
     }
 
     /**
-     * Reopens `paths` in order, skipping any that no longer read, then
-     * activates `activePath`. Silent by design — a stale path is the expected
-     * shape of a restore, not an error, so unlike {@link openFile} this never
-     * shows a dialog.
+     * Reopens `paths` in order, skipping any that no longer read, rebuilds
+     * `editorLayout`'s arrangement over them, then activates `activePath`.
+     * Silent by design — a stale path is the expected shape of a restore, not
+     * an error, so unlike {@link openFile} this never shows a dialog.
      *
-     * @param paths - The files to reopen, in tab order.
+     * @param paths - The files to reopen, in {@link captureEditorLayout}'s document order.
      * @param activePath - The path to activate once open, or `null`.
+     * @param editorLayout - The dock arrangement to rebuild over the reopened
+     *   files, or `null` when none was captured (or it didn't survive
+     *   validation) — every file then lands in the dock's one default group.
      */
-    async restoreFiles(paths: string[], activePath: string | null): Promise<void> {
+    async restoreFiles(paths: string[], activePath: string | null, editorLayout: LayoutState | null): Promise<void> {
+        const panelIds = new Map<string, string>()
         let firstOpened: FileEditor | null = null
 
         for (const path of paths) {
-            if (this._openFiles.some(candidate => candidate.getPath() === path)) {
+            if (this.findByPath(path) !== null) {
                 continue
             }
 
@@ -626,23 +604,59 @@ class EditorController {
                 text = await readFileText(path)
             } catch {
                 // A restored path that no longer reads (moved, deleted, permissions)
-                // is expected, not an error — it is simply skipped.
+                // is expected, not an error — it is simply skipped, and its panel
+                // drops out of the remapped layout below along with it.
                 continue
             }
 
             const file = this.addFileTab(path, text)
 
+            panelIds.set(path, file.getPanelId())
             firstOpened ??= file
         }
 
-        const activeFile = activePath !== null ? this._openFiles.find(candidate => candidate.getPath() === activePath) : undefined
+        // Every panel must already be registered before the arrangement is
+        // rebuilt — `Dock.setLayoutState` sources each leaf from the registry
+        // by id and silently skips one it does not know.
+        const arrangement = editorLayout === null ? null : remapPanelIds(editorLayout, panelIds)
+
+        if (arrangement !== null) {
+            this.dock.setLayoutState(arrangement)
+        }
+
+        // Focused after the restore, not during: `setLayoutState` activates
+        // one panel per group itself, so the remembered active file has to
+        // win the focus back afterward.
+        const activeFile = activePath !== null ? this.findByPath(activePath) : null
         const toActivate = activeFile ?? firstOpened
 
         if (toActivate) {
-            this.tabs.getTab().setActiveContent(toActivate)
+            this.dock.focusPanel(toActivate.getPanelId())
         }
 
         this.syncActive()
+    }
+
+    /**
+     * The dock's arrangement with panel ids rewritten to file paths, or
+     * `null` when no saved file is open.
+     */
+    captureEditorLayout(): LayoutState | null {
+        if (this.dock.isEmpty()) {
+            return null
+        }
+
+        const byPath = new Map<string, string>()
+
+        for (const [panelId, file] of this._openFiles) {
+            const path = file.getPath()
+
+            if (path !== null) {
+                byPath.set(panelId, path)
+            }
+        }
+
+        return remapPanelIds(this.dock.getLayoutState(), byPath)
     }
 
     /** Saves the active file, if it needs saving. A no-op on a clean, already-saved file. */
@@ -681,7 +695,7 @@ class EditorController {
             return false
         }
 
-        if (this._openFiles.some(other => other !== file && other.getPath() === target)) {
+        if ([...this._openFiles.values()].some(other => other !== file && other.getPath() === target)) {
             await Dialog.error('Cannot save here', 'That file is already open in another tab. Close it first.')
 
             return false
@@ -702,7 +716,7 @@ class EditorController {
         file.markSynced(text)
         this.pinTab(file)
         this.recordRecentFile(target)
-        this.tabs.getTab().setTabName(file, file.getName())
+        this.dock.setPanelTitle(file.getPanelId(), file.getName())
         this.statusBar.setMessage(this.savedMessage(file, formatFailed), STATUS_MESSAGE_DURATION_MS)
         this.syncActive()
         this._fileSavedListener?.(target)
@@ -758,7 +772,7 @@ class EditorController {
      * @returns How many occurrences were replaced.
      */
     private async performReplaceInFile(path: string, compiled: CompiledQuery, replacement: string): Promise<number> {
-        const open = this.findOpenFile(path)
+        const open = this.findByPath(path)
 
         if (open) {
             const { text, count } = replaceAllInText(open.getEditor().getValue(), compiled, replacement)
@@ -867,7 +881,7 @@ class EditorController {
      * @returns Whether the occurrence was actually replaced.
      */
     async replaceMatch(match: SearchMatch, compiled: CompiledQuery, replacement: string): Promise<boolean> {
-        const open = this.findOpenFile(match.path)
+        const open = this.findByPath(match.path)
 
         if (open) {
             const text = replaceOneInText(open.getEditor().getValue(), match, compiled, replacement)
@@ -974,7 +988,7 @@ class EditorController {
 
     /**
      * Closes the active file's tab. A clean file closes immediately;
-     * `closeTab` is the unguarded programmatic path, so a dirty file is
+     * `removePanel` is the unguarded programmatic path, so a dirty file is
      * routed through the same unsaved-changes prompt the ✕ uses instead of
      * calling it directly.
      */
@@ -988,7 +1002,7 @@ class EditorController {
         if (file.isDirty()) {
             void this.confirmThenClose(file)
         } else {
-            this.tabs.getTab().closeTab(file)
+            this.dock.removePanel(file.getPanelId())
         }
     }
 
@@ -1038,7 +1052,7 @@ class EditorController {
         this._formatOnSave = settings.formatOnSave
         this._formatting = settings.formatting
         this._titleBarTemplate = settings.titleBarTemplate
-        this.tabs.getTab().setMaxWidth(settings.tabMaxWidthPx)
+        this.dock.setTabOptions({ maxWidth: settings.tabMaxWidthPx })
         this.syncActive()
     }
 
@@ -1078,16 +1092,20 @@ class EditorController {
         await closeWindow()
     }
 
-    /** The active tab's content, typed — `null` when the strip is empty. */
+    /** The dock-wide focused panel's file, typed — `null` when nothing is focused. */
     private getActiveFile(): FileEditor | null {
-        const content = this.tabs.getTab().getActiveContent()
-
-        return content ? (content as FileEditor) : null
+        return this._activePanelId === null ? null : this._openFiles.get(this._activePanelId) ?? null
     }
 
     /** The open file registered at `path`, or `null` when it has no open tab. */
-    private findOpenFile(path: string): FileEditor | null {
-        return this._openFiles.find(candidate => candidate.getPath() === path) ?? null
+    private findByPath(path: string): FileEditor | null {
+        for (const file of this._openFiles.values()) {
+            if (file.getPath() === path) {
+                return file
+            }
+        }
+
+        return null
     }
 
     /**
@@ -1111,8 +1129,8 @@ class EditorController {
             this.recordRecentFile(path)
         }
 
-        this.tabs.getTab().setTabName(file, file.getName())
-        this.tabs.getTab().setTabItalic(file, false)
+        this.dock.setPanelTitle(file.getPanelId(), file.getName())
+        this.dock.setPanelItalic(file.getPanelId(), false)
     }
 
     /**
@@ -1136,7 +1154,7 @@ class EditorController {
         const glyph = glyphNameForPath(file.getName())
 
         if (glyph !== previousGlyph) {
-            this.tabs.getTab().setTabGlyph(file, glyph)
+            this.dock.setPanelGlyph(file.getPanelId(), glyph)
         }
     }
 
@@ -1226,8 +1244,8 @@ class EditorController {
         file.setTemporary(false)
         file.adoptDiskText(diskText)
         file.setTemporary(wasTemporary)
-        this.tabs.getTab().setTabName(file, file.getName())
-        this.tabs.getTab().setTabItalic(file, file.isTemporary())
+        this.dock.setPanelTitle(file.getPanelId(), file.getName())
+        this.dock.setPanelItalic(file.getPanelId(), file.isTemporary())
         this.statusBar.setMessage(`Reloaded ${file.getName()}`, STATUS_MESSAGE_DURATION_MS)
     }
 
@@ -1241,10 +1259,10 @@ class EditorController {
      * here to close).
      */
     closeTemporaryTab(): void {
-        const temporary = this._openFiles.find(file => file.isTemporary())
+        const temporary = [...this._openFiles.values()].find(file => file.isTemporary())
 
         if (temporary) {
-            this.tabs.getTab().closeTab(temporary)
+            this.dock.removePanel(temporary.getPanelId())
         }
     }
 
@@ -1258,8 +1276,8 @@ class EditorController {
             this.pinTab(file)
         }
 
-        this.tabs.getTab().setTabName(file, file.getName())
-        this.tabs.getTab().setTabModified(file, file.isDirty())
+        this.dock.setPanelTitle(file.getPanelId(), file.getName())
+        this.dock.setPanelModified(file.getPanelId(), file.isDirty())
         this.syncActive()
     }
 
@@ -1302,13 +1320,15 @@ class EditorController {
     }
 
     /**
-     * `"beforetabclose"`: a clean file closes immediately. A dirty file vetoes
-     * the close and starts the unsaved-changes prompt instead.
+     * `"beforeclose"`: a clean file closes immediately. A dirty file vetoes
+     * the close and starts the unsaved-changes prompt instead. Fires for
+     * every user-initiated destroy — a tab ✕ and a float window's chrome
+     * ✕ — while `removePanel` stays the unguarded programmatic path.
      */
-    private handleBeforeTabClose = (content: Component, controller: TabCloseController): void => {
-        const file = content as FileEditor
+    private handleBeforePanelClose = (event: DockPanelEvent, controller: TabCloseController): void => {
+        const file = this._openFiles.get(event.id)
 
-        if (!file.isDirty()) {
+        if (!file || !file.isDirty()) {
             return
         }
 
@@ -1325,40 +1345,38 @@ class EditorController {
         }
 
         if (choice === 'discard') {
-            this.tabs.getTab().closeTab(file)
+            this.dock.removePanel(file.getPanelId())
 
             return
         }
 
         if (await this.save(file)) {
-            this.tabs.getTab().closeTab(file)
+            this.dock.removePanel(file.getPanelId())
         }
     }
 
     /**
-     * `"tabclose"`: drops the file from the registry, then resyncs the
-     * active-state on a microtask — `Tab` emits `"tabclose"` before it selects
-     * the next tab, so reading the active content synchronously here would
-     * still see the tab being closed.
+     * `"close"`: drops the file from the registry, then resyncs the
+     * active-state on a microtask — the dock re-selects a surviving panel and
+     * emits its own `"focus"` after this handler returns, so reading the
+     * active panel synchronously here would still see the one being closed.
      */
-    private handleTabClose = (content: Component): void => {
-        const file = content as FileEditor
-        const index = this._openFiles.indexOf(file)
-
-        if (index !== -1) {
-            this._openFiles.splice(index, 1)
-        }
+    private handlePanelClose = (event: DockPanelEvent): void => {
+        this._openFiles.delete(event.id)
 
         queueMicrotask(() => this.syncActive())
     }
 
     /**
-     * `"activate"`: a genuine tab switch resyncs the title/status bar, then
-     * resolves the newly active file's pending external change, if any.
-     * {@link resolvePendingExternalChange} returns immediately when the flag
-     * is unset, so an ordinary tab switch costs one boolean read.
+     * `"focus"`: fires dock-wide, across every tiled group and every float,
+     * with a `null` payload when nothing is focused. Resyncs the title/status
+     * bar from the newly focused panel, then resolves its pending external
+     * change, if any. {@link resolvePendingExternalChange} returns
+     * immediately when the flag is unset, so an ordinary focus change costs
+     * one boolean read.
      */
-    private handleActivate = (): void => {
+    private handlePanelFocus = (event: DockPanelEvent | null): void => {
+        this._activePanelId = event?.id ?? null
         this.syncActive()
 
         const file = this.getActiveFile()
@@ -1369,12 +1387,16 @@ class EditorController {
     }
 
     /**
-     * `"tabdblclick"`: pins the double-clicked tab, matching VS Code's
+     * `"dblclick"`: pins the double-clicked tab, matching VS Code's
      * preview-tab behaviour. A no-op on an already-pinned tab — `pinTab` owns
      * that check.
      */
-    private handleTabDoubleClick = (content: Component): void => {
-        this.pinTab(content as FileEditor)
+    private handlePanelDoubleClick = (event: DockPanelEvent): void => {
+        const file = this._openFiles.get(event.id)
+
+        if (file) {
+            this.pinTab(file)
+        }
     }
 
     /**
@@ -1382,11 +1404,11 @@ class EditorController {
      * With no dirty files this resolves `true` immediately; otherwise it asks
      * once, covering every open file at once rather than the per-file prompt
      * an individual tab close uses — sequencing a save across several files
-     * on exit is the same deferred bulk-close case `"beforetabclose"`'s own
+     * on exit is the same deferred bulk-close case `"beforeclose"`'s own
      * veto already leaves for later.
      */
     private confirmExit = async (): Promise<boolean> => {
-        const anyDirty = this._openFiles.some(file => file.isDirty())
+        const anyDirty = [...this._openFiles.values()].some(file => file.isDirty())
 
         if (anyDirty && !(await Dialog.confirm('Unsaved changes', 'You have unsaved changes. Exit without saving?'))) {
             return false
@@ -1399,8 +1421,6 @@ class EditorController {
 
     /** Sets the window title and the status bar's language text and caret readout from the active file. */
     private syncActive(): void {
-        this._emptyStateListener?.(this._openFiles.length === 0)
-
         const file = this.getActiveFile()
 
         this._activeFileListener?.(file?.getPath() ?? null)
