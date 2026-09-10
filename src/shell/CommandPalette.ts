@@ -31,8 +31,10 @@ export interface CommandPaletteParams {
 /**
  * The Ctrl/Cmd+P command palette: a floating panel hosting a query field and
  * a results list, fuzzy-matching every file in the open workspace by
- * default, or a fixed list of app commands once the query starts with `>`.
- * The first result is highlighted as soon as results appear, so `Enter`
+ * default, or a fixed list of app commands once the query starts with `>`. A
+ * command that can't run right now — the same condition that greys it out in
+ * the menu bar — is listed dim and refuses activation, matching the menu
+ * bar. The first result is highlighted as soon as results appear, so `Enter`
  * activates it directly. Nothing opens or runs while browsing the list —
  * arrow keys only move the highlight — until a result is activated (Enter
  * or click), which fires {@link CommandPaletteParams.onConfirmFile} in file
@@ -128,6 +130,7 @@ class CommandPalette extends PopupPanel {
             this.setResults(matches.map(command => ({
                 key: command.id,
                 label: command.shortcut ? `${command.title} (${command.shortcut})` : command.title,
+                enabled: command.enabled,
             })))
 
             return
@@ -158,17 +161,21 @@ class CommandPalette extends PopupPanel {
     }
 
     /**
-     * Replaces the results list's rows and highlights the first one, so Enter
-     * activates the top result without an arrow keypress first. Highlighting
-     * moves the list's focus mark only — the selection is untouched and no file
-     * opens or command runs until an explicit activation (see {@link handleCommit}).
-     * An empty `items` leaves nothing highlighted.
+     * Replaces the results list's rows and highlights the first one that can
+     * be activated, so Enter activates the top result without an arrow
+     * keypress first. Highlighting moves the list's focus mark only — the
+     * selection is untouched and no file opens or command runs until an
+     * explicit activation (see {@link handleCommit}). An empty `items`, or a
+     * list whose every row is disabled, leaves nothing highlighted.
      *
      * @param items - The rows to show, in ranked order.
      */
     private setResults(items: SelectableListItem[]): void {
         this._resultsList.setItemsArray(items)
-        this._resultsList.setFocusedIndex(0)
+        // `findIndex` yields -1 when every row is disabled (or there are no
+        // rows); `setFocusedIndex` reads an out-of-range index as "no row",
+        // clearing the highlight.
+        this._resultsList.setFocusedIndex(items.findIndex(item => item.enabled !== false))
     }
 
     /**
