@@ -6,14 +6,11 @@ The original plan lives in `typescript-ui`'s
 [`plans/implemented/code-editor-desktop-app.md`](../typescript-ui/plans/implemented/code-editor-desktop-app.md) —
 nothing below has a plan yet.
 
-## Medium
-
+## High
 - **Split-pane multi-file editing.** `Dock` is the natural upgrade path if
   wanted later — it composes `Split` and `Tab` already, at the cost of
   tear-off windows, a panel registry, and `DockRegion` drop targets that
   phase one deliberately avoided.
-- **IntelliSense / LSP** or any language service.
-- **Git integration**, including a dirty-vs-committed indicator in the tree.
 - **Project-wide replace.** The Search view (see `README.md`'s **Project
   search** highlight) finds matches only. Replacing across files needs a
   replace field on the panel, per-match and per-file apply, writing files
@@ -23,6 +20,24 @@ nothing below has a plan yet.
 - **Regular-expression and match-case project search.** The Search view
   matches a case-insensitive plain substring today; the in-file find panel's
   *regexp* and *match case* toggles have no counterpart there yet.
+- **Remembering which explorer sections are open.** The sidebar's tree and
+  *Properties* accordion sections both start expanded on every launch;
+  neither `session.json` nor `.loom/workspace.json` records their state, and
+  the sidebar rail always starts on Files too.
+- **Go to Line, and selection metrics in the status bar.** The bar reports the caret's line,
+  column, and document position but nothing acts on them: there is no *Go to Line* command, the
+  readout is not clickable, and it reports no selected-character or selected-line count.
+  `src/editor/editorSearch.ts`'s `revealRange` now positions the caret through the live-`EditorView`
+  seam the find panel uses, so the library-API blocker is gone — what's left is a prompt for the
+  line number and a call into it.
+- **App-level theme switching (light/dark).** Loom never calls into
+  `ThemeManager` today, so it's stuck on whatever the library defaults to;
+  the library already ships a `DarkTheme` to switch to.
+
+## Medium
+
+- **IntelliSense / LSP** or any language service.
+- **Git integration**, including a dirty-vs-committed indicator in the tree.
 
 ## Low
 
@@ -31,9 +46,6 @@ nothing below has a plan yet.
   fallback; would need a second filesystem implementation no user runs.
 - **Code signing, auto-update, and a multi-platform bundle matrix** —
   `npm run tauri:build` currently produces an unsigned local bundle only.
-- **App-level theme switching (light/dark).** Loom never calls into
-  `ThemeManager` today, so it's stuck on whatever the library defaults to;
-  the library already ships a `DarkTheme` to switch to.
 - **Multi-window / "open in new window."** Connects to an older idea from
   this project's history: making `Dock`'s tear-off spawn a real Tauri OS
   window instead of an in-page floating one — relevant now that an app
@@ -51,16 +63,6 @@ nothing below has a plan yet.
   the window itself, so a true merge doesn't apply there; at most a
   `titleBarStyle: "overlay"` treatment to extend content under the traffic
   lights.
-- **Remembering which explorer sections are open.** The sidebar's tree and
-  *Properties* accordion sections both start expanded on every launch;
-  neither `session.json` nor `.loom/workspace.json` records their state, and
-  the sidebar rail always starts on Files too.
-- **Go to Line, and selection metrics in the status bar.** The bar reports the caret's line,
-  column, and document position but nothing acts on them: there is no *Go to Line* command, the
-  readout is not clickable, and it reports no selected-character or selected-line count.
-  `src/editor/editorSearch.ts`'s `revealRange` now positions the caret through the live-`EditorView`
-  seam the find panel uses, so the library-API blocker is gone — what's left is a prompt for the
-  line number and a call into it.
 
 ## Known issues / loose ends
 
