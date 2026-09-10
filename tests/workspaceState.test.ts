@@ -13,6 +13,8 @@ describe('emptyWorkspaceState', () => {
             activeFile: null,
             paneSizes: [],
             collapsedPanes: [],
+            explorerView: 'files',
+            explorerSectionsOpen: [],
         })
     })
 })
@@ -85,6 +87,28 @@ describe('parseWorkspaceState', () => {
     it('ignores unknown fields', () => {
         expect(parseWorkspaceState('{"version":1,"futureField":true}')).toEqual(emptyWorkspaceState())
     })
+
+    it('takes an explorerView of search', () => {
+        expect(parseWorkspaceState('{"version":1,"explorerView":"search"}')).toEqual({
+            ...emptyWorkspaceState(),
+            explorerView: 'search',
+        })
+    })
+
+    it('takes the empty default for an unknown explorerView', () => {
+        expect(parseWorkspaceState('{"version":1,"explorerView":"tree"}')).toEqual(emptyWorkspaceState())
+    })
+
+    it('takes an explorerSectionsOpen array verbatim', () => {
+        expect(parseWorkspaceState('{"version":1,"explorerSectionsOpen":[false,true]}')).toEqual({
+            ...emptyWorkspaceState(),
+            explorerSectionsOpen: [false, true],
+        })
+    })
+
+    it('drops explorerSectionsOpen whole when one entry has the wrong type', () => {
+        expect(parseWorkspaceState('{"version":1,"explorerSectionsOpen":[0,1]}')).toEqual(emptyWorkspaceState())
+    })
 })
 
 describe('serializeWorkspaceState', () => {
@@ -96,6 +120,8 @@ describe('serializeWorkspaceState', () => {
             activeFile: '/p/README.md',
             paneSizes: [{ unit: 'px', value: 300 }, { unit: 'ratio', value: 1 }],
             collapsedPanes: [1],
+            explorerView: 'search',
+            explorerSectionsOpen: [false, true],
         }
 
         expect(parseWorkspaceState(serializeWorkspaceState(state))).toEqual(state)
@@ -149,6 +175,21 @@ describe('workspaceStateFromSession', () => {
             collapsedPanes: [0],
         })
     })
+
+    it('copies explorerView and explorerSectionsOpen verbatim', () => {
+        const session: SessionState = {
+            ...emptySession(),
+            projectRoot: '/p',
+            explorerView: 'search',
+            explorerSectionsOpen: [true, false],
+        }
+
+        expect(workspaceStateFromSession(session)).toEqual({
+            ...emptyWorkspaceState(),
+            explorerView: 'search',
+            explorerSectionsOpen: [true, false],
+        })
+    })
 })
 
 describe('applyWorkspaceOverlay', () => {
@@ -165,7 +206,7 @@ describe('applyWorkspaceOverlay', () => {
         expect(applyWorkspaceOverlay(session, workspace)).toBe(session)
     })
 
-    it('replaces the five overlay fields with workspace\'s, leaving version and projectRoot unchanged', () => {
+    it('replaces the seven overlay fields with workspace\'s, leaving version and projectRoot unchanged', () => {
         const session: SessionState = {
             version: 1,
             projectRoot: '/p',
@@ -176,6 +217,8 @@ describe('applyWorkspaceOverlay', () => {
             collapsedPanes: [],
             recentProjects: [],
             recentFiles: [],
+            explorerView: 'files',
+            explorerSectionsOpen: [true, true],
         }
         const workspace: WorkspaceState = {
             version: 1,
@@ -184,6 +227,8 @@ describe('applyWorkspaceOverlay', () => {
             activeFile: '/p/a.ts',
             paneSizes: [{ unit: 'px', value: 300 }, { unit: 'ratio', value: 1 }],
             collapsedPanes: [0],
+            explorerView: 'search',
+            explorerSectionsOpen: [false, true],
         }
 
         expect(applyWorkspaceOverlay(session, workspace)).toEqual({
@@ -196,6 +241,8 @@ describe('applyWorkspaceOverlay', () => {
             collapsedPanes: [0],
             recentProjects: [],
             recentFiles: [],
+            explorerView: 'search',
+            explorerSectionsOpen: [false, true],
         })
     })
 
@@ -218,5 +265,25 @@ describe('applyWorkspaceOverlay', () => {
 
         expect(result.paneSizes).toEqual([{ unit: 'px', value: 555 }])
         expect(result.collapsedPanes).toEqual([0, 1])
+    })
+
+    it('replaces explorerView and explorerSectionsOpen with workspace\'s', () => {
+        const session: SessionState = { ...emptySession(), projectRoot: '/p', explorerView: 'files', explorerSectionsOpen: [] }
+        const workspace: WorkspaceState = { ...emptyWorkspaceState(), explorerView: 'search', explorerSectionsOpen: [true, false] }
+
+        const result = applyWorkspaceOverlay(session, workspace)
+
+        expect(result.explorerView).toBe('search')
+        expect(result.explorerSectionsOpen).toEqual([true, false])
+    })
+
+    it('replaces with workspace\'s explorerView and explorerSectionsOpen even when they are the defaults, never merging in session\'s', () => {
+        const session: SessionState = { ...emptySession(), projectRoot: '/p', explorerView: 'search', explorerSectionsOpen: [false, false] }
+        const workspace: WorkspaceState = { ...emptyWorkspaceState(), explorerView: 'files', explorerSectionsOpen: [] }
+
+        const result = applyWorkspaceOverlay(session, workspace)
+
+        expect(result.explorerView).toBe('files')
+        expect(result.explorerSectionsOpen).toEqual([])
     })
 })

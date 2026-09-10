@@ -4,10 +4,13 @@
 // holds the app-wide counterpart this module's `WorkspaceState` overlays.
 import { isUnderRoot } from './paths'
 import type { LayoutSize, LayoutSizeUnit } from '@jimka/typescript-ui/layout'
-import type { SessionState } from './session'
+import type { SessionState, ExplorerView } from './session'
 
 /** The workspace schema's only valid `unit`s — mirrors {@link LayoutSizeUnit}. */
 const VALID_LAYOUT_SIZE_UNITS: readonly LayoutSizeUnit[] = ['px', 'ratio']
+
+/** The schema's only valid `explorerView`s — mirrors {@link ExplorerView}. */
+const VALID_EXPLORER_VIEWS: readonly ExplorerView[] = ['files', 'search']
 
 /** The per-project settings folder's name, mirroring the app's own product name (`APP_NAME`) the way `.vscode` reads as VS Code's. */
 export const WORKSPACE_DIR_NAME = '.loom'
@@ -25,6 +28,10 @@ export interface WorkspaceState {
     paneSizes: LayoutSize[]
     /** Indices of the collapsed panes. */
     collapsedPanes: number[]
+    /** Which sidebar-rail view this project's explorer was showing. */
+    explorerView: ExplorerView
+    /** This project's Files-view accordion section open flags, in child order. */
+    explorerSectionsOpen: boolean[]
 }
 
 /** A fresh, empty workspace state — what a project with no `.loom/workspace.json` yet gets once one is written. */
@@ -36,6 +43,8 @@ export function emptyWorkspaceState(): WorkspaceState {
         activeFile: null,
         paneSizes: [],
         collapsedPanes: [],
+        explorerView: 'files',
+        explorerSectionsOpen: [],
     }
 }
 
@@ -64,6 +73,8 @@ export function parseWorkspaceState(text: string): WorkspaceState | null {
         activeFile: readOptionalString(doc.activeFile) ?? empty.activeFile,
         paneSizes: readLayoutSizeArray(doc.paneSizes) ?? empty.paneSizes,
         collapsedPanes: readNumberArray(doc.collapsedPanes) ?? empty.collapsedPanes,
+        explorerView: readExplorerView(doc.explorerView) ?? empty.explorerView,
+        explorerSectionsOpen: readBooleanArray(doc.explorerSectionsOpen) ?? empty.explorerSectionsOpen,
     }
 }
 
@@ -75,8 +86,9 @@ export function serializeWorkspaceState(state: WorkspaceState): string {
 /**
  * Extracts the workspace-scoped slice of `session` — `expandedDirs`/
  * `openFiles`/`activeFile` filtered to `session.projectRoot`, plus
- * `paneSizes`/`collapsedPanes` copied verbatim. Returns
- * {@link emptyWorkspaceState} when `session.projectRoot` is `null`.
+ * `paneSizes`/`collapsedPanes`/`explorerView`/`explorerSectionsOpen` copied
+ * verbatim. Returns {@link emptyWorkspaceState} when `session.projectRoot` is
+ * `null`.
  *
  * @param session - The live app-wide session to extract from.
  * @returns The project's own workspace-scoped state.
@@ -95,14 +107,17 @@ export function workspaceStateFromSession(session: SessionState): WorkspaceState
         activeFile: active,
         paneSizes: session.paneSizes,
         collapsedPanes: session.collapsedPanes,
+        explorerView: session.explorerView,
+        explorerSectionsOpen: session.explorerSectionsOpen,
     }
 }
 
 /**
  * Replaces `session`'s `expandedDirs`/`openFiles`/`activeFile`/`paneSizes`/
- * `collapsedPanes` with `workspace`'s — the path fields filtered to
- * `session.projectRoot`, the split fields copied verbatim. Returns `session`
- * unchanged when `workspace` is `null` or `session.projectRoot` is `null`.
+ * `collapsedPanes`/`explorerView`/`explorerSectionsOpen` with `workspace`'s —
+ * the path fields filtered to `session.projectRoot`, the rest copied
+ * verbatim. Returns `session` unchanged when `workspace` is `null` or
+ * `session.projectRoot` is `null`.
  *
  * @param session - The app-wide session to overlay onto.
  * @param workspace - The project's own workspace state, or `null` when none
@@ -123,6 +138,8 @@ export function applyWorkspaceOverlay(session: SessionState, workspace: Workspac
         activeFile: active,
         paneSizes: workspace.paneSizes,
         collapsedPanes: workspace.collapsedPanes,
+        explorerView: workspace.explorerView,
+        explorerSectionsOpen: workspace.explorerSectionsOpen,
     }
 }
 
@@ -219,6 +236,32 @@ function readNumberArray(value: unknown): number[] | undefined {
     }
 
     return value.every(entry => typeof entry === 'number') ? (value as number[]) : undefined
+}
+
+/**
+ * Reads a field expected to be an {@link ExplorerView}.
+ *
+ * @param value - The field's raw value.
+ * @returns The view, or `undefined` when the field is missing or names no known view.
+ */
+function readExplorerView(value: unknown): ExplorerView | undefined {
+    return VALID_EXPLORER_VIEWS.includes(value as ExplorerView) ? (value as ExplorerView) : undefined
+}
+
+/**
+ * Reads a field expected to be a boolean array. The whole array is dropped —
+ * not repaired entry by entry — if any entry is not a boolean.
+ *
+ * @param value - The field's raw value.
+ * @returns The boolean array, or `undefined` when the field is missing or any
+ *   entry is invalid.
+ */
+function readBooleanArray(value: unknown): boolean[] | undefined {
+    if (!Array.isArray(value)) {
+        return undefined
+    }
+
+    return value.every(entry => typeof entry === 'boolean') ? (value as boolean[]) : undefined
 }
 
 /**
