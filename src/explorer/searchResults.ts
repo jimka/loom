@@ -13,7 +13,7 @@ export type SearchTreeNodeData =
 
 /** What the panel's status line is describing. */
 export interface SearchStatus {
-    phase: 'idle' | 'running' | 'failed' | 'complete' | 'match-limit' | 'file-limit'
+    phase: 'idle' | 'running' | 'failed' | 'invalid-regex' | 'complete' | 'match-limit' | 'file-limit'
     matchCount: number
     fileCount: number
     filesSearched: number
@@ -229,6 +229,8 @@ export function searchSummaryText(status: SearchStatus): string {
             return 'Searching…'
         case 'failed':
             return 'Could not read the project folder.'
+        case 'invalid-regex':
+            return 'Invalid regular expression.'
         default:
             return completionSummary(status)
     }

@@ -1,11 +1,11 @@
 import { Container, Event, callable } from '@jimka/typescript-ui/core'
 import { Insets } from '@jimka/typescript-ui/primitive'
-import { VBox } from '@jimka/typescript-ui/layout'
-import { TextField, Text } from '@jimka/typescript-ui/component/input'
+import { VBox, HBox } from '@jimka/typescript-ui/layout'
+import { TextField, Text, Checkbox } from '@jimka/typescript-ui/component/input'
 import { Tree, IconLabelTreeNodeRenderer } from '@jimka/typescript-ui/component/tree'
 import type { TreeNode } from '@jimka/typescript-ui/component/tree'
-import { searchFiles } from '../data/projectSearch'
-import type { SearchMatch, SearchLimits, ReadFileText } from '../data/projectSearch'
+import { searchFiles, compileQuery } from '../data/projectSearch'
+import type { SearchMatch, SearchLimits, ReadFileText, SearchQuery } from '../data/projectSearch'
 import { glyphNameForPath } from '../fileIcons'
 import { searchResultNodes, searchSummaryText } from './searchResults'
 import type { SearchTreeNodeData, SearchStatus } from './searchResults'
@@ -31,8 +31,24 @@ const STATUS_COLOR = 'rgb(140, 140, 140)'
 /** The query field's placeholder text — names the Enter-to-run gesture, since there is no search-as-you-type. */
 const QUERY_PLACEHOLDER = 'Search project (Enter)'
 
+/** The *match case* toggle's label — `@codemirror/search`'s own in-file find
+ *  panel names its checkbox this, copied verbatim so the two panels name the
+ *  same toggle the same way. */
+const MATCH_CASE_LABEL = 'match case'
+
+/** The *regexp* toggle's label — `@codemirror/search`'s own in-file find panel's name for it. */
+const REGEXP_LABEL = 'regexp'
+
+/** The gap between the *match case* and *regexp* checkboxes, in pixels —
+ *  wider than the panel's own 4px `VBox` spacing so the two labels read as
+ *  two controls rather than one run of text. */
+const TOGGLE_SPACING = 8
+
 /** An idle run's status, shared by construction and {@link SearchPanel.setProjectRoot}. */
 const IDLE_STATUS: SearchStatus = { phase: 'idle', matchCount: 0, fileCount: 0, filesSearched: 0 }
+
+/** The status a malformed regular expression paints — shared by nothing else. */
+const INVALID_REGEX_STATUS: SearchStatus = { phase: 'invalid-regex', matchCount: 0, fileCount: 0, filesSearched: 0 }
 
 /** Constructor parameters for {@link SearchPanel}. */
 export interface SearchPanelParams {
@@ -51,10 +67,14 @@ export interface SearchPanelParams {
 }
 
 /**
- * The explorer sidebar's Search view: a query field over a results `Tree`
- * over a status line. Enter runs a case-insensitive substring search over
- * every file {@link SearchPanelParams.listFiles} returns, streaming matches
- * into the tree as each file is read.
+ * The explorer sidebar's Search view: a query field, a *match case* /
+ * *regexp* toggle row, a results `Tree`, and a status line. Enter runs a
+ * search over every file {@link SearchPanelParams.listFiles} returns,
+ * matching a plain substring or a regular expression, case-insensitively
+ * unless *match case* is set, streaming matches into the tree as each file
+ * is read. Flipping either toggle re-runs the search for whatever is
+ * currently in the query field. A malformed regular expression reports
+ * itself in the status line and reads no files.
  *
  * A match leaf mirrors `FileTree`'s own two-tier convention: selecting it
  * (click or arrow-key move) previews it via {@link SearchPanelParams.onOpenMatch}
@@ -73,6 +93,8 @@ export interface SearchPanelParams {
  */
 class SearchPanel extends Container {
     private readonly _queryField: TextField
+    private readonly _matchCaseToggle: Checkbox
+    private readonly _regexpToggle: Checkbox
     private readonly _resultsTree: Tree
     private readonly _statusText: Text
     private readonly _listFiles: () => Promise<string[]>
@@ -102,6 +124,12 @@ class SearchPanel extends Container {
         // independently-edged surface over just its own rows.
         const resultsTree = new Tree({ rowOverflow: 'scroll', expandTrigger: 'click', backgroundColor: 'transparent' })
         const statusText = new Text('', { truncate: true, foregroundColor: STATUS_COLOR })
+        const matchCaseToggle = new Checkbox({ label: MATCH_CASE_LABEL })
+        const regexpToggle = new Checkbox({ label: REGEXP_LABEL })
+        const toggleRow = Container({
+            layoutManager: new HBox({ spacing: TOGGLE_SPACING }),
+            components: [matchCaseToggle, regexpToggle],
+        })
 
         resultsTree.setRendererFactory(() => new IconLabelTreeNodeRenderer(node => {
             const data = node.data as SearchTreeNodeData
@@ -117,7 +145,7 @@ class SearchPanel extends Container {
             // own scrollbar, which crowded it when results overflowed.
             // weight: 1 makes the tree absorb the panel's leftover height,
             // the same role it plays in CommandPalette's own VBox.
-            components: [queryField, statusText, { component: resultsTree, constraints: { weight: 1 } }],
+            components: [queryField, toggleRow, statusText, { component: resultsTree, constraints: { weight: 1 } }],
             // backgroundColor matches FileTree's own tree — both rail views
             // should read as the same surface — applied to the whole panel
             // rather than just resultsTree so the query field and status
@@ -133,6 +161,8 @@ class SearchPanel extends Container {
         })
 
         this._queryField = queryField
+        this._matchCaseToggle = matchCaseToggle
+        this._regexpToggle = regexpToggle
         this._resultsTree = resultsTree
         this._statusText = statusText
         this._listFiles = params.listFiles
@@ -145,6 +175,8 @@ class SearchPanel extends Container {
         this.paintStatus(IDLE_STATUS)
 
         Event.addListener(this._queryField, 'keydown', (e: KeyboardEvent) => this.handleKeyDown(e))
+        this._matchCaseToggle.on('change', () => { void this.runSearch() })
+        this._regexpToggle.on('change', () => { void this.runSearch() })
         this._resultsTree.on('selection', this.handleSelection)
         this._resultsTree.on('dblclick', this.handleDblClick)
     }
@@ -184,15 +216,27 @@ class SearchPanel extends Container {
         }
     }
 
+    /** The Search view's controls, read into one {@link SearchQuery}. */
+    private currentQuery(): SearchQuery {
+        return {
+            text: this._queryField.getValue(),
+            caseSensitive: this._matchCaseToggle.isSelected(),
+            regexp: this._regexpToggle.isSelected(),
+        }
+    }
+
     /**
-     * Runs a fresh search for the query field's current text, superseding
-     * any run already in flight. An empty query clears the results and goes
-     * back to idle without touching disk. A run whose outcome comes back
-     * `'cancelled'`, or that finishes after a later run has already started,
-     * paints nothing — the run that superseded it owns the panel now.
+     * Runs a fresh search for the query field's current text and the two
+     * toggles' current state, superseding any run already in flight. An
+     * empty query clears the results and goes back to idle without touching
+     * disk; a pattern that fails to compile — an invalid regular expression —
+     * reports itself in the status line and also reads nothing. A run whose
+     * outcome comes back `'cancelled'`, or that finishes after a later run
+     * has already started, paints nothing — the run that superseded it owns
+     * the panel now.
      */
     private async runSearch(): Promise<void> {
-        const query = this._queryField.getValue()
+        const query = this.currentQuery()
 
         this._runId += 1
 
@@ -200,8 +244,16 @@ class SearchPanel extends Container {
 
         this.clearResults()
 
-        if (query === '') {
+        if (query.text === '') {
             this.paintStatus(IDLE_STATUS)
+
+            return
+        }
+
+        const compiled = compileQuery(query)
+
+        if (compiled === null) {
+            this.paintStatus(INVALID_REGEX_STATUS)
 
             return
         }
@@ -221,7 +273,7 @@ class SearchPanel extends Container {
         }
 
         const outcome = await searchFiles(
-            files, query, this._readText,
+            files, compiled, this._readText,
             batch => this.appendMatches(batch),
             () => this._runId !== runId,
             SEARCH_LIMITS,

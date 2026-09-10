@@ -177,6 +177,12 @@ describe('searchSummaryText', () => {
         )
     })
 
+    it('reports an invalid regular expression', () => {
+        expect(searchSummaryText({ phase: 'invalid-regex', matchCount: 0, fileCount: 0, filesSearched: 0 })).toBe(
+            'Invalid regular expression.',
+        )
+    })
+
     it('reports no matches', () => {
         expect(searchSummaryText({ phase: 'complete', matchCount: 0, fileCount: 0, filesSearched: 40 })).toBe('No matches.')
     })
