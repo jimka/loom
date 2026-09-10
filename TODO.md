@@ -30,9 +30,6 @@ nothing below has a plan yet.
   `src/editor/editorSearch.ts`'s `revealRange` now positions the caret through the live-`EditorView`
   seam the find panel uses, so the library-API blocker is gone — what's left is a prompt for the
   line number and a call into it.
-- **App-level theme switching (light/dark).** Loom never calls into
-  `ThemeManager` today, so it's stuck on whatever the library defaults to;
-  the library already ships a `DarkTheme` to switch to.
 
 ## Medium
 
@@ -109,6 +106,20 @@ nothing below has a plan yet.
   path that no longer reads. Covering it would widen the launch-time grant
   from one directory to an unbounded list of individually remembered
   files.
+- **Three hint labels stay a hardcoded mid-grey under both themes.**
+  `SearchPanel.ts`, `PropertiesPanel.ts`, and `WelcomeScreen.ts` each paint a
+  de-emphasised hint text `rgb(140, 140, 140)`, and the `Theme` interface has
+  no muted/secondary-text token to replace it with — the nearest candidates
+  (`button.description.foreground`, the various `disabledColor`s) are
+  semantically wrong for a hint. Left alone, but not because it is
+  accessible: mid-grey falls short of WCAG 2.1's 4.5:1 body-text contrast
+  threshold in five of the six label/background/theme combinations — as low
+  as 3.08:1 for `SearchPanel.ts`'s status text against the light theme's
+  toolbar background — and clears it only for `PropertiesPanel.ts`'s hint
+  against the plain dark-theme background (4.96:1). This is a known,
+  pre-existing readability gap, not a deliberate tradeoff; fixing it
+  properly needs a `text.muted` token in the library first, not a
+  Loom-side color pick.
 
 ## Notes
 
