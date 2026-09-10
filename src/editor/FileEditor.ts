@@ -41,8 +41,8 @@ export interface FileEditorParams {
 /**
  * One open file: a breadcrumb band NORTH of a `CodeEditor`, stacked via a
  * `Border` layout, plus the file's path. `EditorController` addresses `Tab`
- * operations (`setTabName`, `setTabItalic`, `closeTab`, `getActiveContent`)
- * through this wrapper, never the bare editor.
+ * operations (`setTabName`, `setTabItalic`, `setTabModified`, `closeTab`,
+ * `getActiveContent`) through this wrapper, never the bare editor.
  *
  * The dirty flag is the wrapped `CodeEditor`'s own — it is not tracked here.
  * `Component`'s parent-to-child relay folds the editor's flag up through
@@ -308,17 +308,12 @@ class FileEditor extends Container {
 
     /**
      * Marks this file as the temp tab's content, or pins it. Changing the flag
-     * changes {@link getLabel}, so the owner relabels the tab afterwards.
+     * changes {@link getName}, so the owner relabels the tab afterwards.
      *
      * @param value - Whether this file is the temp tab's content.
      */
     setTemporary(value: boolean): void {
         this._temporary = value
-    }
-
-    /** The tab label: the display name, suffixed with `" •"` while the document is dirty. */
-    getLabel(): string {
-        return this.isDirty() ? `${this._name} •` : this._name
     }
 
     /**
