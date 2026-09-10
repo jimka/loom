@@ -42,8 +42,6 @@ export interface SearchPanelParams {
     readText: ReadFileText
     /** Fires when a match leaf is selected (click or arrow-key move) — previews it in a temporary tab. */
     onOpenMatch: (match: SearchMatch) => void
-    /** Fires when a file branch row is selected (click or arrow-key move), with no specific match location — previews it in a temporary tab. */
-    onOpenFile: (path: string) => void
     /** Fires when a match leaf is double-clicked — opens and reveals it for keeps, in a permanent tab. */
     onCommitMatch: (match: SearchMatch) => void
     /** Fires when a file branch row is double-clicked, with no specific match location — opens it for keeps, in a permanent tab. */
@@ -56,14 +54,22 @@ export interface SearchPanelParams {
  * The explorer sidebar's Search view: a query field over a results `Tree`
  * over a status line. Enter runs a case-insensitive substring search over
  * every file {@link SearchPanelParams.listFiles} returns, streaming matches
- * into the tree as each file is read. Mirroring `FileTree`'s own two-tier
- * convention: selecting a row (click or arrow-key move) previews it via
- * {@link SearchPanelParams.onOpenMatch}/{@link SearchPanelParams.onOpenFile}
- * (a temporary tab), while double-clicking a row commits it via
- * {@link SearchPanelParams.onCommitMatch}/{@link SearchPanelParams.onCommitFile}
- * (a permanent tab). A run is cancelled by the run that replaces it, by
- * {@link setProjectRoot}, or by this component being torn down — never by an
- * explicit Stop control.
+ * into the tree as each file is read.
+ *
+ * A match leaf mirrors `FileTree`'s own two-tier convention: selecting it
+ * (click or arrow-key move) previews it via {@link SearchPanelParams.onOpenMatch}
+ * (a temporary tab), double-clicking it commits via
+ * {@link SearchPanelParams.onCommitMatch} (a permanent tab). A file branch row
+ * does *not* preview on select — only {@link SearchPanelParams.onCommitFile}
+ * (double-click) opens it. `expandTrigger: 'click'` makes a file row's own
+ * matches expand/collapse on the same plain click that would otherwise
+ * preview it, and a file not yet open pays a real disk read to do that; firing
+ * a preview open on every expand/collapse made browsing a file's matches feel
+ * like it hung. A folder row has no such conflict (nothing to preview) and
+ * keeps click-to-toggle as its only behaviour.
+ *
+ * A run is cancelled by the run that replaces it, by {@link setProjectRoot},
+ * or by this component being torn down — never by an explicit Stop control.
  */
 class SearchPanel extends Container {
     private readonly _queryField: TextField
@@ -72,7 +78,6 @@ class SearchPanel extends Container {
     private readonly _listFiles: () => Promise<string[]>
     private readonly _readText: ReadFileText
     private readonly _onOpenMatch: (match: SearchMatch) => void
-    private readonly _onOpenFile: (path: string) => void
     private readonly _onCommitMatch: (match: SearchMatch) => void
     private readonly _onCommitFile: (path: string) => void
 
@@ -125,7 +130,6 @@ class SearchPanel extends Container {
         this._listFiles = params.listFiles
         this._readText = params.readText
         this._onOpenMatch = params.onOpenMatch
-        this._onOpenFile = params.onOpenFile
         this._onCommitMatch = params.onCommitMatch
         this._onCommitFile = params.onCommitFile
         this._root = params.projectRoot
@@ -246,11 +250,13 @@ class SearchPanel extends Container {
     }
 
     /**
-     * The tree's `"selection"` event — a click or an arrow-key move. A match
-     * leaf opens and reveals that match; a file branch opens that file with
-     * no specific location; a folder branch (or an empty selection) does
-     * nothing, mirroring `FileTree.handleSelection`'s own `nodes[0]?.data`
-     * guard.
+     * The tree's `"selection"` event — a click or an arrow-key move. Only a
+     * match leaf opens and reveals anything; a file or folder branch (or an
+     * empty selection) does nothing — selecting a file branch just moves the
+     * tree's own highlight, deliberately not previewing it (see the class
+     * doc comment: that click already toggles the file's matches open or
+     * closed, and firing a preview open on the same click made expand/collapse
+     * feel like it hung on a file not yet open).
      *
      * @param nodes - The tree's current selection, empty when cleared.
      */
@@ -259,19 +265,16 @@ class SearchPanel extends Container {
 
         if (data?.kind === 'match') {
             this._onOpenMatch(data.match)
-        } else if (data?.kind === 'file') {
-            this._onOpenFile(data.path)
         }
     }
 
     /**
-     * The tree's `"dblclick"` event — mirrors {@link handleSelection}'s
-     * guard shape, but commits the row to a permanent tab instead of
-     * previewing it, the same selection/dblclick split
-     * `FileTree.handleSelection`/`handleDblClick` already draws. A folder
-     * branch double-click does nothing beyond whatever `Tree` itself already
-     * did with `expandTrigger: 'click'` (nothing, since that trigger is
-     * `'click'` here, not `'dblclick'`).
+     * The tree's `"dblclick"` event — commits a match or a file branch to a
+     * permanent tab; a file branch has no other way to open at all now that
+     * {@link handleSelection} no longer previews it on a plain select. A
+     * folder branch double-click does nothing beyond whatever `Tree` itself
+     * already did with `expandTrigger: 'click'` (nothing, since that trigger
+     * is `'click'` here, not `'dblclick'`).
      *
      * @param node - The double-clicked node.
      */

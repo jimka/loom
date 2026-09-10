@@ -153,14 +153,14 @@ class EditorShell extends Container {
         const searchPanel = SearchPanel({
             listFiles: () => listWorkspaceFiles(tree.getProjectRoot()),
             readText: readFileText,
-            // A selection (click or arrow-key move) previews in 'temporary'
-            // — mirroring `FileTree`'s own `onSelectFile` — so arrow-browsing
-            // across several results recycles one temp tab instead of
-            // pinning a permanent tab per row reached; a double-click
-            // commits to 'permanent', mirroring `FileTree`'s own
-            // dblclick-only `onOpenFile`.
+            // A match selection (click or arrow-key move) previews in
+            // 'temporary' — mirroring `FileTree`'s own `onSelectFile` — so
+            // arrow-browsing across several results recycles one temp tab
+            // instead of pinning a permanent tab per row reached; a
+            // double-click commits to 'permanent'. A file branch row has no
+            // select handler at all — see `SearchPanel`'s own class doc
+            // comment for why — only its double-click opens it.
             onOpenMatch: (match: SearchMatch) => { void controller.openFileAt(match.path, match, 'temporary') },
-            onOpenFile: (path: string) => { void controller.openFile(path, 'temporary') },
             onCommitMatch: (match: SearchMatch) => { void controller.openFileAt(match.path, match, 'permanent') },
             onCommitFile: (path: string) => { void controller.openFile(path, 'permanent') },
             projectRoot: session.projectRoot,
