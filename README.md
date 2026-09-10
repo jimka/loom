@@ -18,7 +18,8 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   switches its content between two views: **Files** (the file tree and the
   Properties panel, stacked as today) and **Search**. Selecting one shows
   only that view's content; *Toggle Explorer* (Ctrl/Cmd+B) still hides the
-  whole sidebar, rail included.
+  whole sidebar, rail included. The view you last had selected, and which of
+  the Files view's sections were open, come back on the next launch.
 - **File tree** — open a project folder, browse it, lazily loading each
   directory as it's expanded; each row shows a per-file-type icon — see
   [`src/fileIcons.ts`](src/fileIcons.ts) for the icon map. The tree's own
@@ -86,10 +87,11 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   file swaps the editor for a rendered view of it, with a heading outline
   and width/zoom controls, that refreshes as the document changes.
 - **Session restore** — the last project folder, expanded tree directories,
-  open tabs, and the explorer width all come back on the next launch. Once a
-  project has been saved to once, its own tree expansion, open tabs, and
-  split geometry travel with the project folder itself (in
-  `.loom/workspace.json`) rather than only living in the app-wide file.
+  open tabs, the explorer width, which sidebar view was showing, and which of
+  its sections were open all come back on the next launch. Once a project has
+  been saved to once, its own tree expansion, open tabs, split geometry,
+  sidebar view, and section open flags travel with the project folder itself
+  (in `.loom/workspace.json`) rather than only living in the app-wide file.
 - **Recent Projects & Files** — reopen a recently-used project folder or
   file from the File menu's *Open Recent* submenu, or a recent project from
   the welcome screen.
