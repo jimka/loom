@@ -65,7 +65,13 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   reusable temp tab — a file branch opens the file, a match opens it with
   that match selected — and a double click opens it permanently. A file too
   large to open, or that looks binary (a NUL byte in its first
-  8000 characters, git's own rule), is skipped.
+  8000 characters, git's own rule), is skipped. A **Replace** field below the
+  toggles holds the replacement text; right-clicking a match leaf offers
+  **Replace**, and a file branch offers **Replace All in File** — each
+  applies immediately, editing an open file's own buffer (undo it there, and
+  save when ready) or writing a closed file straight to disk. The panel's
+  own **Replace All** button confirms the count, then applies the same
+  replacement to every match currently listed.
 - **Welcome screen** — shown in place of the tab strip whenever no file is
   open, under the Loom mark, offering *Open Folder…* and naming the current
   project once one is.
