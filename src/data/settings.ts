@@ -4,6 +4,9 @@
 // feeds, mirroring the `session`/`workspaceState` split.
 import type { FormatOptions } from '@jimka/typescript-ui/component/editor'
 
+/** The app's theme choices: `'light'` is the library's own default look. */
+export type ThemeName = 'light' | 'dark'
+
 /** The fully resolved settings the app runs with — always complete, never partial. */
 export interface Settings {
     /** Whether saving reformats the document first, for a language with a registered formatter. */
@@ -18,6 +21,8 @@ export interface Settings {
     titleBarTemplate: string
     /** The tab strip's per-tab width cap in `"content"` mode, in pixels. */
     tabMaxWidthPx: number
+    /** Which of the library's built-in themes the app is painted with. */
+    theme: ThemeName
 }
 
 /** One settings file's contents: every field optional, `undefined` meaning "inherit from the next layer down." */
@@ -29,6 +34,7 @@ export interface SettingsOverride {
     showIgnoredFiles?: boolean
     titleBarTemplate?: string
     tabMaxWidthPx?: number
+    theme?: ThemeName
 }
 
 /** What every setting is when no file overrides it — today's exact hardcoded behaviour. */
@@ -45,6 +51,9 @@ export const DEFAULT_SETTINGS: Settings = {
     // fit the strip — mirrors the value `TAB_MAX_WIDTH` hardcoded before this
     // setting existed (src/EditorController.ts).
     tabMaxWidthPx: 200,
+    // The library's own default look — a fresh install with no settings file
+    // at all looks exactly as it did before this setting existed.
+    theme: 'light',
 }
 
 /** A freshly-created settings file's contents: no field set, so everything inherits. */
@@ -71,6 +80,7 @@ export function resolveSettings(global: SettingsOverride | null, workspace: Sett
         showIgnoredFiles: workspace?.showIgnoredFiles ?? global?.showIgnoredFiles ?? DEFAULT_SETTINGS.showIgnoredFiles,
         titleBarTemplate: workspace?.titleBarTemplate ?? global?.titleBarTemplate ?? DEFAULT_SETTINGS.titleBarTemplate,
         tabMaxWidthPx: workspace?.tabMaxWidthPx ?? global?.tabMaxWidthPx ?? DEFAULT_SETTINGS.tabMaxWidthPx,
+        theme: workspace?.theme ?? global?.theme ?? DEFAULT_SETTINGS.theme,
     }
 }
 
@@ -118,6 +128,7 @@ export function parseSettingsOverride(text: string): SettingsOverride | null {
     const showIgnoredFiles = readOptionalBoolean(doc.showIgnoredFiles)
     const titleBarTemplate = readOptionalNonEmptyString(doc.titleBarTemplate)
     const tabMaxWidthPx = readOptionalPositiveNumber(doc.tabMaxWidthPx)
+    const theme = readOptionalChoice(doc.theme, THEME_CHOICES)
 
     if (formatOnSave !== undefined) {
         override.formatOnSave = formatOnSave
@@ -143,6 +154,10 @@ export function parseSettingsOverride(text: string): SettingsOverride | null {
         override.tabMaxWidthPx = tabMaxWidthPx
     }
 
+    if (theme !== undefined) {
+        override.theme = theme
+    }
+
     return override
 }
 
@@ -156,6 +171,26 @@ export function parseSettingsOverride(text: string): SettingsOverride | null {
  * @returns The parsed document, or `null` when it is not a usable settings override.
  */
 function parseDocument(text: string): Record<string, unknown> | null {
+    const doc = parseJsonObject(text)
+
+    if (doc === null || doc.version !== 1) {
+        return null
+    }
+
+    return doc
+}
+
+/**
+ * Parses `text` as JSON and validates only that the top level is a plain
+ * object — no `version` check, unlike {@link parseDocument}. Split out for
+ * {@link withTheme}, which merges onto whatever fields a document already
+ * has regardless of its version, rather than onto `parseSettingsOverride`'s
+ * sanitized result.
+ *
+ * @param text - The raw text to parse.
+ * @returns The parsed object, or `null` when `text` isn't a JSON object.
+ */
+function parseJsonObject(text: string): Record<string, unknown> | null {
     let parsed: unknown
 
     try {
@@ -168,13 +203,26 @@ function parseDocument(text: string): Record<string, unknown> | null {
         return null
     }
 
-    const doc = parsed as Record<string, unknown>
+    return parsed as Record<string, unknown>
+}
 
-    if (doc.version !== 1) {
-        return null
-    }
+/**
+ * Renders the settings-file text with `theme` set, every other field left as
+ * it was. Merges onto the file's **raw** parsed object rather than
+ * `parseSettingsOverride`'s sanitized result, so a field the parser doesn't
+ * recognise or rejects survives the write instead of being silently dropped.
+ *
+ * @param text - The settings file's current raw text, or `null` when the file doesn't exist yet.
+ * @param theme - The theme to record.
+ * @returns The settings-file text to write.
+ */
+export function withTheme(text: string | null, theme: ThemeName): string {
+    const doc = text === null ? null : parseJsonObject(text)
 
-    return doc
+    // `version: 1` after the spread: a file carrying some other version keeps
+    // every field it had and starts being read again. Indented to 2 spaces to
+    // match `serializeSettingsOverride`.
+    return JSON.stringify({ ...(doc ?? {}), version: 1, theme }, null, 2)
 }
 
 /**
@@ -235,6 +283,9 @@ const ARROW_PARENS_CHOICES = ['always', 'avoid'] as const
 const PROSE_WRAP_CHOICES = ['always', 'never', 'preserve'] as const
 const HTML_WHITESPACE_CHOICES = ['css', 'strict', 'ignore'] as const
 const KEYWORD_CASE_CHOICES = ['preserve', 'upper', 'lower'] as const
+
+/** The top-level `theme` field's allowed values — kept as a choice list, like the `formatting` block's enum fields above, rather than a boolean, so a third theme can join later with no schema change. */
+const THEME_CHOICES: readonly ThemeName[] = ['light', 'dark']
 
 /**
  * Every {@link FormatOptions} field, mapped to the reader that validates it.

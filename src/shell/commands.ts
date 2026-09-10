@@ -51,6 +51,8 @@ export interface PaletteCommandActions {
     onToggleHidden: (value: boolean) => void
     isShowingIgnored: () => boolean
     onToggleIgnored: (value: boolean) => void
+    isDarkTheme: () => boolean
+    onToggleDarkTheme: (value: boolean) => void
 }
 
 /**
@@ -91,6 +93,12 @@ export function buildPaletteCommands(actions: PaletteCommandActions): PaletteCom
             title: actions.isShowingIgnored() ? 'Hide Ignored Files' : 'Show Ignored Files',
             enabled: true,
             run: () => actions.onToggleIgnored(!actions.isShowingIgnored()),
+        },
+        {
+            id: 'toggle-dark-theme',
+            title: actions.isDarkTheme() ? 'Switch to Light Theme' : 'Switch to Dark Theme',
+            enabled: true,
+            run: () => actions.onToggleDarkTheme(!actions.isDarkTheme()),
         },
     ]
 

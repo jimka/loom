@@ -2,6 +2,7 @@ import { Container, callable } from '@jimka/typescript-ui/core'
 import type { Component } from '@jimka/typescript-ui/core'
 import { Insets, Placement } from '@jimka/typescript-ui/primitive'
 import { Accordion, AccordionConstraints, Border as BorderLayout, Card, Split } from '@jimka/typescript-ui/layout'
+import type { SectionToggleCallback } from '@jimka/typescript-ui/layout'
 import { MenuBar, ToolBar } from '@jimka/typescript-ui/component/menubar'
 import { CheckboxMenuRow, Spacer } from '@jimka/typescript-ui/component/container'
 import type { MenuItemConfig } from '@jimka/typescript-ui/component/container'
@@ -16,11 +17,13 @@ import { openAboutDialog } from './aboutDialog'
 import { listFilesRecursive } from '../data/fileIndex'
 import type { SearchMatch } from '../data/projectSearch'
 import type { EditorController } from '../EditorController'
-import type { SessionState } from '../data/session'
+import type { SessionState, ExplorerView } from '../data/session'
+import { sectionOpenFlags } from '../data/session'
 import type { Settings } from '../data/settings'
-import type { SessionAutosave } from './session'
+import type { SessionAutosave, ExplorerStateSource } from './session'
 import { applySession, installSessionAutosave, loadWorkspaceState } from './session'
 import { loadResolvedSettings } from './settings'
+import { applyTheme, currentThemeName, selectTheme } from './theme'
 import { treeSectionLabel } from './treeSectionLabel'
 import { projectName, baseName, isUnderRoot, parentDir } from '../data/paths'
 import { listDirectory, tryReadTextFile, pathExists, grantProjectScope, readFileText } from '../data/workspace'
@@ -65,13 +68,25 @@ const RAIL_GLYPH_SIZE_PX = 24
  *  triggers `_resolveInsets`, so setting insets any earlier gets clobbered. */
 const RAIL_BUTTON_INSETS = new Insets(8, 8, 8, 8)
 
-/** Which of the rail's two views the content `Card` currently shows. */
-type ExplorerView = 'files' | 'search'
-
 /** The tree section's accordion weight. Any positive weight makes the tree the
  *  sole section that absorbs the sidebar's leftover height; 1 is the library's
  *  own default share. */
 const TREE_SECTION_WEIGHT = 1
+
+/** The Files view's accordion sections, in child order — the indices
+ *  `SessionState.explorerSectionsOpen` stores a flag per. */
+const TREE_SECTION_INDEX = 0
+const PROPERTIES_SECTION_INDEX = 1
+
+/** The Files view's sections' default open flags, in child order (tree, then
+ *  Properties) — both open, which is what they did before any of this was
+ *  persisted. The array's length is also the section count, so
+ *  `sectionOpenFlags` discards a saved array of any other length; keep this in
+ *  step if the Files view ever gains or loses a section. Mirrors SQLAdmin's own
+ *  per-site `ACCORDION_DEFAULT_OPEN` table
+ *  (`../sqladmin/frontend/src/data/layoutStore.ts:53`), which carries the same
+ *  warning for the same reason. */
+const FILES_SECTIONS_DEFAULT_OPEN: readonly boolean[] = [true, true]
 
 /** The explorer pane's floor and starting width, in pixels. Carried over
  *  verbatim from the `minSize`/`preferredSize` `FileTree` declares for itself
@@ -103,6 +118,10 @@ interface MenuBarActions extends AcceleratorActions {
     isShowingIgnored: () => boolean
     /** Toggles whether the tree shows ignored entries. */
     onToggleIgnored: (value: boolean) => void
+    /** Whether the dark theme is live — read live each time the menu or the palette opens. */
+    isDarkTheme: () => boolean
+    /** Switches theme and records the choice in the app-wide settings file. */
+    onToggleDarkTheme: (value: boolean) => void
     /** Opens the app-wide settings file, creating it first if needed. */
     onOpenSettings: () => void
     /** Opens the open project's own settings file, creating it first if needed. */
@@ -128,6 +147,7 @@ class EditorShell extends Container {
     private readonly _palette: CommandPalette
     private readonly _menuBarActions: MenuBarActions
     private readonly _relabelTreeSection: (root: string | null) => void
+    private readonly _explorerState: ExplorerStateSource
     private _autosave: SessionAutosave | null = null
 
     /**
@@ -179,7 +199,25 @@ class EditorShell extends Container {
         })
         const splitBody = Container({ layoutManager: split })
 
-        const initialFilesSections = buildFilesViewSections(session.projectRoot)
+        // The Files view's live section open flags, seeded from the restored session.
+        // Held here rather than read back from the accordion because
+        // `relabelTreeSection` replaces the accordion wholesale and a fresh one reports
+        // nothing until its next layout pass.
+        const sectionsOpen = sectionOpenFlags(session.explorerSectionsOpen, FILES_SECTIONS_DEFAULT_OPEN)
+
+        // The live rail view, seeded from the restored session and updated only by
+        // `selectExplorerView`.
+        let currentView: ExplorerView = session.explorerView
+
+        const onSectionToggle: SectionToggleCallback = (index, open) => {
+            if (index >= 0 && index < sectionsOpen.length) {
+                sectionsOpen[index] = open
+            }
+
+            this._autosave?.schedule()
+        }
+
+        const initialFilesSections = buildFilesViewSections(session.projectRoot, sectionsOpen, onSectionToggle)
         const filesView = Container({ layoutManager: initialFilesSections.accordion })
 
         filesView.addComponent(tree, initialFilesSections.treeSection)
@@ -190,13 +228,17 @@ class EditorShell extends Container {
         const contentCard = new Card()
         const content = Container({ layoutManager: contentCard, components: [filesView, searchPanel] })
 
-        contentCard.setVisibleComponentId(FILES_VIEW_ID)
+        // The rail's restore seed: the card's initial page here, and each handle's own
+        // `selected` option just below. These are the only places outside
+        // `selectExplorerView` that set either, and they are safe because nothing is
+        // subscribed to the handles yet.
+        contentCard.setVisibleComponentId(viewPageId(currentView))
 
         // flat/compact are left for `ToolBar` to drive (below) rather than set
         // here — matching SQLAdmin's own ActivityBar, which houses its rail
         // buttons in a vertical ToolBar instead of a hand-rolled container.
-        const filesHandle = new ToggleButton(FILES_RAIL_LABEL, { glyph: 'folder', showText: false, selected: true })
-        const searchHandle = new ToggleButton(SEARCH_RAIL_LABEL, { glyph: 'magnifying-glass', showText: false })
+        const filesHandle = new ToggleButton(FILES_RAIL_LABEL, { glyph: 'folder', showText: false, selected: currentView === 'files' })
+        const searchHandle = new ToggleButton(SEARCH_RAIL_LABEL, { glyph: 'magnifying-glass', showText: false, selected: currentView === 'search' })
 
         // Pinned rather than left at the default text-matched size: an
         // activity-bar-style rail reads its icons at a glance from across
@@ -227,9 +269,11 @@ class EditorShell extends Container {
          * @param view - The view to show.
          */
         const selectExplorerView = (view: ExplorerView): void => {
+            currentView = view
             filesHandle.setSelected(view === 'files')
             searchHandle.setSelected(view === 'search')
-            contentCard.setVisibleComponentId(view === 'files' ? FILES_VIEW_ID : SEARCH_VIEW_ID)
+            contentCard.setVisibleComponentId(viewPageId(view))
+            this._autosave?.schedule()
         }
 
         filesHandle.on('action', () => selectExplorerView('files'))
@@ -258,14 +302,14 @@ class EditorShell extends Container {
          * to force that rebuild. `tree` and `properties` themselves are never
          * removed, so their own state (tree data, watchers, the properties
          * panel's current row) survives untouched — only the accordion's
-         * header chrome and each section's open/closed state reset to
-         * `initiallyOpen`, which is `true` for both, so both sections stay
-         * open regardless.
+         * header chrome is rebuilt; each section's open/closed state is
+         * re-seeded from `sectionsOpen`, the live open flags, so a collapsed
+         * section stays collapsed across the rebuild.
          *
          * @param root - The open project folder, or `null` when none is open.
          */
         const relabelTreeSection = (root: string | null): void => {
-            const sections = buildFilesViewSections(root)
+            const sections = buildFilesViewSections(root, sectionsOpen, onSectionToggle)
 
             filesView.setLayoutManager(sections.accordion)
             filesView.setLayoutConstraints(tree, sections.treeSection)
@@ -309,6 +353,8 @@ class EditorShell extends Container {
             onToggleHidden: (value: boolean) => { void tree.setShowHidden(value) },
             isShowingIgnored: () => tree.isShowingIgnored(),
             onToggleIgnored: (value: boolean) => { void tree.setShowIgnored(value) },
+            isDarkTheme: () => currentThemeName() === 'dark',
+            onToggleDarkTheme: (value: boolean) => { void selectTheme(value ? 'dark' : 'light') },
             hasProjectRoot: () => tree.getProjectRoot() !== null,
             onOpenSettings: () => { void controller.openGlobalSettings() },
             onOpenWorkspaceSettings: () => {
@@ -322,6 +368,11 @@ class EditorShell extends Container {
         }
 
         const menuBar = buildMenuBar(actions)
+
+        const explorerState: ExplorerStateSource = {
+            getExplorerView: () => currentView,
+            getExplorerSectionsOpen: () => [...sectionsOpen],
+        }
 
         super({
             layoutManager: new BorderLayout({ spacing: 0 }),
@@ -338,6 +389,7 @@ class EditorShell extends Container {
         this._palette = palette
         this._menuBarActions = actions
         this._relabelTreeSection = relabelTreeSection
+        this._explorerState = explorerState
 
         controller.setProjectRootListener(async root => {
             welcome.setProjectRoot(root)
@@ -386,7 +438,7 @@ class EditorShell extends Container {
      * @param state - The session to restore.
      */
     async restoreSession(state: SessionState): Promise<void> {
-        const targets = { controller: this._controller, tree: this._tree, split: this._split }
+        const targets = { controller: this._controller, tree: this._tree, split: this._split, explorer: this._explorerState }
 
         await applySession(state, targets)
         this._relabelTreeSection(this._tree.getProjectRoot())
@@ -403,9 +455,9 @@ class EditorShell extends Container {
      * entry has no native gesture behind it, unlike the picker and a drop,
      * and the grant is harmlessly redundant when one does — points the tree
      * at the newly chosen folder, reloads and reapplies that folder's own
-     * resolved settings (the tree's Show
-     * Hidden/Show Ignored defaults and the controller's format-on-save/title
-     * template/tab width), restores that folder's saved tree expansion (if
+     * resolved settings (the tree's Show Hidden/Show Ignored defaults, the
+     * controller's format-on-save/title template/tab width, and the live
+     * theme), restores that folder's saved tree expansion (if
      * it has any), then schedules a session save. Settings reapplication is
      * `await`ed and finishes *before* the expansion restore starts, not just
      * ordered before it in source: `FileTree.setShowHidden`/`setShowIgnored`
@@ -436,6 +488,7 @@ class EditorShell extends Container {
         await this._tree.setShowHidden(resolved.showHiddenFiles)
         await this._tree.setShowIgnored(resolved.showIgnoredFiles)
         this._controller.applySettings(resolved)
+        applyTheme(resolved.theme)
 
         const workspace = await loadWorkspaceState(root)
 
@@ -557,6 +610,17 @@ function buildEditorDeck(controller: EditorController, welcome: WelcomeScreen): 
     return deck
 }
 
+/**
+ * The content `Card` page id showing `view` — one mapping, shared by the
+ * constructor's restore seed and `selectExplorerView`.
+ *
+ * @param view - The rail view to show.
+ * @returns The `Card` page id for `view`.
+ */
+function viewPageId(view: ExplorerView): string {
+    return view === 'search' ? SEARCH_VIEW_ID : FILES_VIEW_ID
+}
+
 /** A freshly-built accordion plus its two sections' constraints, in child order — see {@link buildFilesViewSections}. */
 interface FilesViewSections {
     accordion: Accordion
@@ -565,25 +629,37 @@ interface FilesViewSections {
 }
 
 /**
- * Builds a new accordion and its two sections' constraints, the tree
- * section labelled from `root`. Called once at construction and again by
- * `relabelTreeSection` every time the project root changes, since rebuilding
- * the accordion is the only way to change an already-built header's label
- * (see `relabelTreeSection`'s own doc comment).
+ * Builds a new accordion and its two sections' constraints, the tree section
+ * labelled from `root` and each section opened per `sectionsOpen`. Called
+ * once at construction and again by `relabelTreeSection` every time the
+ * project root changes, since rebuilding the accordion is the only way to
+ * change an already-built header's label (see `relabelTreeSection`'s own doc
+ * comment).
+ *
+ * `sectionsOpen` is passed on every call, including the rebuilds: a fresh
+ * `Accordion` reads each section's open state from its `AccordionConstraints`
+ * exactly once, so handing it the live flags is what stops a project switch
+ * from springing a collapsed section back open.
  *
  * @param root - The open project folder, or `null` when none is open.
+ * @param sectionsOpen - The sections' open flags, in child order.
+ * @param onSectionToggle - Called when the user opens or closes a section.
  * @returns The new accordion and its two sections' constraints.
  */
-function buildFilesViewSections(root: string | null): FilesViewSections {
-    const accordion = new Accordion({ compact: true })
-    const treeSection = new AccordionConstraints(treeSectionLabel(root), true, 'folder')
+function buildFilesViewSections(
+    root: string | null,
+    sectionsOpen: readonly boolean[],
+    onSectionToggle: SectionToggleCallback,
+): FilesViewSections {
+    const accordion = new Accordion({ compact: true, listeners: { sectiontoggle: onSectionToggle } })
+    const treeSection = new AccordionConstraints(treeSectionLabel(root), sectionsOpen[TREE_SECTION_INDEX], 'folder')
 
     treeSection.weight = TREE_SECTION_WEIGHT
 
     return {
         accordion,
         treeSection,
-        propertiesSection: new AccordionConstraints(PROPERTIES_SECTION_LABEL, true, 'circle-info'),
+        propertiesSection: new AccordionConstraints(PROPERTIES_SECTION_LABEL, sectionsOpen[PROPERTIES_SECTION_INDEX], 'circle-info'),
     }
 }
 
@@ -668,6 +744,14 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
                         const row = CheckboxMenuRow({ text: 'Show Ignored Files', checked: actions.isShowingIgnored() })
 
                         row.on('action', () => { actions.onToggleIgnored(row.isChecked()) })
+
+                        return row
+                    } },
+                { separator: true },
+                { row: () => {
+                        const row = CheckboxMenuRow({ text: 'Dark Theme', checked: actions.isDarkTheme() })
+
+                        row.on('action', () => { actions.onToggleDarkTheme(row.isChecked()) })
 
                         return row
                     } },

@@ -18,7 +18,8 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   switches its content between two views: **Files** (the file tree and the
   Properties panel, stacked as today) and **Search**. Selecting one shows
   only that view's content; *Toggle Explorer* (Ctrl/Cmd+B) still hides the
-  whole sidebar, rail included.
+  whole sidebar, rail included. The view you last had selected, and which of
+  the Files view's sections were open, come back on the next launch.
 - **File tree** — open a project folder, browse it, lazily loading each
   directory as it's expanded; each row shows a per-file-type icon — see
   [`src/fileIcons.ts`](src/fileIcons.ts) for the icon map. The tree's own
@@ -86,10 +87,11 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   file swaps the editor for a rendered view of it, with a heading outline
   and width/zoom controls, that refreshes as the document changes.
 - **Session restore** — the last project folder, expanded tree directories,
-  open tabs, and the explorer width all come back on the next launch. Once a
-  project has been saved to once, its own tree expansion, open tabs, and
-  split geometry travel with the project folder itself (in
-  `.loom/workspace.json`) rather than only living in the app-wide file.
+  open tabs, the explorer width, which sidebar view was showing, and which of
+  its sections were open all come back on the next launch. Once a project has
+  been saved to once, its own tree expansion, open tabs, split geometry,
+  sidebar view, and section open flags travel with the project folder itself
+  (in `.loom/workspace.json`) rather than only living in the app-wide file.
 - **Recent Projects & Files** — reopen a recently-used project folder or
   file from the File menu's *Open Recent* submenu, or a recent project from
   the welcome screen.
@@ -108,6 +110,10 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   file tree. Saving reformats the document first, for the languages that
   have a formatter (JavaScript/TypeScript, JSON, HTML, SQL, Markdown), in
   whatever style the settings file's `formatting` block asks for.
+- **Theme** — *View > Dark Theme* (and the matching command-palette entry)
+  switches the whole UI between the library's light and dark themes, with no
+  reload. The choice is written to the app-wide settings file, so it
+  survives a restart.
 - **Settings** — an app-wide `settings.json` under Loom's config folder,
   and an optional per-project override at `<project>/.loom/settings.json`.
   *File > Open Settings* and *File > Open Workspace Settings* create and
@@ -115,7 +121,7 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   in what style (indent width, line width, quote style, and the rest — per
   language, only where that language's formatter honours the field), the
   tree's default Show Hidden/Show Ignored state, the window title template,
-  and the tab strip's width cap — see
+  the tab strip's width cap, and the light/dark theme — see
   [`src/data/settings.ts`](src/data/settings.ts) for the full set and each
   one's default.
 

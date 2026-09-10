@@ -76,7 +76,10 @@ class FileTree extends Tree {
         super({
             expandTrigger: 'click',
             rowOverflow: 'scroll',
-            backgroundColor: 'rgb(245, 245, 245)',
+            // The sidebar rail's own toolbar surface token, so the tree reads
+            // as the rail's own recessed chrome and follows a theme switch,
+            // rather than a hardcoded light-grey slab under a dark theme.
+            backgroundColor: 'var(--ts-ui-toolbar-bg, rgb(245, 245, 245))',
             minSize: { width: 160, height: 0 },
             preferredSize: { width: 300, height: 0 },
         })

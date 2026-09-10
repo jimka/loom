@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { emptySession, parseSession, serializeSession, expansionOrder, withRecent, MAX_RECENT_ENTRIES } from '../src/data/session'
+import { emptySession, parseSession, serializeSession, expansionOrder, withRecent, sectionOpenFlags, MAX_RECENT_ENTRIES } from '../src/data/session'
 import type { SessionState } from '../src/data/session'
 
 describe('emptySession', () => {
@@ -14,6 +14,8 @@ describe('emptySession', () => {
             collapsedPanes: [],
             recentProjects: [],
             recentFiles: [],
+            explorerView: 'files',
+            explorerSectionsOpen: [],
         })
     })
 })
@@ -79,6 +81,8 @@ describe('parseSession', () => {
             collapsedPanes: [],
             recentProjects: ['/p', '/q'],
             recentFiles: ['/p/src/main.ts', '/p/README.md'],
+            explorerView: 'search',
+            explorerSectionsOpen: [false, true],
         }
 
         expect(parseSession(JSON.stringify(state))).toEqual(state)
@@ -132,6 +136,48 @@ describe('parseSession', () => {
 
         expect(parseSession(doc).recentFiles).toEqual(twelve.slice(0, MAX_RECENT_ENTRIES))
     })
+
+    it('takes an explorerView of search', () => {
+        expect(parseSession('{"version":1,"explorerView":"search"}')).toEqual({
+            ...emptySession(),
+            explorerView: 'search',
+        })
+    })
+
+    it('takes an explorerView of files, same as the default', () => {
+        expect(parseSession('{"version":1,"explorerView":"files"}')).toEqual(emptySession())
+    })
+
+    it('takes the empty default for an unknown explorerView', () => {
+        expect(parseSession('{"version":1,"explorerView":"tree"}')).toEqual(emptySession())
+    })
+
+    it('matches explorerView case-sensitively, taking the empty default otherwise', () => {
+        expect(parseSession('{"version":1,"explorerView":"Search"}')).toEqual(emptySession())
+    })
+
+    it('takes the empty default when explorerView has the wrong type', () => {
+        expect(parseSession('{"version":1,"explorerView":7}')).toEqual(emptySession())
+    })
+
+    it('takes an explorerSectionsOpen array verbatim', () => {
+        expect(parseSession('{"version":1,"explorerSectionsOpen":[true,false]}')).toEqual({
+            ...emptySession(),
+            explorerSectionsOpen: [true, false],
+        })
+    })
+
+    it('takes the empty default for an empty explorerSectionsOpen array', () => {
+        expect(parseSession('{"version":1,"explorerSectionsOpen":[]}')).toEqual(emptySession())
+    })
+
+    it('drops explorerSectionsOpen whole when one entry has the wrong type', () => {
+        expect(parseSession('{"version":1,"explorerSectionsOpen":[true,"no"]}')).toEqual(emptySession())
+    })
+
+    it('takes the empty default when explorerSectionsOpen is not an array', () => {
+        expect(parseSession('{"version":1,"explorerSectionsOpen":false}')).toEqual(emptySession())
+    })
 })
 
 describe('serializeSession', () => {
@@ -146,6 +192,8 @@ describe('serializeSession', () => {
             collapsedPanes: [1],
             recentProjects: ['/p', '/q'],
             recentFiles: ['/p/src/main.ts', '/p/README.md'],
+            explorerView: 'search',
+            explorerSectionsOpen: [false, true],
         }
 
         expect(parseSession(serializeSession(state))).toEqual(state)
@@ -168,5 +216,48 @@ describe('expansionOrder', () => {
         expansionOrder(input)
 
         expect(input).toEqual(original)
+    })
+})
+
+describe('sectionOpenFlags', () => {
+    it('takes saved when its length matches defaults', () => {
+        expect(sectionOpenFlags([true, true], [true, true])).toEqual([true, true])
+    })
+
+    it('takes saved verbatim, including a closed section, when the length matches', () => {
+        expect(sectionOpenFlags([false, true], [true, true])).toEqual([false, true])
+    })
+
+    it('takes defaults when saved is empty', () => {
+        expect(sectionOpenFlags([], [true, true])).toEqual([true, true])
+    })
+
+    it('takes defaults when saved is shorter than defaults', () => {
+        expect(sectionOpenFlags([true], [true, true])).toEqual([true, true])
+    })
+
+    it('takes defaults when saved is longer than defaults', () => {
+        expect(sectionOpenFlags([true, false, true], [true, true])).toEqual([true, true])
+    })
+
+    it('returns a copy, not saved itself, when lengths match', () => {
+        const saved = [false, true]
+        const defaults = [true, true]
+        const result = sectionOpenFlags(saved, defaults)
+
+        result[0] = true
+
+        expect(saved).toEqual([false, true])
+        expect(defaults).toEqual([true, true])
+    })
+
+    it('returns a copy, not defaults itself, when falling back to defaults', () => {
+        const saved: boolean[] = []
+        const defaults = [true, true]
+        const result = sectionOpenFlags(saved, defaults)
+
+        result[0] = false
+
+        expect(defaults).toEqual([true, true])
     })
 })

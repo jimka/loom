@@ -4,7 +4,7 @@
 import type { Split } from '@jimka/typescript-ui/layout'
 import type { EditorController } from '../EditorController'
 import type { FileTree } from '../explorer/FileTree'
-import type { SessionState } from '../data/session'
+import type { SessionState, ExplorerView } from '../data/session'
 import { parseSession, serializeSession } from '../data/session'
 import type { WorkspaceState } from '../data/workspaceState'
 import { parseWorkspaceState, serializeWorkspaceState, workspaceStateFromSession } from '../data/workspaceState'
@@ -19,11 +19,20 @@ import { isUnderRoot } from '../data/paths'
  */
 const SESSION_SAVE_DEBOUNCE_MS = 500
 
-/** The three state owners a session snapshot is captured from and restored into. */
+/** The explorer's own persisted UI state, read live off the shell at capture time. */
+export interface ExplorerStateSource {
+    /** Which rail view the explorer currently shows. */
+    getExplorerView: () => ExplorerView
+    /** The Files view's section open flags, in child order. */
+    getExplorerSectionsOpen: () => boolean[]
+}
+
+/** The state owners a session snapshot is captured from and restored into. */
 export interface SessionTargets {
     controller: EditorController
     tree: FileTree
     split: Split
+    explorer: ExplorerStateSource
 }
 
 /** Queues and forces session writes. */
@@ -51,7 +60,7 @@ export async function loadWorkspaceState(root: string): Promise<WorkspaceState |
     return text === null ? null : parseWorkspaceState(text)
 }
 
-/** The current state of the tree, tabs, and split. */
+/** The current state of the tree, tabs, split, and explorer rail/sections. */
 export function captureSession(targets: SessionTargets): SessionState {
     const paneSizes = targets.split.getPaneSizes()
 
@@ -65,13 +74,19 @@ export function captureSession(targets: SessionTargets): SessionState {
         collapsedPanes: paneSizes.map((_, index) => index).filter(index => targets.split.isPaneCollapsed(index)),
         recentProjects: targets.controller.getRecentProjects(),
         recentFiles: targets.controller.getRecentFiles(),
+        explorerView: targets.explorer.getExplorerView(),
+        explorerSectionsOpen: targets.explorer.getExplorerSectionsOpen(),
     }
 }
 
 /**
- * Replays `state` into the live tree and tab strip. The split is restored by
+ * Replays `state` into the live tree and tab strip. The split, the rail
+ * view, and the Files view's accordion sections are restored by
  * `EditorShell`'s constructor instead, through `Split`'s own
- * `paneSizes`/`collapsedPanes` options.
+ * `paneSizes`/`collapsedPanes` options and each `AccordionConstraints`'
+ * `initiallyOpen` — none of them can be re-applied here after the fact (see
+ * `session-persistence.md`'s *The split restores through `Split`'s
+ * constructor, not a post-layout re-apply*).
  *
  * @param state - The session to restore.
  * @param targets - The live tree and controller to restore into.

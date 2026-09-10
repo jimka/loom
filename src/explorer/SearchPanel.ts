@@ -121,12 +121,14 @@ class SearchPanel extends Container {
             // backgroundColor matches FileTree's own tree — both rail views
             // should read as the same surface — applied to the whole panel
             // rather than just resultsTree so the query field and status
-            // text share it too, instead of sitting on a visible seam.
+            // text share it too, instead of sitting on a visible seam. The
+            // token is the sidebar rail's own toolbar surface (see
+            // FileTree.ts), so this panel follows a theme switch too.
             // The border isn't drawn by FileTree itself either — it's
             // Accordion's own themed all-around container border. This is the
             // same token (and fallback), applied here directly, so the two
             // rail views frame themselves identically.
-            backgroundColor: 'rgb(245, 245, 245)',
+            backgroundColor: 'var(--ts-ui-toolbar-bg, rgb(245, 245, 245))',
             border: 'var(--ts-ui-accordion-border, 1px solid rgb(214,217,222))',
         })
 

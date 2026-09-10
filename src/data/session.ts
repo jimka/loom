@@ -6,6 +6,12 @@ import type { LayoutSize, LayoutSizeUnit } from '@jimka/typescript-ui/layout'
 /** The session schema's only valid `unit`s — mirrors {@link LayoutSizeUnit}. */
 const VALID_LAYOUT_SIZE_UNITS: readonly LayoutSizeUnit[] = ['px', 'ratio']
 
+/** Which of the sidebar rail's two views the explorer shows. */
+export type ExplorerView = 'files' | 'search'
+
+/** The schema's only valid `explorerView`s — mirrors {@link ExplorerView}. */
+const VALID_EXPLORER_VIEWS: readonly ExplorerView[] = ['files', 'search']
+
 /** One saved session: what the app should look like on the next launch. */
 export interface SessionState {
     version: 1
@@ -25,6 +31,10 @@ export interface SessionState {
     recentProjects: string[]
     /** Recently opened files, most-recent first, independent of which project (if any) they were opened from. */
     recentFiles: string[]
+    /** Which sidebar-rail view the explorer was showing. */
+    explorerView: ExplorerView
+    /** The Files view's accordion sections' open flags, in child order (tree, then Properties). */
+    explorerSectionsOpen: boolean[]
 }
 
 /**
@@ -59,6 +69,8 @@ export function emptySession(): SessionState {
         collapsedPanes: [],
         recentProjects: [],
         recentFiles: [],
+        explorerView: 'files',
+        explorerSectionsOpen: [],
     }
 }
 
@@ -93,6 +105,8 @@ export function parseSession(text: string): SessionState {
         collapsedPanes: readNumberArray(doc.collapsedPanes) ?? empty.collapsedPanes,
         recentProjects: (readStringArray(doc.recentProjects) ?? empty.recentProjects).slice(0, MAX_RECENT_ENTRIES),
         recentFiles: (readStringArray(doc.recentFiles) ?? empty.recentFiles).slice(0, MAX_RECENT_ENTRIES),
+        explorerView: readExplorerView(doc.explorerView) ?? empty.explorerView,
+        explorerSectionsOpen: readBooleanArray(doc.explorerSectionsOpen) ?? empty.explorerSectionsOpen,
     }
 }
 
@@ -115,6 +129,24 @@ export function serializeSession(state: SessionState): string {
  */
 export function expansionOrder(paths: string[]): string[] {
     return [...paths].sort((a, b) => a.length - b.length)
+}
+
+/**
+ * The section open flags to apply on restore: `saved` when it is the right
+ * length, a copy of `defaults` otherwise.
+ *
+ * `defaults.length` is the live section count, so a saved array of any other
+ * length belongs to a different section list than the one being restored into
+ * and is discarded whole — the same whole-array discard policy
+ * {@link parseSession} applies to a malformed array field.
+ *
+ * @param saved - The flags read out of the session or workspace file.
+ * @param defaults - The live section list's default flags; its length is the
+ *   expected section count.
+ * @returns The flags to apply, always `defaults.length` long.
+ */
+export function sectionOpenFlags(saved: boolean[], defaults: readonly boolean[]): boolean[] {
+    return saved.length === defaults.length ? [...saved] : [...defaults]
 }
 
 /**
@@ -192,6 +224,32 @@ function readNumberArray(value: unknown): number[] | undefined {
     }
 
     return value.every(entry => typeof entry === 'number') ? (value as number[]) : undefined
+}
+
+/**
+ * Reads a field expected to be an {@link ExplorerView}.
+ *
+ * @param value - The field's raw value.
+ * @returns The view, or `undefined` when the field is missing or names no known view.
+ */
+function readExplorerView(value: unknown): ExplorerView | undefined {
+    return VALID_EXPLORER_VIEWS.includes(value as ExplorerView) ? (value as ExplorerView) : undefined
+}
+
+/**
+ * Reads a field expected to be a boolean array. The whole array is dropped —
+ * not repaired entry by entry — if any entry is not a boolean.
+ *
+ * @param value - The field's raw value.
+ * @returns The boolean array, or `undefined` when the field is missing or any
+ *   entry is invalid.
+ */
+function readBooleanArray(value: unknown): boolean[] | undefined {
+    if (!Array.isArray(value)) {
+        return undefined
+    }
+
+    return value.every(entry => typeof entry === 'boolean') ? (value as boolean[]) : undefined
 }
 
 /**
