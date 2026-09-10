@@ -17,9 +17,6 @@ nothing below has a plan yet.
   that aren't open in a tab, reconciling a replacement against a tab with
   unsaved changes, and an undo story — CodeMirror's per-document history
   doesn't cover an edit spanning forty files.
-- **Regular-expression and match-case project search.** The Search view
-  matches a case-insensitive plain substring today; the in-file find panel's
-  *regexp* and *match case* toggles have no counterpart there yet.
 
 ## Medium
 
@@ -28,6 +25,13 @@ nothing below has a plan yet.
 
 ## Low
 
+- **Interruptible project-search matching.** A pathological regular
+  expression (nested quantifiers over a very long line) blocks the main
+  thread until that line's match attempt finishes, because JavaScript
+  cannot interrupt a running `RegExp.exec`; the walk's per-file `await`
+  keeps the panel responsive between files, and the `maxFiles`/`maxMatches`
+  ceilings bound the run, but the only real fix is matching off the main
+  thread in a worker.
 - **An extension / plugin system.**
 - **A browser build** — the app calls the Tauri plugins directly with no
   fallback; would need a second filesystem implementation no user runs.
