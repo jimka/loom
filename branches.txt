@@ -1,0 +1,2 @@
+feature/status-bar-cursor-position
+feature/status-bar-document-offset

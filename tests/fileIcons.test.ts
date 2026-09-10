@@ -75,6 +75,19 @@ describe('glyphNameForPath', () => {
         // Makefile/Dockerfile above, so it falls all the way to DEFAULT_GLYPH.
         expect(glyphNameForPath('Untitled-1')).toBe('file')
     })
+
+    it('resolves two extensions on the same base name to different icons', () => {
+        // Pins the premise EditorController.repointFile's guard rests on: a
+        // cross-type Save As (or rename) must see the icon change.
+        expect(glyphNameForPath('/p/notes.md')).toBe('markdown')
+        expect(glyphNameForPath('/p/notes.txt')).toBe('file-lines')
+    })
+
+    it('resolves the same base name under two different directories to the same icon', () => {
+        // Pins the other half of that premise: a directory rename, which never
+        // changes any file's base name, must not look like an icon change.
+        expect(glyphNameForPath('/p/src/a.ts')).toBe(glyphNameForPath('/p/lib/a.ts'))
+    })
 })
 
 describe('FILE_ICON_GLYPHS', () => {

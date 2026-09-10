@@ -253,8 +253,8 @@ class EditorController {
     /**
      * Repoints every open tab under `oldPath` (inclusive) onto its new
      * location after the tree renames a file or folder. Keeps each buffer's
-     * content and dirty state; only the tracked path, tab label, and (where
-     * the tab strip supports it) icon change.
+     * content and dirty state; only the tracked path, tab label, and icon
+     * change.
      *
      * @param oldPath - The renamed entry's previous path.
      * @param newPath - The renamed entry's new path.
@@ -264,7 +264,7 @@ class EditorController {
             const filePath = file.getPath()
 
             if (filePath !== null && isUnderRoot(oldPath, filePath)) {
-                file.setPath(relocatePath(filePath, oldPath, newPath))
+                this.repointFile(file, relocatePath(filePath, oldPath, newPath))
                 this.tabs.getTab().setTabName(file, file.getLabel())
             }
         }
@@ -612,7 +612,7 @@ class EditorController {
             return false
         }
 
-        file.setPath(target)
+        this.repointFile(file, target)
         file.markSynced(text)
         this.pinTab(file)
         this.recordRecentFile(target)
@@ -833,6 +833,31 @@ class EditorController {
         }
 
         this.tabs.getTab().setTabName(file, file.getLabel())
+    }
+
+    /**
+     * Repoints `file` at `path` and re-icons its tab when the new path resolves
+     * to a different file-type icon than the old one did. Owns the read-before,
+     * read-after ordering so no caller has to get it right, and is the only
+     * place an open file's path changes.
+     *
+     * The icon is left alone when it would not change — `Button.setGlyph` has no
+     * same-name early-out, so an unconditional call would tear down and rebuild
+     * a tab's icon for nothing, once per open tab on a folder rename.
+     *
+     * @param file - The open file to repoint.
+     * @param path - The file's new path.
+     */
+    private repointFile(file: FileEditor, path: string): void {
+        const previousGlyph = glyphNameForPath(file.getName())
+
+        file.setPath(path)
+
+        const glyph = glyphNameForPath(file.getName())
+
+        if (glyph !== previousGlyph) {
+            this.tabs.getTab().setTabGlyph(file, glyph)
+        }
     }
 
     /**
