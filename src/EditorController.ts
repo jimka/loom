@@ -1,11 +1,13 @@
 import type { Component } from '@jimka/typescript-ui/core'
 import { TabPanel, StatusBar } from '@jimka/typescript-ui/component/container'
-import { Text } from '@jimka/typescript-ui/component/input'
-import { Dialog } from '@jimka/typescript-ui/overlay'
+import { Text, Link } from '@jimka/typescript-ui/component/input'
+import { Dialog, Tooltip } from '@jimka/typescript-ui/overlay'
 import type { TabCloseController } from '@jimka/typescript-ui/layout'
 import type { FormatOptions, CodeEditorCursorPosition } from '@jimka/typescript-ui/component/editor'
 import { FileEditor } from './editor/FileEditor'
 import { cursorLabel } from './editor/cursorLabel'
+import { promptGoToLine } from './editor/goToLinePrompt'
+import { countLines } from './editor/lineNumber'
 import { languageForPath, hasFormatter } from './editor/languages'
 import type { MatchLocation } from './data/projectSearch'
 import { glyphNameForPath } from './fileIcons'
@@ -65,7 +67,7 @@ class EditorController {
      * role `_pendingOpens` plays for an in-flight open.
      */
     private readonly _resolvingExternal: Set<string> = new Set()
-    private readonly _cursorText: Text
+    private readonly _cursorText: Link
     private readonly _languageText: Text
     private _recentProjects: string[] = []
     private _recentFiles: string[] = []
@@ -86,7 +88,10 @@ class EditorController {
         })
 
         this.statusBar = new StatusBar()
-        this._cursorText = new Text('')
+        this._cursorText = new Link('', {
+            foregroundColor: 'var(--ts-ui-statusbar-color)',
+            styleRules: [{ suffix: '', styles: { textDecoration: 'none' } }],
+        })
         this._languageText = new Text('')
 
         // `cursorchange` fires once per caret position, not once per click —
@@ -121,6 +126,9 @@ class EditorController {
 
         this.statusBar.addRight(this._cursorText)
         this.statusBar.addRight(this._languageText)
+
+        Tooltip.attach(this._cursorText, 'Go to Line')
+        this._cursorText.on('action', () => { void this.goToLineInActive() })
 
         this.tabs.getTab().on('beforetabclose', this.handleBeforeTabClose)
         this.tabs.getTab().on('tabclose', this.handleTabClose)
@@ -794,6 +802,26 @@ class EditorController {
     /** Opens the find/replace bar over the active file's editor. */
     findInActive(): void {
         this.getActiveFile()?.openFind()
+    }
+
+    /**
+     * Prompts for a line number and jumps the active file's caret to the start of
+     * that line, centred in the viewport. A no-op with no file open — which is
+     * also what makes the status bar's caret readout safe to click while the bar
+     * is blank.
+     */
+    async goToLineInActive(): Promise<void> {
+        const file = this.getActiveFile()
+
+        if (!file) {
+            return
+        }
+
+        const line = await promptGoToLine(countLines(file.getEditor().getValue()))
+
+        if (line !== null) {
+            file.revealMatch({ line, column: 0, length: 0 })
+        }
     }
 
     /**
