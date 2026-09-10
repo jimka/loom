@@ -78,16 +78,24 @@ known limitations are tracked in [`TODO.md`](TODO.md).
 - **About** — a *Close*-only dialog on the far right of the menu bar, showing
   the Loom mark above the app's author and links to Loom's own repository and
   to the UI library it is built on.
-- **Tabbed editing** — open several files at once, each tab carrying the
-  same per-file-type icon the tree shows; a dirty-indicator dot marks
-  unsaved changes per tab, staying visible even when a long file name is
-  truncated. A temp tab renders its label in italics and
-  becomes upright on the first edit, on a double-click in the tree, on a
-  double-click of the tab itself, or on a *Save As*. The icon follows a
-  *Save As* or a rename that changes the file's type, without the tab
-  closing or reopening. Open tabs follow changes made outside the app too:
-  a buffer with no unsaved changes reloads, and one with unsaved changes
-  asks whether to reload from disk or keep them.
+- **Tabbed editing** — open several files at once, arranged across one or
+  more split editor groups, each tab carrying the same per-file-type icon
+  the tree shows; a dirty-indicator dot marks unsaved changes per tab,
+  staying visible even when a long file name is truncated. A temp tab
+  renders its label in italics and becomes upright on the first edit, on a
+  double-click in the tree, on a double-click of the tab itself, or on a
+  *Save As*. The icon follows a *Save As* or a rename that changes the
+  file's type, without the tab closing or reopening. Open tabs follow
+  changes made outside the app too: a buffer with no unsaved changes
+  reloads, and one with unsaved changes asks whether to reload from disk or
+  keep them.
+- **Split editor groups** — drag a tab onto the edge of the editor area to
+  split it, and the dragged file opens in the new group beside the first;
+  drag a tab between groups to move it, or off a strip entirely to tear it
+  off into a floating window. The window title, the status bar, and
+  *Find…* all follow whichever group has focus. Group layout, each group's
+  tab order and active tab, and every floating window's position come back
+  on the next launch.
 - **Breadcrumbs** — a path band above each editor showing where the open
   file sits inside the project folder.
 - **Status bar** — the caret's line, column, and position in the document
@@ -100,11 +108,12 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   file swaps the editor for a rendered view of it, with a heading outline
   and width/zoom controls, that refreshes as the document changes.
 - **Session restore** — the last project folder, expanded tree directories,
-  open tabs, the explorer width, which sidebar view was showing, and which of
-  its sections were open all come back on the next launch. Once a project has
-  been saved to once, its own tree expansion, open tabs, split geometry,
-  sidebar view, and section open flags travel with the project folder itself
-  (in `.loom/workspace.json`) rather than only living in the app-wide file.
+  open tabs, the editor's split layout, the explorer width, which sidebar
+  view was showing, and which of its sections were open all come back on
+  the next launch. Once a project has been saved to once, its own tree
+  expansion, open tabs, split geometry, sidebar view, and section open
+  flags travel with the project folder itself (in `.loom/workspace.json`)
+  rather than only living in the app-wide file.
 - **Recent Projects & Files** — reopen a recently-used project folder or
   file from the File menu's *Open Recent* submenu, or a recent project from
   the welcome screen.
@@ -142,7 +151,7 @@ known limitations are tracked in [`TODO.md`](TODO.md).
 
 TypeScript + [Vite](https://vitejs.dev/) frontend, built on
 `@jimka/typescript-ui`'s layout and editor components (`Tree`, `Tab`/`TabBar`,
-`Split`, `Accordion`, `MenuBar`, `CodeEditor`, `MarkdownViewer`); [Tauri v2](https://v2.tauri.app/) provides
+`Dock`, `Split`, `Accordion`, `MenuBar`, `CodeEditor`, `MarkdownViewer`); [Tauri v2](https://v2.tauri.app/) provides
 the native shell and the filesystem/dialog access the frontend calls through
 `src/data/workspace.ts`, the app's sole `@tauri-apps/*` entry point.
 
