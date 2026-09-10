@@ -21,6 +21,7 @@ import type { Settings } from '../data/settings'
 import type { SessionAutosave } from './session'
 import { applySession, installSessionAutosave, loadWorkspaceState } from './session'
 import { loadResolvedSettings } from './settings'
+import { applyTheme, currentThemeName, selectTheme } from './theme'
 import { treeSectionLabel } from './treeSectionLabel'
 import { projectName, baseName, isUnderRoot, parentDir } from '../data/paths'
 import { listDirectory, tryReadTextFile, pathExists, grantProjectScope, readFileText } from '../data/workspace'
@@ -103,6 +104,10 @@ interface MenuBarActions extends AcceleratorActions {
     isShowingIgnored: () => boolean
     /** Toggles whether the tree shows ignored entries. */
     onToggleIgnored: (value: boolean) => void
+    /** Whether the dark theme is live — read live each time the menu or the palette opens. */
+    isDarkTheme: () => boolean
+    /** Switches theme and records the choice in the app-wide settings file. */
+    onToggleDarkTheme: (value: boolean) => void
     /** Opens the app-wide settings file, creating it first if needed. */
     onOpenSettings: () => void
     /** Opens the open project's own settings file, creating it first if needed. */
@@ -309,6 +314,8 @@ class EditorShell extends Container {
             onToggleHidden: (value: boolean) => { void tree.setShowHidden(value) },
             isShowingIgnored: () => tree.isShowingIgnored(),
             onToggleIgnored: (value: boolean) => { void tree.setShowIgnored(value) },
+            isDarkTheme: () => currentThemeName() === 'dark',
+            onToggleDarkTheme: (value: boolean) => { void selectTheme(value ? 'dark' : 'light') },
             hasProjectRoot: () => tree.getProjectRoot() !== null,
             onOpenSettings: () => { void controller.openGlobalSettings() },
             onOpenWorkspaceSettings: () => {
@@ -403,9 +410,9 @@ class EditorShell extends Container {
      * entry has no native gesture behind it, unlike the picker and a drop,
      * and the grant is harmlessly redundant when one does — points the tree
      * at the newly chosen folder, reloads and reapplies that folder's own
-     * resolved settings (the tree's Show
-     * Hidden/Show Ignored defaults and the controller's format-on-save/title
-     * template/tab width), restores that folder's saved tree expansion (if
+     * resolved settings (the tree's Show Hidden/Show Ignored defaults, the
+     * controller's format-on-save/title template/tab width, and the live
+     * theme), restores that folder's saved tree expansion (if
      * it has any), then schedules a session save. Settings reapplication is
      * `await`ed and finishes *before* the expansion restore starts, not just
      * ordered before it in source: `FileTree.setShowHidden`/`setShowIgnored`
@@ -436,6 +443,7 @@ class EditorShell extends Container {
         await this._tree.setShowHidden(resolved.showHiddenFiles)
         await this._tree.setShowIgnored(resolved.showIgnoredFiles)
         this._controller.applySettings(resolved)
+        applyTheme(resolved.theme)
 
         const workspace = await loadWorkspaceState(root)
 
@@ -668,6 +676,14 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
                         const row = CheckboxMenuRow({ text: 'Show Ignored Files', checked: actions.isShowingIgnored() })
 
                         row.on('action', () => { actions.onToggleIgnored(row.isChecked()) })
+
+                        return row
+                    } },
+                { separator: true },
+                { row: () => {
+                        const row = CheckboxMenuRow({ text: 'Dark Theme', checked: actions.isDarkTheme() })
+
+                        row.on('action', () => { actions.onToggleDarkTheme(row.isChecked()) })
 
                         return row
                     } },

@@ -21,6 +21,8 @@ const actions = (over: Partial<PaletteCommandActions> = {}): PaletteCommandActio
     onToggleHidden: () => {},
     isShowingIgnored: () => false,
     onToggleIgnored: () => {},
+    isDarkTheme: () => false,
+    onToggleDarkTheme: () => {},
     ...over,
 })
 
@@ -34,23 +36,23 @@ const findCommand = (commands: PaletteCommand[], id: string): PaletteCommand => 
 }
 
 describe('buildPaletteCommands', () => {
-    it('returns all eleven commands in a fixed order when nothing is available', () => {
+    it('returns all twelve commands in a fixed order when nothing is available', () => {
         const commands = buildPaletteCommands(actions())
 
         expect(commands.map(c => c.id)).toEqual([
             'new-file', 'open-folder', 'toggle-explorer', 'exit',
             'save', 'save-as', 'close-file', 'find', 'format-document',
-            'toggle-hidden-files', 'toggle-ignored-files',
+            'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme',
         ])
     })
 
-    it('returns the same eleven ids in the same order when everything is available', () => {
+    it('returns the same twelve ids in the same order when everything is available', () => {
         const commands = buildPaletteCommands(actions({ canSaveActive: () => true, hasActiveFile: () => true }))
 
         expect(commands.map(c => c.id)).toEqual([
             'new-file', 'open-folder', 'toggle-explorer', 'exit',
             'save', 'save-as', 'close-file', 'find', 'format-document',
-            'toggle-hidden-files', 'toggle-ignored-files',
+            'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme',
         ])
     })
 
@@ -65,7 +67,7 @@ describe('buildPaletteCommands', () => {
     it('marks the always-available commands enabled regardless of state', () => {
         const commands = buildPaletteCommands(actions())
 
-        for (const id of ['new-file', 'open-folder', 'toggle-explorer', 'exit', 'toggle-hidden-files', 'toggle-ignored-files']) {
+        for (const id of ['new-file', 'open-folder', 'toggle-explorer', 'exit', 'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme']) {
             expect(findCommand(commands, id).enabled).toBe(true)
         }
     })
@@ -100,6 +102,25 @@ describe('buildPaletteCommands', () => {
 
         expect(findCommand(buildPaletteCommands(actions({ isShowingIgnored: () => true })), 'toggle-ignored-files').title)
             .toBe('Hide Ignored Files')
+    })
+
+    it('labels the dark-theme toggle by the current theme', () => {
+        expect(findCommand(buildPaletteCommands(actions({ isDarkTheme: () => false })), 'toggle-dark-theme').title)
+            .toBe('Switch to Dark Theme')
+
+        expect(findCommand(buildPaletteCommands(actions({ isDarkTheme: () => true })), 'toggle-dark-theme').title)
+            .toBe('Switch to Light Theme')
+    })
+
+    it('toggles the theme to the opposite of whichever one is live', () => {
+        const onToggleDarkTheme = vi.fn()
+
+        findCommand(buildPaletteCommands(actions({ isDarkTheme: () => false, onToggleDarkTheme })), 'toggle-dark-theme').run()
+        expect(onToggleDarkTheme).toHaveBeenCalledWith(true)
+
+        onToggleDarkTheme.mockClear()
+        findCommand(buildPaletteCommands(actions({ isDarkTheme: () => true, onToggleDarkTheme })), 'toggle-dark-theme').run()
+        expect(onToggleDarkTheme).toHaveBeenCalledWith(false)
     })
 
     it('keeps a working run callback on a disabled command', () => {

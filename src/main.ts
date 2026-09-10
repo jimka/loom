@@ -23,6 +23,7 @@ import { EditorController } from './EditorController'
 import { EditorShell } from './shell/EditorShell'
 import { loadSession, loadWorkspaceState } from './shell/session'
 import { loadResolvedSettings } from './shell/settings'
+import { applyTheme } from './shell/theme'
 import { grantProjectScope } from './data/workspace'
 import { applyWorkspaceOverlay } from './data/workspaceState'
 
@@ -56,6 +57,9 @@ async function start(): Promise<void> {
     const workspace = restoredRoot !== null ? await loadWorkspaceState(restoredRoot) : null
     const session = applyWorkspaceOverlay(appSession, workspace)
     const settings = await loadResolvedSettings(session.projectRoot)
+
+    applyTheme(settings.theme)
+
     const controller = new EditorController()
 
     controller.seedRecents(session.recentProjects, session.recentFiles)

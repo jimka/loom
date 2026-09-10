@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     DEFAULT_SETTINGS, emptySettingsOverride, parseSettingsOverride, serializeSettingsOverride,
-    resolveSettings, renderTitle,
+    resolveSettings, renderTitle, withTheme,
 } from '../src/data/settings'
 import type { SettingsOverride } from '../src/data/settings'
 
@@ -61,6 +61,32 @@ describe('parseSettingsOverride', () => {
             version: 1,
             titleBarTemplate: '{name}',
         })
+    })
+
+    it('takes a valid dark theme', () => {
+        expect(parseSettingsOverride('{"version":1,"theme":"dark"}')).toEqual({
+            version: 1,
+            theme: 'dark',
+        })
+    })
+
+    it('takes a valid light theme', () => {
+        expect(parseSettingsOverride('{"version":1,"theme":"light"}')).toEqual({
+            version: 1,
+            theme: 'light',
+        })
+    })
+
+    it('drops theme when its capitalisation does not match a listed choice', () => {
+        expect(parseSettingsOverride('{"version":1,"theme":"Dark"}')).toEqual({ version: 1 })
+    })
+
+    it('drops theme when it is not one of the listed choices', () => {
+        expect(parseSettingsOverride('{"version":1,"theme":"solarized"}')).toEqual({ version: 1 })
+    })
+
+    it('drops theme when it has the wrong type', () => {
+        expect(parseSettingsOverride('{"version":1,"theme":3}')).toEqual({ version: 1 })
     })
 })
 
@@ -281,6 +307,67 @@ describe('resolveSettings', () => {
         const result = resolveSettings(null, null)
 
         expect(result.formatting).not.toBe(DEFAULT_SETTINGS.formatting)
+    })
+
+    it('defaults theme to light when neither layer sets it', () => {
+        expect(resolveSettings(null, null).theme).toBe('light')
+    })
+
+    it('takes a global-only theme', () => {
+        expect(resolveSettings({ version: 1, theme: 'dark' }, null).theme).toBe('dark')
+    })
+
+    it('lets the workspace theme win over the global one', () => {
+        expect(resolveSettings({ version: 1, theme: 'dark' }, { version: 1, theme: 'light' }).theme).toBe('light')
+    })
+
+    it('inherits the global theme through a bare workspace override', () => {
+        expect(resolveSettings({ version: 1, theme: 'dark' }, { version: 1 }).theme).toBe('dark')
+    })
+})
+
+describe('withTheme', () => {
+    it('creates a fresh document when text is null', () => {
+        expect(JSON.parse(withTheme(null, 'dark'))).toEqual({ version: 1, theme: 'dark' })
+    })
+
+    it('creates a fresh document when text is not JSON', () => {
+        expect(JSON.parse(withTheme('not json', 'dark'))).toEqual({ version: 1, theme: 'dark' })
+    })
+
+    it('creates a fresh document when the top level is an array', () => {
+        expect(JSON.parse(withTheme('[]', 'dark'))).toEqual({ version: 1, theme: 'dark' })
+    })
+
+    it('keeps sibling fields untouched', () => {
+        expect(JSON.parse(withTheme('{"version":1,"formatOnSave":false}', 'dark'))).toEqual({
+            version: 1,
+            formatOnSave: false,
+            theme: 'dark',
+        })
+    })
+
+    it('replaces an existing theme rather than duplicating it', () => {
+        expect(JSON.parse(withTheme('{"version":1,"theme":"dark"}', 'light'))).toEqual({
+            version: 1,
+            theme: 'light',
+        })
+    })
+
+    it('keeps a field parseSettingsOverride would drop, since it merges onto the raw document', () => {
+        expect(JSON.parse(withTheme('{"version":1,"madeUpField":7}', 'dark'))).toEqual({
+            version: 1,
+            madeUpField: 7,
+            theme: 'dark',
+        })
+    })
+
+    it('normalises a document carrying some other version to version 1', () => {
+        expect(JSON.parse(withTheme('{"version":2,"formatOnSave":false}', 'dark'))).toEqual({
+            version: 1,
+            formatOnSave: false,
+            theme: 'dark',
+        })
     })
 })
 
