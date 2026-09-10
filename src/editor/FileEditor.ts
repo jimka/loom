@@ -26,12 +26,6 @@ const PREVIEW_GLYPH = 'eye'
  *  inside the band's fixed height. */
 const PREVIEW_LABEL = 'Preview'
 
-/** The label prefix marking a temp tab. A prefix, not a suffix like the dirty
- *  `" •"`: the tab strip caps a tab's width (`Settings.tabMaxWidthPx`, see
- *  `src/data/settings.ts`) and ellipsises the label's tail, so a long file
- *  name would swallow a trailing mark. */
-const TEMPORARY_LABEL_PREFIX: string = '~'
-
 /** Constructor parameters for {@link FileEditor}. */
 export interface FileEditorParams {
     /** The file's absolute path on disk, or `null` for a buffer never yet saved. */
@@ -47,8 +41,8 @@ export interface FileEditorParams {
 /**
  * One open file: a breadcrumb band NORTH of a `CodeEditor`, stacked via a
  * `Border` layout, plus the file's path. `EditorController` addresses `Tab`
- * operations (`setTabName`, `closeTab`, `getActiveContent`) through this
- * wrapper, never the bare editor.
+ * operations (`setTabName`, `setTabItalic`, `closeTab`, `getActiveContent`)
+ * through this wrapper, never the bare editor.
  *
  * The dirty flag is the wrapped `CodeEditor`'s own — it is not tracked here.
  * `Component`'s parent-to-child relay folds the editor's flag up through
@@ -56,9 +50,10 @@ export interface FileEditorParams {
  * not declare an `isDirty()` override.
  *
  * A file may also occupy the tab strip's one temp tab, tracked here as
- * `_temporary` and folded into {@link getLabel}. `EditorController` is the
- * sole owner of the "at most one" rule — it sets the flag via
- * {@link setTemporary} and never lets more than one open file carry it.
+ * `_temporary`. `EditorController` reads it back through {@link isTemporary}
+ * to drive the tab's italic styling. `EditorController` is the sole owner of
+ * the "at most one" rule — it sets the flag via {@link setTemporary} and
+ * never lets more than one open file carry it.
  */
 class FileEditor extends Container {
     private _path: string | null
@@ -321,17 +316,8 @@ class FileEditor extends Container {
         this._temporary = value
     }
 
-    /**
-     * The tab label: the display name, prefixed with `"~"` while the tab is
-     * temporary and suffixed with `" •"` while the document is dirty. The two
-     * marks never appear together — the first edit pins a temp tab, so a
-     * temporary file is always clean.
-     */
+    /** The tab label: the display name, suffixed with `" •"` while the document is dirty. */
     getLabel(): string {
-        if (this._temporary) {
-            return `${TEMPORARY_LABEL_PREFIX}${this._name}`
-        }
-
         return this.isDirty() ? `${this._name} •` : this._name
     }
 

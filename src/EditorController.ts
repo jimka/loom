@@ -472,8 +472,9 @@ class EditorController {
 
     /**
      * Builds a `FileEditor` for `path`/`text`, adds its tab, and records it in
-     * the open-file registry. Does **not** activate the new tab — the caller
-     * decides that, since {@link restoreFiles} adds several tabs before
+     * the open-file registry. Paints the new tab italic when it is the strip's
+     * temp tab, upright otherwise. Does **not** activate the new tab — the
+     * caller decides that, since {@link restoreFiles} adds several tabs before
      * activating any of them.
      *
      * @param path - The file's path.
@@ -488,6 +489,16 @@ class EditorController {
         file.onDirtyChange(() => this.handleDirtyChange(file))
         file.getEditor().on('cursorchange', () => this.handleCursorChange(file))
         this.tabs.addTab(file, file.getLabel(), { closeable: true, glyph: glyphNameForPath(path) })
+
+        // `addTab` only enqueues `file` as a container child; `Tab` promotes it
+        // to an addressable entry during its own next layout pass (scheduled,
+        // not synchronous — see `Component`'s rAF-coalesced layout queue), so
+        // the italic call below would silently miss it without this flush.
+        // `setActiveContent` has the same race but shields it with a
+        // `_pendingActiveContent` fallback; the call below has no such
+        // fallback, so the caller must force the pass itself.
+        this.tabs.flushLayout()
+        this.tabs.getTab().setTabItalic(file, temporary)
         this._openFiles.push(file)
 
         return file
@@ -815,7 +826,8 @@ class EditorController {
     /**
      * Pins `file`'s tab, so a later temporary open leaves it alone, and records it
      * in the recent-files list — reaching this point means the user did something
-     * deliberate with the file. A no-op on an already-pinned tab.
+     * deliberate with the file. Turns the tab upright. A no-op on an
+     * already-pinned tab.
      *
      * @param file - The open file whose tab to pin.
      */
@@ -833,6 +845,7 @@ class EditorController {
         }
 
         this.tabs.getTab().setTabName(file, file.getLabel())
+        this.tabs.getTab().setTabItalic(file, false)
     }
 
     /**
@@ -934,7 +947,8 @@ class EditorController {
      * synchronously, which would otherwise pin the strip's temp tab and record
      * the file as recently used for a change the user did not make — clearing
      * the flag first makes `pinTab`'s own already-pinned early-out fire
-     * instead, so restoring it afterwards fully restores the tab's state.
+     * instead, so restoring it afterwards fully restores the tab's state,
+     * including its italic styling, before either is repainted.
      *
      * @param file - The open file to reload.
      * @param diskText - The file's freshly read disk content.
@@ -946,6 +960,7 @@ class EditorController {
         file.adoptDiskText(diskText)
         file.setTemporary(wasTemporary)
         this.tabs.getTab().setTabName(file, file.getLabel())
+        this.tabs.getTab().setTabItalic(file, file.isTemporary())
         this.statusBar.setMessage(`Reloaded ${file.getLabel()}`, STATUS_MESSAGE_DURATION_MS)
     }
 
