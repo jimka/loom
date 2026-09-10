@@ -100,6 +100,8 @@ const EXPLORER_PREFERRED_SIZE = { width: 300, height: 0 }
 interface MenuBarActions extends AcceleratorActions {
     /** Whether a file is currently active — greys out the per-file items when not. */
     hasActiveFile: () => boolean
+    /** Prompts for a line number and jumps the active file's caret there. */
+    onGoToLine: () => void
     /** Whether the active file needs saving — the Save item is greyed out when not. */
     canSaveActive: () => boolean
     /** Recently opened project folders, most-recent first — read by the Open Recent submenu. */
@@ -339,6 +341,7 @@ class EditorShell extends Container {
             onCloseFile: () => controller.closeActive(),
             onFormat: () => { void controller.formatActive() },
             onFind: () => controller.findInActive(),
+            onGoToLine: () => { void controller.goToLineInActive() },
             onFindInFiles: revealSearchView,
             onToggleExplorer: () => split.setPaneCollapsed(EXPLORER_PANE_INDEX, !split.isPaneCollapsed(EXPLORER_PANE_INDEX)),
             onExit: () => { void controller.exitApp() },
@@ -725,6 +728,7 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
             { label: 'Edit', glyph: 'code', items: () => [
                 { text: 'Find…', glyph: 'magnifying-glass', shortcut: FIND_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onFind },
                 { text: 'Find in Files…', glyph: 'magnifying-glass', shortcut: FIND_IN_FILES_SHORTCUT, enabled: actions.hasProjectRoot(), action: actions.onFindInFiles },
+                { text: 'Go to Line…', glyph: 'list-ol', enabled: actions.hasActiveFile(), action: actions.onGoToLine },
                 { separator: true },
                 { text: 'Format Document', glyph: 'pen-to-square', shortcut: FORMAT_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onFormat },
             ] },

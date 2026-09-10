@@ -20,12 +20,6 @@ nothing below has a plan yet.
 - **Regular-expression and match-case project search.** The Search view
   matches a case-insensitive plain substring today; the in-file find panel's
   *regexp* and *match case* toggles have no counterpart there yet.
-- **Go to Line, and selection metrics in the status bar.** The bar reports the caret's line,
-  column, and document position but nothing acts on them: there is no *Go to Line* command, the
-  readout is not clickable, and it reports no selected-character or selected-line count.
-  `src/editor/editorSearch.ts`'s `revealRange` now positions the caret through the live-`EditorView`
-  seam the find panel uses, so the library-API blocker is gone — what's left is a prompt for the
-  line number and a call into it.
 
 ## Medium
 

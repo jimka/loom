@@ -15,6 +15,7 @@ const actions = (over: Partial<PaletteCommandActions> = {}): PaletteCommandActio
     onCloseFile: () => {},
     onFormat: () => {},
     onFind: () => {},
+    onGoToLine: () => {},
     hasProjectRoot: () => false,
     onFindInFiles: () => {},
     isShowingHidden: () => false,
@@ -36,22 +37,22 @@ const findCommand = (commands: PaletteCommand[], id: string): PaletteCommand => 
 }
 
 describe('buildPaletteCommands', () => {
-    it('returns all twelve commands in a fixed order when nothing is available', () => {
+    it('returns all thirteen commands in a fixed order when nothing is available', () => {
         const commands = buildPaletteCommands(actions())
 
         expect(commands.map(c => c.id)).toEqual([
             'new-file', 'open-folder', 'toggle-explorer', 'exit',
-            'save', 'save-as', 'close-file', 'find', 'format-document',
+            'save', 'save-as', 'close-file', 'find', 'go-to-line', 'format-document',
             'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme',
         ])
     })
 
-    it('returns the same twelve ids in the same order when everything is available', () => {
+    it('returns the same thirteen ids in the same order when everything is available', () => {
         const commands = buildPaletteCommands(actions({ canSaveActive: () => true, hasActiveFile: () => true }))
 
         expect(commands.map(c => c.id)).toEqual([
             'new-file', 'open-folder', 'toggle-explorer', 'exit',
-            'save', 'save-as', 'close-file', 'find', 'format-document',
+            'save', 'save-as', 'close-file', 'find', 'go-to-line', 'format-document',
             'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme',
         ])
     })
@@ -59,7 +60,7 @@ describe('buildPaletteCommands', () => {
     it('marks the per-file commands disabled when no file is active and saving is unavailable', () => {
         const commands = buildPaletteCommands(actions())
 
-        for (const id of ['save', 'save-as', 'close-file', 'find', 'format-document']) {
+        for (const id of ['save', 'save-as', 'close-file', 'find', 'go-to-line', 'format-document']) {
             expect(findCommand(commands, id).enabled).toBe(false)
         }
     })
@@ -77,7 +78,7 @@ describe('buildPaletteCommands', () => {
 
         expect(findCommand(commands, 'save').enabled).toBe(false)
 
-        for (const id of ['save-as', 'close-file', 'find', 'format-document']) {
+        for (const id of ['save-as', 'close-file', 'find', 'go-to-line', 'format-document']) {
             expect(findCommand(commands, id).enabled).toBe(true)
         }
     })
@@ -130,6 +131,18 @@ describe('buildPaletteCommands', () => {
         findCommand(commands, 'save').run()
 
         expect(onSave).toHaveBeenCalledOnce()
+    })
+
+    it('lists Go to Line with no shortcut, and a working run callback while disabled', () => {
+        const onGoToLine = vi.fn()
+        const command = findCommand(buildPaletteCommands(actions({ onGoToLine })), 'go-to-line')
+
+        expect(command.title).toBe('Go to Line…')
+        expect(command.shortcut).toBeUndefined()
+
+        command.run()
+
+        expect(onGoToLine).toHaveBeenCalledOnce()
     })
 
     it('omits Find in Files outright with no project root open', () => {

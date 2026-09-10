@@ -784,3 +784,45 @@ bindings is worth a decision.
     `typescript-ui` worktree that no longer exists, and the `dist/` in that repository's main
     checkout predates `CodeEditor.revealRange` — the method `editorSearch.ts` already calls. Step 1
     catches both conditions with one grep against the artifact Loom really resolves.
+
+---
+
+## Implementation Notes
+
+- **`## Open Questions` was resolved before this run started, so step 14 shipped in the same run
+  as steps 1–12 instead of waiting for a separate one.** By the time implementation began,
+  `node_modules/@jimka/typescript-ui` already resolved to a `typescript-ui` checkout carrying
+  `CodeEditor.getSelection(): CodeEditorSelection` (`{ characterCount, lineCount }`) and a
+  `"selectionchange"` event — exactly the shape this plan's Open Questions section anticipated
+  ("Step 14's wiring is written to suit either"). Step 13's "Stop" and the wait for a human answer
+  were accordingly skipped: the human answer was already in hand. The secondary, non-blocking
+  finding in `## Open Questions` — CodeMirror's unthemed `gotoLine` panel occupying `Mod-Alt-g` —
+  was left out of scope here too, as that finding itself specifies.
+- **The `## Verification` section's `grep -c 'setAutoMeasure(false)' src/EditorController.ts —
+  expect 1` was written for a go-to-line-only run.** With step 14 also shipped, `_selectionText`
+  gets the identical measure-once treatment `_cursorText` does, so the count is now correctly `2`,
+  not `1`.
+- **`## Documentation Impact`'s TODO.md replacement text assumed only the go-to-line half would
+  ship this run.** Since both halves shipped, the backlog entry was retired outright instead of
+  reworded down to the selection-only remainder the plan specifies — matching this repository's own
+  "document X and retire its backlog entry" convention for a fully-resolved item (see e.g.
+  `9799e5e`, `b8214aa`) rather than leaving a stub that would need a second edit later.
+- **The plan's two halves landed as two code commits and two documentation commits**, not one of
+  each, since `## Overview` and `## Ordered Implementation Steps` frame Go to Line and selection
+  metrics as separately shippable ("Everything above is shippable on its own" at step 12) rather
+  than a single functionality — matching the `commit` skill's one-commit-per-functionality rule.
+- **`src/editor/lineNumber.ts`'s `countLines` does not match step 2's "exactly as given" listing.**
+  The audit round found that the plan's own loop-based implementation (incrementing on `'\n'` alone)
+  undercounts a lone-`\r` line ending relative to CodeMirror's actual default splitter
+  (`/\r\n?|\n/`, `@codemirror/state`'s `DefaultSplit`) — a bug this repository had already solved
+  once, in `src/data/projectSearch.ts`'s `LINE_SPLIT` constant, which the plan's own `lineNumber.ts`
+  listing didn't reuse or mirror. The shipped file adds a local `LINE_SPLIT` constant (mirroring,
+  not importing, `projectSearch.ts`'s — importing would add an import where step 2's own check
+  expects zero) and reimplements `countLines` as `text.split(LINE_SPLIT).length`, plus a test for
+  the lone-`\r` case. The module's public API (`countLines(text: string): number`) is unchanged.
+- **`src/EditorController.ts`'s selection-readout construction does not match step 14's inline
+  `selectionLabel({ characters: 9_999_999, lines: 99_999 })` literal.** The audit round found this
+  undocumented relative to the file's own `WIDEST_CURSOR_POSITION` precedent (a named, doc-commented
+  constant for the identical purpose, immediately above it). The shipped code instead adds a
+  `WIDEST_SELECTION` constant, documented the same way and derived from
+  `WIDEST_CURSOR_POSITION.offset`/`.line` rather than repeating their values as new literals.

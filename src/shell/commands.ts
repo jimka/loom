@@ -45,6 +45,7 @@ export interface PaletteCommandActions {
     onCloseFile: () => void
     onFormat: () => void
     onFind: () => void
+    onGoToLine: () => void
     hasProjectRoot: () => boolean
     onFindInFiles: () => void
     isShowingHidden: () => boolean
@@ -81,6 +82,7 @@ export function buildPaletteCommands(actions: PaletteCommandActions): PaletteCom
         { id: 'save-as',         title: 'Save As…',        shortcut: SAVE_AS_SHORTCUT,         enabled: hasActiveFile, run: actions.onSaveAs },
         { id: 'close-file',      title: 'Close File',      shortcut: CLOSE_FILE_SHORTCUT,      enabled: hasActiveFile, run: actions.onCloseFile },
         { id: 'find',            title: 'Find…',           shortcut: FIND_SHORTCUT,            enabled: hasActiveFile, run: actions.onFind },
+        { id: 'go-to-line',      title: 'Go to Line…',     enabled: hasActiveFile, run: actions.onGoToLine },
         { id: 'format-document', title: 'Format Document', shortcut: FORMAT_SHORTCUT,          enabled: hasActiveFile, run: actions.onFormat },
         {
             id: 'toggle-hidden-files',
