@@ -87,6 +87,9 @@ class SearchPanel extends Container {
      *  callbacks compare against the value they captured at their own start
      *  to tell whether a later run has since superseded them. */
     private _runId = 0
+    /** Set while a coalesced tree rebuild is scheduled for the next frame —
+     *  see {@link appendMatches}. `null` when no rebuild is pending. */
+    private _pendingFlush: number | null = null
 
     constructor(params: SearchPanelParams) {
         const queryField = new TextField({ placeholder: QUERY_PLACEHOLDER })
@@ -109,9 +112,12 @@ class SearchPanel extends Container {
         super({
             layoutManager: new VBox({ spacing: 4, stretching: true }),
             insets: new Insets(PANEL_PAD, PANEL_PAD, PANEL_PAD, PANEL_PAD),
+            // statusText sits directly under the query field rather than
+            // under the tree: pinned there it never rides next to the tree's
+            // own scrollbar, which crowded it when results overflowed.
             // weight: 1 makes the tree absorb the panel's leftover height,
             // the same role it plays in CommandPalette's own VBox.
-            components: [queryField, { component: resultsTree, constraints: { weight: 1 } }, statusText],
+            components: [queryField, statusText, { component: resultsTree, constraints: { weight: 1 } }],
             // backgroundColor matches FileTree's own tree — both rail views
             // should read as the same surface — applied to the whole panel
             // rather than just resultsTree so the query field and status
@@ -223,6 +229,12 @@ class SearchPanel extends Container {
             return
         }
 
+        // Forces the last frame's coalesced batches onto the tree now, rather
+        // than leaving them for whatever frame the pending rAF lands on — the
+        // status line below must not report a match count the tree hasn't
+        // caught up to yet.
+        this.flushResults()
+
         this.paintStatus({
             phase: outcome.completion, matchCount: outcome.matchCount,
             fileCount: outcome.fileCount, filesSearched: outcome.filesSearched,
@@ -230,21 +242,51 @@ class SearchPanel extends Container {
     }
 
     /**
-     * Appends one file's matches to the results tree, rebuilding the whole
-     * node tree from {@link _matches} and re-expanding every branch — see
-     * the plan's `## Architecture Decisions` for why a full rebuild plus
-     * `expandAll()` replaces the old list's incremental append.
+     * Appends one file's matches to {@link _matches} and schedules a tree
+     * rebuild, coalesced to at most once per frame via {@link flushResults} —
+     * see the plan's `## Architecture Decisions` for why a full rebuild plus
+     * `expandAll()` replaces the old list's incremental append. Rebuilding on
+     * every single batch made a broad query that touches many distinct files
+     * visibly stall: `searchResultNodes` re-groups and re-sorts the whole
+     * accumulated match set from scratch each time, so per-batch cost grows
+     * with every match already appended, and the total cost across a run
+     * grows quadratically with the number of matching files. Coalescing
+     * batches that land within the same frame keeps the rebuild count tied to
+     * elapsed time instead of file count, without losing the progressive
+     * streamed-in feel — most frames still get at least one rebuild.
      *
      * @param batch - One file's matches, never empty.
      */
     private appendMatches(batch: SearchMatch[]): void {
         this._matches = [...this._matches, ...batch]
+
+        if (this._pendingFlush === null) {
+            this._pendingFlush = requestAnimationFrame(() => {
+                this._pendingFlush = null
+                this.flushResults()
+            })
+        }
+    }
+
+    /** Rebuilds the results tree from {@link _matches} right now, cancelling
+     *  any frame-coalesced rebuild {@link appendMatches} still had pending. */
+    private flushResults(): void {
+        this.cancelPendingFlush()
         this._resultsTree.setNodes(searchResultNodes(this._matches, this._root))
         this._resultsTree.expandAll()
     }
 
+    /** Cancels a rebuild {@link appendMatches} scheduled for the next frame, if any. */
+    private cancelPendingFlush(): void {
+        if (this._pendingFlush !== null) {
+            cancelAnimationFrame(this._pendingFlush)
+            this._pendingFlush = null
+        }
+    }
+
     /** Empties the matches and the tree — shared by {@link runSearch} and {@link setProjectRoot}. */
     private clearResults(): void {
+        this.cancelPendingFlush()
         this._matches = []
         this._resultsTree.setNodes([])
     }
@@ -298,11 +340,13 @@ class SearchPanel extends Container {
         this._statusText.setText(searchSummaryText(status))
     }
 
-    /** Bumps {@link _runId} before tearing down, so a walk in flight stops
-     *  reporting into a torn-down panel — the shape `FileEditor.destructor`
-     *  uses for its own pending preview refresh. */
+    /** Bumps {@link _runId} and cancels a pending frame-coalesced rebuild
+     *  before tearing down, so a walk (or a scheduled {@link flushResults})
+     *  in flight stops reporting into a torn-down panel — the shape
+     *  `FileEditor.destructor` uses for its own pending preview refresh. */
     protected destructor(): void {
         this._runId += 1
+        this.cancelPendingFlush()
         super.destructor()
     }
 }
