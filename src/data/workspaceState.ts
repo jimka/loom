@@ -3,8 +3,9 @@
 // Tauri-backed read/write this module's shape feeds; `src/data/session.ts`
 // holds the app-wide counterpart this module's `WorkspaceState` overlays.
 import { isUnderRoot } from './paths'
-import type { LayoutSize, LayoutSizeUnit } from '@jimka/typescript-ui/layout'
+import type { LayoutSize, LayoutSizeUnit, LayoutState } from '@jimka/typescript-ui/layout'
 import type { SessionState, ExplorerView } from './session'
+import { readLayoutState } from './editorLayout'
 
 /** The workspace schema's only valid `unit`s — mirrors {@link LayoutSizeUnit}. */
 const VALID_LAYOUT_SIZE_UNITS: readonly LayoutSizeUnit[] = ['px', 'ratio']
@@ -32,6 +33,8 @@ export interface WorkspaceState {
     explorerView: ExplorerView
     /** This project's Files-view accordion section open flags, in child order. */
     explorerSectionsOpen: boolean[]
+    /** The editor dock's arrangement with panel ids rewritten to file paths, or `null` when none was captured. */
+    editorLayout: LayoutState | null
 }
 
 /** A fresh, empty workspace state — what a project with no `.loom/workspace.json` yet gets once one is written. */
@@ -45,6 +48,7 @@ export function emptyWorkspaceState(): WorkspaceState {
         collapsedPanes: [],
         explorerView: 'files',
         explorerSectionsOpen: [],
+        editorLayout: null,
     }
 }
 
@@ -75,6 +79,7 @@ export function parseWorkspaceState(text: string): WorkspaceState | null {
         collapsedPanes: readNumberArray(doc.collapsedPanes) ?? empty.collapsedPanes,
         explorerView: readExplorerView(doc.explorerView) ?? empty.explorerView,
         explorerSectionsOpen: readBooleanArray(doc.explorerSectionsOpen) ?? empty.explorerSectionsOpen,
+        editorLayout: readLayoutState(doc.editorLayout) ?? empty.editorLayout,
     }
 }
 
@@ -109,6 +114,7 @@ export function workspaceStateFromSession(session: SessionState): WorkspaceState
         collapsedPanes: session.collapsedPanes,
         explorerView: session.explorerView,
         explorerSectionsOpen: session.explorerSectionsOpen,
+        editorLayout: session.editorLayout,
     }
 }
 
@@ -140,6 +146,7 @@ export function applyWorkspaceOverlay(session: SessionState, workspace: Workspac
         collapsedPanes: workspace.collapsedPanes,
         explorerView: workspace.explorerView,
         explorerSectionsOpen: workspace.explorerSectionsOpen,
+        editorLayout: workspace.editorLayout,
     }
 }
 

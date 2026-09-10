@@ -29,6 +29,8 @@ const PREVIEW_LABEL = 'Preview'
 
 /** Constructor parameters for {@link FileEditor}. */
 export interface FileEditorParams {
+    /** The dock panel id minted for this buffer, fixed for its whole life. */
+    panelId: string
     /** The file's absolute path on disk, or `null` for a buffer never yet saved. */
     path: string | null
     /** The initial display name: `baseName(path)` for a real file, `"Untitled-N"` for a path-less buffer. */
@@ -41,9 +43,10 @@ export interface FileEditorParams {
 
 /**
  * One open file: a breadcrumb band NORTH of a `CodeEditor`, stacked via a
- * `Border` layout, plus the file's path. `EditorController` addresses `Tab`
- * operations (`setTabName`, `setTabItalic`, `setTabModified`, `closeTab`,
- * `getActiveContent`) through this wrapper, never the bare editor.
+ * `Border` layout, plus the file's path. `EditorController` addresses the
+ * editor dock's panel-id-keyed operations (`setPanelTitle`, `setPanelItalic`,
+ * `setPanelModified`, `removePanel`, `focusPanel`) through this wrapper's
+ * {@link getPanelId}, never the bare editor.
  *
  * The dirty flag is the wrapped `CodeEditor`'s own — it is not tracked here.
  * `Component`'s parent-to-child relay folds the editor's flag up through
@@ -57,6 +60,7 @@ export interface FileEditorParams {
  * never lets more than one open file carry it.
  */
 class FileEditor extends Container {
+    private readonly _panelId: string
     private _path: string | null
     private _name: string
     private _temporary: boolean = false
@@ -95,6 +99,7 @@ class FileEditor extends Container {
             ],
         })
 
+        this._panelId = params.panelId
         this._path = params.path
         this._name = params.name
         this._syncedText = params.text
@@ -201,6 +206,11 @@ class FileEditor extends Container {
         }
 
         this._breadcrumbs.setAction(available ? this._previewToggle : null)
+    }
+
+    /** The dock panel id this buffer's tab is addressed by. */
+    getPanelId(): string {
+        return this._panelId
     }
 
     /** The file's absolute path on disk, or `null` while it has never been saved. */

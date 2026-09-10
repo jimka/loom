@@ -1,5 +1,4 @@
 import { Container, callable } from '@jimka/typescript-ui/core'
-import type { Component } from '@jimka/typescript-ui/core'
 import { Insets, Placement } from '@jimka/typescript-ui/primitive'
 import { Accordion, AccordionConstraints, Border as BorderLayout, Card, Split } from '@jimka/typescript-ui/layout'
 import type { SectionToggleCallback } from '@jimka/typescript-ui/layout'
@@ -36,12 +35,11 @@ import {
 } from './shortcuts'
 import type { AcceleratorActions } from './shortcuts'
 
-/** The explorer pane's (rail plus content) index in the shell's `Split` — 0, the other pane being the editor deck (tab strip plus welcome screen). */
+/** The explorer pane's (rail plus content) index in the shell's `Split` — 0, the other pane being the editor dock. */
 const EXPLORER_PANE_INDEX = 0
 
-/** The `Card` deck page ids the editor pane switches between. */
-const EDITOR_PAGE_ID = 'editor-tabs'
-const WELCOME_PAGE_ID = 'welcome-screen'
+/** The welcome screen's tab label, shown as the dock's one non-closeable cell while it is empty. */
+const WELCOME_TAB_LABEL = 'Welcome'
 
 /** The properties section's header label. */
 const PROPERTIES_SECTION_LABEL = 'Properties'
@@ -138,8 +136,9 @@ interface MenuBarActions extends AcceleratorActions {
  * The app shell: a `Border`-laid `Container` with the menu bar NORTH, a
  * horizontal `Split` (the explorer pane — an icon rail beside a `Card`-switched
  * content area showing either the Files view (file tree over properties
- * panel) or the Search view — beside the editor deck — the tab strip and the
- * welcome screen, one visible at a time) CENTER, and the status bar SOUTH —
+ * panel) or the Search view — beside the editor dock, one or more tab groups
+ * the user can split, rearrange, and tear off, showing the welcome screen as
+ * its one non-closeable cell while empty) CENTER, and the status bar SOUTH —
  * the same shape as `../../sqladmin/frontend/src/shell/SqlAdminShell.ts`.
  */
 class EditorShell extends Container {
@@ -199,7 +198,10 @@ class EditorShell extends Container {
             recentProjects: controller.getRecentProjects(),
             onOpenRecentProject: (path: string) => { void this.confirmAndOpenProject(path) },
         })
-        const deck = buildEditorDeck(controller, welcome)
+
+        welcome.setName(WELCOME_TAB_LABEL)
+        controller.dock.setEmptyContent(welcome)
+
         const split = new Split({
             orientation: 'horizontal',
             paneSizes: session.paneSizes,
@@ -298,7 +300,7 @@ class EditorShell extends Container {
         })
 
         splitBody.addComponent(explorer, { weight: 0 })
-        splitBody.addComponent(deck, { weight: 1 })
+        splitBody.addComponent(controller.dock, { weight: 1 })
 
         /**
          * Retitles the tree section from `root` by rebuilding the whole
@@ -590,33 +592,6 @@ class EditorShell extends Container {
  */
 async function listWorkspaceFiles(root: string | null): Promise<string[]> {
     return root === null ? [] : listFilesRecursive(root, listDirectory, tryReadTextFile, pathExists)
-}
-
-/**
- * The editor pane's `Card` deck: the tab strip and the welcome screen, one
- * visible at a time. `controller.setEmptyStateListener` reports the current
- * state as it registers, which picks the page the deck opens on — no
- * separate seeding call is needed.
- *
- * @param controller - Supplies the empty-state signal that drives the toggle.
- * @param welcome - The welcome screen page.
- * @returns The deck component to place in the split's editor pane.
- */
-function buildEditorDeck(controller: EditorController, welcome: WelcomeScreen): Component {
-    const card = new Card()
-    const deck = Container({ layoutManager: card })
-
-    controller.tabs.setId(EDITOR_PAGE_ID)
-    welcome.setId(WELCOME_PAGE_ID)
-
-    deck.addComponent(controller.tabs)
-    deck.addComponent(welcome)
-
-    controller.setEmptyStateListener(empty => {
-        card.setVisibleComponentId(empty ? WELCOME_PAGE_ID : EDITOR_PAGE_ID)
-    })
-
-    return deck
 }
 
 /**

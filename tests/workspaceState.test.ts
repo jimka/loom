@@ -3,6 +3,7 @@ import { emptyWorkspaceState, parseWorkspaceState, serializeWorkspaceState, work
 import type { WorkspaceState } from '../src/data/workspaceState'
 import { emptySession } from '../src/data/session'
 import type { SessionState } from '../src/data/session'
+import type { LayoutState } from '@jimka/typescript-ui/layout'
 
 describe('emptyWorkspaceState', () => {
     it('returns a workspace state with every field at its empty default', () => {
@@ -15,6 +16,7 @@ describe('emptyWorkspaceState', () => {
             collapsedPanes: [],
             explorerView: 'files',
             explorerSectionsOpen: [],
+            editorLayout: null,
         })
     })
 })
@@ -109,6 +111,19 @@ describe('parseWorkspaceState', () => {
     it('drops explorerSectionsOpen whole when one entry has the wrong type', () => {
         expect(parseWorkspaceState('{"version":1,"explorerSectionsOpen":[0,1]}')).toEqual(emptyWorkspaceState())
     })
+
+    it('accepts a well-shaped editorLayout', () => {
+        const editorLayout: LayoutState = { version: 1, root: { kind: 'panel', panelId: '/p/a.ts' }, windows: [] }
+
+        expect(parseWorkspaceState(JSON.stringify({ version: 1, editorLayout }))).toEqual({
+            ...emptyWorkspaceState(),
+            editorLayout,
+        })
+    })
+
+    it('discards editorLayout whole when it is not a well-shaped LayoutState', () => {
+        expect(parseWorkspaceState('{"version":1,"editorLayout":"nope"}')).toEqual(emptyWorkspaceState())
+    })
 })
 
 describe('serializeWorkspaceState', () => {
@@ -122,6 +137,7 @@ describe('serializeWorkspaceState', () => {
             collapsedPanes: [1],
             explorerView: 'search',
             explorerSectionsOpen: [false, true],
+            editorLayout: { version: 1, root: { kind: 'panel', panelId: '/p/src/main.ts' }, windows: [] },
         }
 
         expect(parseWorkspaceState(serializeWorkspaceState(state))).toEqual(state)
@@ -190,6 +206,16 @@ describe('workspaceStateFromSession', () => {
             explorerSectionsOpen: [true, false],
         })
     })
+
+    it('copies editorLayout verbatim, not filtered to the root', () => {
+        const editorLayout: LayoutState = { version: 1, root: { kind: 'panel', panelId: '/q/outside.ts' }, windows: [] }
+        const session: SessionState = { ...emptySession(), projectRoot: '/p', editorLayout }
+
+        expect(workspaceStateFromSession(session)).toEqual({
+            ...emptyWorkspaceState(),
+            editorLayout,
+        })
+    })
 })
 
 describe('applyWorkspaceOverlay', () => {
@@ -206,7 +232,9 @@ describe('applyWorkspaceOverlay', () => {
         expect(applyWorkspaceOverlay(session, workspace)).toBe(session)
     })
 
-    it('replaces the seven overlay fields with workspace\'s, leaving version and projectRoot unchanged', () => {
+    it('replaces the eight overlay fields with workspace\'s, leaving version and projectRoot unchanged', () => {
+        const oldLayout: LayoutState = { version: 1, root: { kind: 'panel', panelId: '/p/old.ts' }, windows: [] }
+        const newLayout: LayoutState = { version: 1, root: { kind: 'panel', panelId: '/p/a.ts' }, windows: [] }
         const session: SessionState = {
             version: 1,
             projectRoot: '/p',
@@ -219,6 +247,7 @@ describe('applyWorkspaceOverlay', () => {
             recentFiles: [],
             explorerView: 'files',
             explorerSectionsOpen: [true, true],
+            editorLayout: oldLayout,
         }
         const workspace: WorkspaceState = {
             version: 1,
@@ -229,6 +258,7 @@ describe('applyWorkspaceOverlay', () => {
             collapsedPanes: [0],
             explorerView: 'search',
             explorerSectionsOpen: [false, true],
+            editorLayout: newLayout,
         }
 
         expect(applyWorkspaceOverlay(session, workspace)).toEqual({
@@ -243,6 +273,7 @@ describe('applyWorkspaceOverlay', () => {
             recentFiles: [],
             explorerView: 'search',
             explorerSectionsOpen: [false, true],
+            editorLayout: newLayout,
         })
     })
 

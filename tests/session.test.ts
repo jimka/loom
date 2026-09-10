@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { emptySession, parseSession, serializeSession, expansionOrder, withRecent, sectionOpenFlags, MAX_RECENT_ENTRIES } from '../src/data/session'
 import type { SessionState } from '../src/data/session'
+import type { LayoutState } from '@jimka/typescript-ui/layout'
 
 describe('emptySession', () => {
     it('returns a session with every field at its empty default', () => {
@@ -16,6 +17,7 @@ describe('emptySession', () => {
             recentFiles: [],
             explorerView: 'files',
             explorerSectionsOpen: [],
+            editorLayout: null,
         })
     })
 })
@@ -83,6 +85,7 @@ describe('parseSession', () => {
             recentFiles: ['/p/src/main.ts', '/p/README.md'],
             explorerView: 'search',
             explorerSectionsOpen: [false, true],
+            editorLayout: { version: 1, root: { kind: 'panel', panelId: '/p/src/main.ts' }, windows: [] },
         }
 
         expect(parseSession(JSON.stringify(state))).toEqual(state)
@@ -178,6 +181,34 @@ describe('parseSession', () => {
     it('takes the empty default when explorerSectionsOpen is not an array', () => {
         expect(parseSession('{"version":1,"explorerSectionsOpen":false}')).toEqual(emptySession())
     })
+
+    it('takes editorLayout: null when the field is absent', () => {
+        expect(parseSession('{"version":1}')).toEqual(emptySession())
+    })
+
+    it('accepts a well-shaped editorLayout', () => {
+        const editorLayout: LayoutState = { version: 1, root: { kind: 'panel', panelId: '/p/a.ts' }, windows: [] }
+
+        expect(parseSession(JSON.stringify({ version: 1, editorLayout }))).toEqual({
+            ...emptySession(),
+            editorLayout,
+        })
+    })
+
+    it('discards editorLayout whole on the wrong version, keeping every other field', () => {
+        const doc = { version: 1, editorLayout: { version: 2, root: { kind: 'panel', panelId: '/p/a.ts' }, windows: [] } }
+
+        expect(parseSession(JSON.stringify(doc))).toEqual(emptySession())
+    })
+
+    it('discards editorLayout whole when it is not an object, keeping other fields', () => {
+        const doc = { version: 1, editorLayout: 'nope', openFiles: ['/p/a.ts'] }
+
+        expect(parseSession(JSON.stringify(doc))).toEqual({
+            ...emptySession(),
+            openFiles: ['/p/a.ts'],
+        })
+    })
 })
 
 describe('serializeSession', () => {
@@ -194,6 +225,7 @@ describe('serializeSession', () => {
             recentFiles: ['/p/src/main.ts', '/p/README.md'],
             explorerView: 'search',
             explorerSectionsOpen: [false, true],
+            editorLayout: { version: 1, root: { kind: 'panel', panelId: '/p/src/main.ts' }, windows: [] },
         }
 
         expect(parseSession(serializeSession(state))).toEqual(state)

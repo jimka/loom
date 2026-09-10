@@ -6,15 +6,16 @@ The original plan lives in `typescript-ui`'s
 [`plans/implemented/code-editor-desktop-app.md`](../typescript-ui/plans/implemented/code-editor-desktop-app.md) —
 nothing below has a plan yet.
 
-## High
-- **Split-pane multi-file editing.** `Dock` is the natural upgrade path if
-  wanted later — it composes `Split` and `Tab` already, at the cost of
-  tear-off windows, a panel registry, and `DockRegion` drop targets that
-  phase one deliberately avoided.
 ## Medium
 
 - **IntelliSense / LSP** or any language service.
 - **Git integration**, including a dirty-vs-committed indicator in the tree.
+- **A *Split Editor* command.** Splitting the editor area is a drag gesture
+  only — `Dock` exposes no programmatic split, so there is no menu item,
+  palette command, or shortcut for it.
+- **Re-saving the dock layout on a gutter drag.** `Dock` emits nothing when
+  a split ratio changes, so a gutter drag inside the editor area is only
+  persisted at the next dock event or on exit.
 
 ## Low
 
@@ -30,10 +31,11 @@ nothing below has a plan yet.
   fallback; would need a second filesystem implementation no user runs.
 - **Code signing, auto-update, and a multi-platform bundle matrix** —
   `npm run tauri:build` currently produces an unsigned local bundle only.
-- **Multi-window / "open in new window."** Connects to an older idea from
-  this project's history: making `Dock`'s tear-off spawn a real Tauri OS
-  window instead of an in-page floating one — relevant now that an app
-  which could use it actually exists.
+- **Multi-window / "open in new window."** Dragging a tab off the editor
+  dock's strip already tears it off into an in-page floating window; what
+  remains is making that a real Tauri OS window instead — an older idea
+  from this project's history, relevant now that an app which could use it
+  actually exists.
 - **Merge the menu bar into the window's title bar** (VS Code/Discord-style,
   Windows/Linux only). Today the native OS title bar and Loom's own
   `MenuBar` (built in `EditorShell.ts`, NORTH of the content) render as two
@@ -84,6 +86,9 @@ nothing below has a plan yet.
   virtualization math) will pay a cost proportional to every open tab, not
   just the active one. The real fix would be giving `Tab` a `display: none`
   (or unmount) path for inactive content instead of `visibility: hidden`.
+  Split editor groups compound this rather than fixing it: each group's own
+  active editor is genuinely visible at once, so the cost above now scales
+  with the number of groups open, not just the number of tabs.
 - **A remembered tab outside the project root stays closed.** Launch
   restore grants the remembered project root and its subtree, nothing
   else, so a tab remembered from outside that root *and* outside

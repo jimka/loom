@@ -8,6 +8,7 @@ import type { SessionState, ExplorerView } from '../data/session'
 import { parseSession, serializeSession } from '../data/session'
 import type { WorkspaceState } from '../data/workspaceState'
 import { parseWorkspaceState, serializeWorkspaceState, workspaceStateFromSession } from '../data/workspaceState'
+import { panelOrder } from '../data/editorLayout'
 import { readSessionText, writeSessionText, readWorkspaceStateText, writeWorkspaceStateText } from '../data/workspace'
 import { isUnderRoot } from '../data/paths'
 
@@ -60,18 +61,20 @@ export async function loadWorkspaceState(root: string): Promise<WorkspaceState |
     return text === null ? null : parseWorkspaceState(text)
 }
 
-/** The current state of the tree, tabs, split, and explorer rail/sections. */
+/** The current state of the tree, editor dock, split, and explorer rail/sections. */
 export function captureSession(targets: SessionTargets): SessionState {
     const paneSizes = targets.split.getPaneSizes()
+    const editorLayout = targets.controller.captureEditorLayout()
 
     return {
         version: 1,
         projectRoot: targets.tree.getProjectRoot(),
         expandedDirs: targets.tree.getExpandedPaths(),
-        openFiles: targets.controller.getOpenFilePaths(),
+        openFiles: editorLayout === null ? [] : panelOrder(editorLayout),
         activeFile: targets.controller.getActiveFilePath(),
         paneSizes,
         collapsedPanes: paneSizes.map((_, index) => index).filter(index => targets.split.isPaneCollapsed(index)),
+        editorLayout,
         recentProjects: targets.controller.getRecentProjects(),
         recentFiles: targets.controller.getRecentFiles(),
         explorerView: targets.explorer.getExplorerView(),
@@ -104,7 +107,7 @@ export async function applySession(state: SessionState, targets: SessionTargets)
         }
     }
 
-    await targets.controller.restoreFiles(state.openFiles, state.activeFile)
+    await targets.controller.restoreFiles(state.openFiles, state.activeFile, state.editorLayout)
 }
 
 /**
@@ -152,8 +155,11 @@ export function installSessionAutosave(targets: SessionTargets): SessionAutosave
 
     targets.tree.on('expand', schedule)
     targets.tree.on('collapse', schedule)
-    targets.controller.tabs.getTab().on('activate', schedule)
-    targets.controller.tabs.getTab().on('tabclose', schedule)
+    targets.controller.dock.on('attach', schedule)
+    targets.controller.dock.on('detach', schedule)
+    targets.controller.dock.on('move', schedule)
+    targets.controller.dock.on('focus', schedule)
+    targets.controller.dock.on('close', schedule)
     targets.split.on('paneresize', schedule)
     targets.split.on('panecollapse', schedule)
 
