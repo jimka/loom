@@ -6,6 +6,7 @@ import type { TabCloseController } from '@jimka/typescript-ui/layout'
 import type { FormatOptions, CodeEditorCursorPosition } from '@jimka/typescript-ui/component/editor'
 import { FileEditor } from './editor/FileEditor'
 import { cursorLabel } from './editor/cursorLabel'
+import { selectionLabel } from './editor/selectionLabel'
 import { promptGoToLine } from './editor/goToLinePrompt'
 import { countLines } from './editor/lineNumber'
 import { languageForPath, hasFormatter } from './editor/languages'
@@ -38,6 +39,16 @@ const STATUS_MESSAGE_DURATION_MS = 2000
  */
 const WIDEST_CURSOR_POSITION: CodeEditorCursorPosition = { line: 99_999, column: 999, offset: 9_999_999 }
 
+/**
+ * A selection extent wide enough to size the status bar's selection readout
+ * once at startup, sized against the same two worst cases
+ * {@link WIDEST_CURSOR_POSITION} already establishes: a selected character
+ * count has the same ceiling as the caret's document offset (a 10MB document,
+ * selected end to end), and the number of lines a selection spans has the
+ * same ceiling as the caret's own line number.
+ */
+const WIDEST_SELECTION = { characters: WIDEST_CURSOR_POSITION.offset, lines: WIDEST_CURSOR_POSITION.line }
+
 /** How an {@link EditorController.openFile} request should treat the tab it lands in. */
 export type OpenMode = 'temporary' | 'permanent'
 
@@ -67,6 +78,7 @@ class EditorController {
      * role `_pendingOpens` plays for an in-flight open.
      */
     private readonly _resolvingExternal: Set<string> = new Set()
+    private readonly _selectionText: Text
     private readonly _cursorText: Link
     private readonly _languageText: Text
     private _recentProjects: string[] = []
@@ -88,6 +100,7 @@ class EditorController {
         })
 
         this.statusBar = new StatusBar()
+        this._selectionText = new Text('')
         this._cursorText = new Link('', {
             foregroundColor: 'var(--ts-ui-statusbar-color)',
             styleRules: [{ suffix: '', styles: { textDecoration: 'none' } }],
@@ -124,6 +137,25 @@ class EditorController {
 
         this._cursorText.setText('')
 
+        // `selectionchange` fires just as continuously during a selection drag
+        // as `cursorchange` does (see the comment above), so `_selectionText`
+        // gets the identical measure-once treatment against its own widest
+        // case, right-aligned so its slack merges into the flex spacer to its
+        // left rather than opening a stray gap before `_cursorText`.
+        this._selectionText.setText(selectionLabel(WIDEST_SELECTION))
+        this._selectionText.measure()
+
+        const selectionTextSize = this._selectionText.getPreferredSize()
+
+        if (selectionTextSize) {
+            this._selectionText.setPreferredSize(selectionTextSize)
+            this._selectionText.setAutoMeasure(false)
+            this._selectionText.setTextAlign('right')
+        }
+
+        this._selectionText.setText('')
+
+        this.statusBar.addRight(this._selectionText)
         this.statusBar.addRight(this._cursorText)
         this.statusBar.addRight(this._languageText)
 
@@ -395,6 +427,7 @@ class EditorController {
 
         file.onDirtyChange(() => this.handleDirtyChange(file))
         file.getEditor().on('cursorchange', () => this.handleCursorChange(file))
+        file.getEditor().on('selectionchange', () => this.handleSelectionChange(file))
         this.tabs.addTab(file, file.getName(), { closeable: true, glyph: glyphNameForPath(file.getName()) })
         this._openFiles.push(file)
         this.tabs.getTab().setActiveContent(file)
@@ -528,6 +561,7 @@ class EditorController {
         file.setTemporary(temporary)
         file.onDirtyChange(() => this.handleDirtyChange(file))
         file.getEditor().on('cursorchange', () => this.handleCursorChange(file))
+        file.getEditor().on('selectionchange', () => this.handleSelectionChange(file))
         this.tabs.addTab(file, file.getName(), { closeable: true, glyph: glyphNameForPath(path) })
 
         // `addTab` only enqueues `file` as a container child; `Tab` promotes it
@@ -1058,8 +1092,11 @@ class EditorController {
 
     /**
      * Registered as a `"cursorchange"` listener on each open file's editor:
-     * repaints the status bar's caret readout. A file that is not the active one
-     * is ignored — only the active file's caret is on show.
+     * repaints the status bar's caret readout, and its selection readout —
+     * a caret move collapses or replaces the selection as often as it leaves
+     * it alone, so both are kept in sync from the same event. A file that is
+     * not the active one is ignored — only the active file's caret and
+     * selection are on show.
      */
     private handleCursorChange = (file: FileEditor): void => {
         if (file !== this.getActiveFile()) {
@@ -1067,6 +1104,28 @@ class EditorController {
         }
 
         this.syncCursorPosition(file)
+        this.syncSelectionMetrics(file)
+    }
+
+    /**
+     * Registered as a `"selectionchange"` listener on each open file's editor:
+     * repaints the status bar's selection readout. Needed alongside
+     * {@link handleCursorChange} because the two events dedupe independently —
+     * `"cursorchange"` on the caret's own position (`selection.main.head`),
+     * `"selectionchange"` on the selection's normalized span
+     * (`main.from`/`main.to`). A change that widens or collapses the span
+     * without moving the head fires `"selectionchange"` alone: `Ctrl/Cmd+A`
+     * with the caret already at the document's end is one case (the head stays
+     * put; only `from` moves), so a caret-only wiring would leave the readout
+     * blank. A file that is not the active one is ignored, mirroring
+     * {@link handleCursorChange}.
+     */
+    private handleSelectionChange = (file: FileEditor): void => {
+        if (file !== this.getActiveFile()) {
+            return
+        }
+
+        this.syncSelectionMetrics(file)
     }
 
     /**
@@ -1173,6 +1232,7 @@ class EditorController {
 
         this._activeFileListener?.(file?.getPath() ?? null)
         this.syncCursorPosition(file)
+        this.syncSelectionMetrics(file)
 
         if (!file) {
             void setWindowTitle(APP_NAME)
@@ -1199,6 +1259,20 @@ class EditorController {
         const position = file === null ? null : file.getEditor().getCursorPosition()
 
         this._cursorText.setText(cursorLabel(position))
+    }
+
+    /**
+     * Sets the status bar's selection readout from `file`'s editor, read live
+     * rather than from an event payload — mirrors {@link syncCursorPosition},
+     * including serving an activation, where no event fires at all.
+     *
+     * @param file - The active file, or `null` when no file is open.
+     */
+    private syncSelectionMetrics(file: FileEditor | null): void {
+        const selection = file === null ? null : file.getEditor().getSelection()
+        const metrics = selection === null ? null : { characters: selection.characterCount, lines: selection.lineCount }
+
+        this._selectionText.setText(selectionLabel(metrics))
     }
 }
 
