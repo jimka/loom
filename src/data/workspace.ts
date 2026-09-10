@@ -9,6 +9,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import type { CloseRequestedEvent } from '@tauri-apps/api/window'
 import { configDir, join } from '@tauri-apps/api/path'
 import { platform } from '@tauri-apps/plugin-os'
+import { invoke } from '@tauri-apps/api/core'
 import { joinPath, sortDirEntries } from './paths'
 import { APP_NAME } from '../appIdentity'
 import { WORKSPACE_DIR_NAME } from './workspaceState'
@@ -79,6 +80,31 @@ const WORKSPACE_GITIGNORE_CONTENTS = '*\n'
  */
 export async function pickProjectFolder(): Promise<string | null> {
     return open({ directory: true, multiple: false, recursive: true })
+}
+
+/**
+ * Grants the app filesystem access to `root` and everything under it, for
+ * the life of this process. Needed for a project folder Loom points itself
+ * at — a restored session's root, a Recent Projects entry — rather than one
+ * the user just handed it through the folder picker, a drag-and-drop, or
+ * the save dialog: only those native gestures grant a path, so a remembered
+ * root outside `$HOME`/`$CONFIG` is refused before its first listing
+ * without this.
+ *
+ * Resolves even when the grant fails. The grant enables the read that
+ * follows rather than being the operation itself, so a failure is reported
+ * by that read through the caller's existing path; the Rust side logs it at
+ * `warn`.
+ *
+ * @param root - The project folder to grant access to.
+ */
+export async function grantProjectScope(root: string): Promise<void> {
+    try {
+        await invoke<void>('grant_project_scope', { path: root })
+    } catch {
+        // A failed grant must never stop the app from starting, or stop the
+        // tree from being pointed at a folder — see above.
+    }
 }
 
 /**
