@@ -15,7 +15,7 @@ import { CommandPalette } from './CommandPalette'
 import { buildPaletteCommands } from './commands'
 import { openAboutDialog } from './aboutDialog'
 import { listFilesRecursive } from '../data/fileIndex'
-import type { SearchMatch } from '../data/projectSearch'
+import type { SearchMatch, CompiledQuery } from '../data/projectSearch'
 import type { EditorController } from '../EditorController'
 import type { SessionState, ExplorerView } from '../data/session'
 import { sectionOpenFlags } from '../data/session'
@@ -185,6 +185,12 @@ class EditorShell extends Container {
             onOpenMatch: (match: SearchMatch) => { void controller.openFileAt(match.path, match, 'temporary') },
             onCommitMatch: (match: SearchMatch) => { void controller.openFileAt(match.path, match, 'permanent') },
             onCommitFile: (path: string) => { void controller.openFile(path, 'permanent') },
+            onReplaceMatch: (match: SearchMatch, compiled: CompiledQuery, replacement: string) =>
+                controller.replaceMatch(match, compiled, replacement),
+            onReplaceInFile: (path: string, compiled: CompiledQuery, replacement: string) =>
+                controller.replaceInFile(path, compiled, replacement),
+            onReplaceEverywhere: (paths: readonly string[], compiled: CompiledQuery, replacement: string) =>
+                controller.replaceEverywhere(paths, compiled, replacement),
             projectRoot: session.projectRoot,
         })
 

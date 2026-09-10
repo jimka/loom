@@ -10,7 +10,8 @@ import { selectionLabel } from './editor/selectionLabel'
 import { promptGoToLine } from './editor/goToLinePrompt'
 import { countLines } from './editor/lineNumber'
 import { languageForPath, hasFormatter } from './editor/languages'
-import type { MatchLocation } from './data/projectSearch'
+import type { MatchLocation, SearchMatch, CompiledQuery } from './data/projectSearch'
+import { replaceAllInText, replaceOneInText, isProbablyBinary } from './data/projectSearch'
 import { glyphNameForPath } from './fileIcons'
 import { baseName, joinPath, isUnderRoot, relocatePath } from './data/paths'
 import { readFileText, writeFileText, pickProjectFolder, pickSaveTarget, setWindowTitle, closeWindow, onCloseRequested } from './data/workspace'
@@ -54,9 +55,9 @@ export type OpenMode = 'temporary' | 'permanent'
 
 /**
  * Owns the tab strip, the status bar, the open-file registry, and every
- * editor command (open/save/close/format). Holds no UI arrangement of its
- * own — the tree and the split belong to `EditorShell`, which the shell
- * reaches through {@link setProjectRootListener}.
+ * editor command (open/save/close/format/replace). Holds no UI arrangement
+ * of its own — the tree and the split belong to `EditorShell`, which the
+ * shell reaches through {@link setProjectRootListener}.
  */
 class EditorController {
     readonly tabs: TabPanel
@@ -743,6 +744,173 @@ class EditorController {
     }
 
     /**
+     * Shared write for {@link replaceInFile} and {@link replaceEverywhere}: reads
+     * `path`'s current content — the live buffer when it's open, disk otherwise —
+     * replaces every occurrence `compiled` finds, and writes the result back the
+     * same way it was read. Skipped entirely when nothing matched, so a file with
+     * no remaining occurrences is never touched. A read failure (deleted, now
+     * over the size limit) is swallowed and reports `0`; a write failure
+     * propagates, for the two public callers to handle differently.
+     *
+     * @param path - The file to replace in.
+     * @param compiled - The query to scan for, as a substring or a regular expression.
+     * @param replacement - The replacement text (a substring query) or template (a regexp query).
+     * @returns How many occurrences were replaced.
+     */
+    private async performReplaceInFile(path: string, compiled: CompiledQuery, replacement: string): Promise<number> {
+        const open = this.findOpenFile(path)
+
+        if (open) {
+            const { text, count } = replaceAllInText(open.getEditor().getValue(), compiled, replacement)
+
+            if (count > 0) {
+                open.getEditor().setValue(text)
+            }
+
+            return count
+        }
+
+        let diskText: string
+
+        try {
+            diskText = await readFileText(path)
+        } catch {
+            return 0
+        }
+
+        if (isProbablyBinary(diskText)) {
+            return 0
+        }
+
+        const { text, count } = replaceAllInText(diskText, compiled, replacement)
+
+        if (count > 0) {
+            await writeFileText(path, text)
+        }
+
+        return count
+    }
+
+    /**
+     * Replaces every occurrence `compiled` currently finds in `path` — through
+     * the live buffer when it's open, straight to disk otherwise. A failed
+     * disk write shows a `Dialog.error` like {@link save}'s own and resolves
+     * `0`.
+     *
+     * @param path - The file to replace in.
+     * @param compiled - The query to scan for, as a substring or a regular expression.
+     * @param replacement - The replacement text (a substring query) or template (a regexp query).
+     * @returns How many occurrences were replaced.
+     */
+    async replaceInFile(path: string, compiled: CompiledQuery, replacement: string): Promise<number> {
+        try {
+            return await this.performReplaceInFile(path, compiled, replacement)
+        } catch (error) {
+            await Dialog.error('Could not save file', messageOf(error))
+
+            return 0
+        }
+    }
+
+    /**
+     * Runs {@link replaceInFile}'s own write over every one of `paths` in
+     * turn, without its per-file dialog — a write failure is collected
+     * instead, and reported in one combined `Dialog.error` once every file
+     * has been attempted.
+     *
+     * @param paths - The files to replace in.
+     * @param compiled - The query to scan for, as a substring or a regular expression.
+     * @param replacement - The replacement text (a substring query) or template (a regexp query).
+     * @returns How many occurrences were replaced in total, and in how many files.
+     */
+    async replaceEverywhere(
+        paths: readonly string[], compiled: CompiledQuery, replacement: string,
+    ): Promise<{ matchesReplaced: number; filesChanged: number }> {
+        let matchesReplaced = 0
+        let filesChanged = 0
+        const failedPaths: string[] = []
+
+        for (const path of paths) {
+            try {
+                const count = await this.performReplaceInFile(path, compiled, replacement)
+
+                if (count > 0) {
+                    matchesReplaced += count
+                    filesChanged += 1
+                }
+            } catch {
+                failedPaths.push(path)
+            }
+        }
+
+        if (failedPaths.length > 0) {
+            // Comma-joined, not one path per line: `Dialog`'s message renders with
+            // `white-space: normal` (src/typescript/lib/overlay/Dialog.ts:742),
+            // which collapses a `\n` into a single space anyway.
+            await Dialog.error('Could not save every file', `These files could not be written: ${failedPaths.join(', ')}`)
+        }
+
+        return { matchesReplaced, filesChanged }
+    }
+
+    /**
+     * Replaces the single occurrence `match` names — through the live buffer
+     * when its file is open, straight to disk otherwise — verifying it is
+     * still there first. A stale match (the file's content moved since the
+     * search that found it ran) makes no change and resolves `false`
+     * silently; a failed disk write shows a `Dialog.error` like {@link save}'s
+     * own and resolves `false`.
+     *
+     * @param match - The match to replace.
+     * @param compiled - The query `match` was found with.
+     * @param replacement - The replacement text (a substring query) or template (a regexp query).
+     * @returns Whether the occurrence was actually replaced.
+     */
+    async replaceMatch(match: SearchMatch, compiled: CompiledQuery, replacement: string): Promise<boolean> {
+        const open = this.findOpenFile(match.path)
+
+        if (open) {
+            const text = replaceOneInText(open.getEditor().getValue(), match, compiled, replacement)
+
+            if (text === null) {
+                return false
+            }
+
+            open.getEditor().setValue(text)
+
+            return true
+        }
+
+        let diskText: string
+
+        try {
+            diskText = await readFileText(match.path)
+        } catch {
+            return false
+        }
+
+        if (isProbablyBinary(diskText)) {
+            return false
+        }
+
+        const replaced = replaceOneInText(diskText, match, compiled, replacement)
+
+        if (replaced === null) {
+            return false
+        }
+
+        try {
+            await writeFileText(match.path, replaced)
+        } catch (error) {
+            await Dialog.error('Could not save file', messageOf(error))
+
+            return false
+        }
+
+        return true
+    }
+
+    /**
      * The path the save dialog should open to for `file`: its own path when
      * that already sits inside the open workspace, otherwise the workspace
      * root itself — so the dialog never defaults to a directory outside the
@@ -915,6 +1083,11 @@ class EditorController {
         const content = this.tabs.getTab().getActiveContent()
 
         return content ? (content as FileEditor) : null
+    }
+
+    /** The open file registered at `path`, or `null` when it has no open tab. */
+    private findOpenFile(path: string): FileEditor | null {
+        return this._openFiles.find(candidate => candidate.getPath() === path) ?? null
     }
 
     /**

@@ -18,6 +18,7 @@ import { magnifying_glass } from '@jimka/typescript-ui/glyphs/solid/magnifying_g
 import { gear } from '@jimka/typescript-ui/glyphs/solid/gear'
 import { circle_info } from '@jimka/typescript-ui/glyphs/solid/circle_info'
 import { list_ol } from '@jimka/typescript-ui/glyphs/solid/list_ol'
+import { right_left } from '@jimka/typescript-ui/glyphs/solid/right_left'
 import { APP_FAVICON } from './appIdentity'
 import { FILE_ICON_GLYPHS } from './fileIcons'
 import { EditorController } from './EditorController'
@@ -28,12 +29,12 @@ import { applyTheme } from './shell/theme'
 import { grantProjectScope } from './data/workspace'
 import { applyWorkspaceOverlay } from './data/workspaceState'
 
-// Every glyph the shell, the tree, and the unsaved-changes prompt reference
-// by name, plus the per-file-type set from fileIcons.ts, registered once
-// here at the composition root.
+// Every glyph the shell, the tree, the unsaved-changes prompt, and the
+// Search panel's replace actions reference by name, plus the per-file-type
+// set from fileIcons.ts, registered once here at the composition root.
 Glyph.register(
     folder, folder_plus, file_circle_plus, floppy_disk, times, pen_to_square, trash, copy, eye, bars, code,
-    right_from_bracket, clock_rotate_left, magnifying_glass, gear, circle_info, list_ol, ...FILE_ICON_GLYPHS,
+    right_from_bracket, clock_rotate_left, magnifying_glass, gear, circle_info, list_ol, right_left, ...FILE_ICON_GLYPHS,
 )
 
 Body.init({ layoutManager: Fit(), favicon: APP_FAVICON })
