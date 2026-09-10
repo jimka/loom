@@ -1,18 +1,20 @@
 import { Container, callable } from '@jimka/typescript-ui/core'
 import type { Component } from '@jimka/typescript-ui/core'
-import { Placement } from '@jimka/typescript-ui/primitive'
+import { Insets, Placement } from '@jimka/typescript-ui/primitive'
 import { Accordion, AccordionConstraints, Border as BorderLayout, Card, Split } from '@jimka/typescript-ui/layout'
-import { MenuBar } from '@jimka/typescript-ui/component/menubar'
+import { MenuBar, ToolBar } from '@jimka/typescript-ui/component/menubar'
 import { CheckboxMenuRow, Spacer } from '@jimka/typescript-ui/component/container'
 import type { MenuItemConfig } from '@jimka/typescript-ui/component/container'
-import { Button } from '@jimka/typescript-ui/component/button'
+import { Button, ToggleButton } from '@jimka/typescript-ui/component/button'
 import { FileTree } from '../explorer/FileTree'
 import { PropertiesPanel } from '../explorer/PropertiesPanel'
+import { SearchPanel } from '../explorer/SearchPanel'
 import { WelcomeScreen } from './WelcomeScreen'
 import { CommandPalette } from './CommandPalette'
 import { buildPaletteCommands } from './commands'
 import { openAboutDialog } from './aboutDialog'
 import { listFilesRecursive } from '../data/fileIndex'
+import type { SearchMatch } from '../data/projectSearch'
 import type { EditorController } from '../EditorController'
 import type { SessionState } from '../data/session'
 import type { Settings } from '../data/settings'
@@ -21,17 +23,17 @@ import { applySession, installSessionAutosave, loadWorkspaceState } from './sess
 import { loadResolvedSettings } from './settings'
 import { treeSectionLabel } from './treeSectionLabel'
 import { projectName, baseName, isUnderRoot, parentDir } from '../data/paths'
-import { listDirectory, tryReadTextFile, pathExists, grantProjectScope } from '../data/workspace'
+import { listDirectory, tryReadTextFile, pathExists, grantProjectScope, readFileText } from '../data/workspace'
 import { glyphNameForPath } from '../fileIcons'
 import { promptRecentDirectoryIntent, confirmOpenSeparateWorkspace } from './recentProjectPrompt'
 import { installFileDrop } from './fileDrop'
 import {
     NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
-    FORMAT_SHORTCUT, FIND_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, COMMAND_PALETTE_SHORTCUT, installAccelerators,
+    FORMAT_SHORTCUT, FIND_SHORTCUT, FIND_IN_FILES_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, COMMAND_PALETTE_SHORTCUT, installAccelerators,
 } from './shortcuts'
 import type { AcceleratorActions } from './shortcuts'
 
-/** The explorer accordion pane's index in the shell's `Split` — 0, the other pane being the editor deck (tab strip plus welcome screen). */
+/** The explorer pane's (rail plus content) index in the shell's `Split` — 0, the other pane being the editor deck (tab strip plus welcome screen). */
 const EXPLORER_PANE_INDEX = 0
 
 /** The `Card` deck page ids the editor pane switches between. */
@@ -40,6 +42,31 @@ const WELCOME_PAGE_ID = 'welcome-screen'
 
 /** The properties section's header label. */
 const PROPERTIES_SECTION_LABEL = 'Properties'
+
+/** The content `Card`'s two page ids — the rail's Files and Search views. */
+const FILES_VIEW_ID = 'explorer-files'
+const SEARCH_VIEW_ID = 'explorer-search'
+
+/** The rail buttons' accessible names — not painted, since both are built
+ *  with `showText: false`. */
+const FILES_RAIL_LABEL = 'Files'
+const SEARCH_RAIL_LABEL = 'Search'
+
+/** Pinned rail icon size, in px — matches SQLAdmin's own activity-bar
+ *  `GLYPH_SIZE` (`shell/ActivityBar.ts`), the rail this one is modeled on. */
+const RAIL_GLYPH_SIZE_PX = 24
+
+/** Rail button padding. `ToolBar` drives `flat`/`compact` onto each button it
+ *  hosts, and a flat, compact, glyph-only `Button` auto-resolves to a tight
+ *  `(2,2,2,2)` inset (`Button._resolveInsets`) — fine for a small toolbar
+ *  icon, but with the glyph pinned to `RAIL_GLYPH_SIZE_PX` it reads as
+ *  cramped, so this explicitly overrides it with room to breathe. Must be
+ *  applied after `ToolBar.addComponent`, not before: that call is what
+ *  triggers `_resolveInsets`, so setting insets any earlier gets clobbered. */
+const RAIL_BUTTON_INSETS = new Insets(8, 8, 8, 8)
+
+/** Which of the rail's two views the content `Card` currently shows. */
+type ExplorerView = 'files' | 'search'
 
 /** The tree section's accordion weight. Any positive weight makes the tree the
  *  sole section that absorbs the sidebar's leftover height; 1 is the library's
@@ -88,10 +115,11 @@ interface MenuBarActions extends AcceleratorActions {
 
 /**
  * The app shell: a `Border`-laid `Container` with the menu bar NORTH, a
- * horizontal `Split` (explorer accordion (file tree over properties panel)
- * beside the editor deck — the tab strip and the welcome screen, one visible
- * at a time) CENTER, and the status bar SOUTH — the same shape as
- * `../../sqladmin/frontend/src/shell/SqlAdminShell.ts`.
+ * horizontal `Split` (the explorer pane — an icon rail beside a `Card`-switched
+ * content area showing either the Files view (file tree over properties
+ * panel) or the Search view — beside the editor deck — the tab strip and the
+ * welcome screen, one visible at a time) CENTER, and the status bar SOUTH —
+ * the same shape as `../../sqladmin/frontend/src/shell/SqlAdminShell.ts`.
  */
 class EditorShell extends Container {
     private readonly _tree: FileTree
@@ -122,6 +150,22 @@ class EditorShell extends Container {
         void tree.setShowHidden(settings.showHiddenFiles)
         void tree.setShowIgnored(settings.showIgnoredFiles)
 
+        const searchPanel = SearchPanel({
+            listFiles: () => listWorkspaceFiles(tree.getProjectRoot()),
+            readText: readFileText,
+            // A match selection (click or arrow-key move) previews in
+            // 'temporary' — mirroring `FileTree`'s own `onSelectFile` — so
+            // arrow-browsing across several results recycles one temp tab
+            // instead of pinning a permanent tab per row reached; a
+            // double-click commits to 'permanent'. A file branch row has no
+            // select handler at all — see `SearchPanel`'s own class doc
+            // comment for why — only its double-click opens it.
+            onOpenMatch: (match: SearchMatch) => { void controller.openFileAt(match.path, match, 'temporary') },
+            onCommitMatch: (match: SearchMatch) => { void controller.openFileAt(match.path, match, 'permanent') },
+            onCommitFile: (path: string) => { void controller.openFile(path, 'permanent') },
+            projectRoot: session.projectRoot,
+        })
+
         const welcome = WelcomeScreen({
             onOpenFolder: openFolder,
             recentProjects: controller.getRecentProjects(),
@@ -135,16 +179,72 @@ class EditorShell extends Container {
         })
         const splitBody = Container({ layoutManager: split })
 
-        const initialSections = buildExplorerSections(session.projectRoot)
+        const initialFilesSections = buildFilesViewSections(session.projectRoot)
+        const filesView = Container({ layoutManager: initialFilesSections.accordion })
+
+        filesView.addComponent(tree, initialFilesSections.treeSection)
+        filesView.addComponent(properties, initialFilesSections.propertiesSection)
+        filesView.setId(FILES_VIEW_ID)
+        searchPanel.setId(SEARCH_VIEW_ID)
+
+        const contentCard = new Card()
+        const content = Container({ layoutManager: contentCard, components: [filesView, searchPanel] })
+
+        contentCard.setVisibleComponentId(FILES_VIEW_ID)
+
+        // flat/compact are left for `ToolBar` to drive (below) rather than set
+        // here — matching SQLAdmin's own ActivityBar, which houses its rail
+        // buttons in a vertical ToolBar instead of a hand-rolled container.
+        const filesHandle = new ToggleButton(FILES_RAIL_LABEL, { glyph: 'folder', showText: false, selected: true })
+        const searchHandle = new ToggleButton(SEARCH_RAIL_LABEL, { glyph: 'magnifying-glass', showText: false })
+
+        // Pinned rather than left at the default text-matched size: an
+        // activity-bar-style rail reads its icons at a glance from across
+        // the window, so they carry more weight than an inline toolbar glyph.
+        filesHandle.pinGlyphSize(RAIL_GLYPH_SIZE_PX)
+        searchHandle.pinGlyphSize(RAIL_GLYPH_SIZE_PX)
+
+        const rail = new ToolBar({ orientation: 'vertical' })
+
+        rail.addComponent(filesHandle)
+        rail.addComponent(searchHandle)
+
+        // After addComponent, not before: ToolBar.addComponent calls
+        // setFlat(true)/setCompact(true) on each Button child (both default
+        // true), which re-resolves the button's insets to the tight glyph-only
+        // (2,2,2,2) square — this explicit override has to land after that or
+        // it gets clobbered.
+        filesHandle.setInsets(RAIL_BUTTON_INSETS)
+        searchHandle.setInsets(RAIL_BUTTON_INSETS)
+
+        /**
+         * The sidebar's one entry point for switching views — every trigger
+         * (a rail click, `revealSearchView`, a project switch) calls this instead of
+         * touching `filesHandle`/`searchHandle`/`content` directly, so they can never
+         * drift out of sync. Plain `ToggleButton`s don't coordinate with each other
+         * on their own; this closure is what enforces that exactly one is selected.
+         *
+         * @param view - The view to show.
+         */
+        const selectExplorerView = (view: ExplorerView): void => {
+            filesHandle.setSelected(view === 'files')
+            searchHandle.setSelected(view === 'search')
+            contentCard.setVisibleComponentId(view === 'files' ? FILES_VIEW_ID : SEARCH_VIEW_ID)
+        }
+
+        filesHandle.on('action', () => selectExplorerView('files'))
+        searchHandle.on('action', () => selectExplorerView('search'))
 
         const explorer = Container({
-            layoutManager: initialSections.accordion,
+            layoutManager: new BorderLayout({ spacing: 0 }),
             minSize: EXPLORER_MIN_SIZE,
             preferredSize: EXPLORER_PREFERRED_SIZE,
+            components: [
+                { component: rail,    constraints: { placement: Placement.WEST } },
+                { component: content, constraints: { placement: Placement.CENTER } },
+            ],
         })
 
-        explorer.addComponent(tree, initialSections.treeSection)
-        explorer.addComponent(properties, initialSections.propertiesSection)
         splitBody.addComponent(explorer, { weight: 0 })
         splitBody.addComponent(deck, { weight: 1 })
 
@@ -155,22 +255,32 @@ class EditorShell extends Container {
          * there is no API to relabel an already-built header in place;
          * `Container.setLayoutManager` tears down and recreates every
          * section's header instead, which is the one documented, public way
-         * to force that rebuild. `tree` and `properties` themselves are
-         * never removed, so their own state (tree data, watchers, the
-         * properties panel's current row) survives untouched — only the
-         * accordion's header chrome and each section's open/closed state
-         * reset to `initiallyOpen`, which is `true` for both sections
-         * regardless, so this has no visible effect beyond the label.
+         * to force that rebuild. `tree` and `properties` themselves are never
+         * removed, so their own state (tree data, watchers, the properties
+         * panel's current row) survives untouched — only the accordion's
+         * header chrome and each section's open/closed state reset to
+         * `initiallyOpen`, which is `true` for both, so both sections stay
+         * open regardless.
          *
          * @param root - The open project folder, or `null` when none is open.
          */
         const relabelTreeSection = (root: string | null): void => {
-            const sections = buildExplorerSections(root)
+            const sections = buildFilesViewSections(root)
 
-            explorer.setLayoutManager(sections.accordion)
-            explorer.setLayoutConstraints(tree, sections.treeSection)
-            explorer.setLayoutConstraints(properties, sections.propertiesSection)
-            explorer.scheduleLayout()
+            filesView.setLayoutManager(sections.accordion)
+            filesView.setLayoutConstraints(tree, sections.treeSection)
+            filesView.setLayoutConstraints(properties, sections.propertiesSection)
+            filesView.scheduleLayout()
+        }
+
+        /** Ctrl/Cmd+Shift+F, the Edit menu's *Find in Files…* item, and the
+         *  palette's matching command: un-collapses the explorer pane, switches
+         *  to the Search view, and focuses its query field — the one entry
+         *  point all three share, so they cannot drift apart. */
+        const revealSearchView = (): void => {
+            split.setPaneCollapsed(EXPLORER_PANE_INDEX, false)
+            selectExplorerView('search')
+            searchPanel.focusQuery()
         }
 
         const palette = CommandPalette({
@@ -185,6 +295,7 @@ class EditorShell extends Container {
             onCloseFile: () => controller.closeActive(),
             onFormat: () => { void controller.formatActive() },
             onFind: () => controller.findInActive(),
+            onFindInFiles: revealSearchView,
             onToggleExplorer: () => split.setPaneCollapsed(EXPLORER_PANE_INDEX, !split.isPaneCollapsed(EXPLORER_PANE_INDEX)),
             onExit: () => { void controller.exitApp() },
             onOpenCommandPalette: () => { void this.openCommandPalette() },
@@ -246,7 +357,9 @@ class EditorShell extends Container {
                 const openedRoot = this._tree.getProjectRoot()
 
                 properties.setProjectRoot(openedRoot)
+                searchPanel.setProjectRoot(openedRoot)
                 relabelTreeSection(openedRoot)
+                selectExplorerView('files')
             }
         })
         controller.setActiveFileListener(path => { void tree.selectPath(path) })
@@ -398,12 +511,23 @@ class EditorShell extends Container {
      */
     private async openCommandPalette(): Promise<void> {
         const root = this._tree.getProjectRoot()
-        const files = root !== null
-            ? await listFilesRecursive(root, listDirectory, tryReadTextFile, pathExists)
-            : []
+        const files = await listWorkspaceFiles(root)
 
         this._palette.open(files, buildPaletteCommands(this._menuBarActions), root)
     }
+}
+
+/**
+ * Every searchable file path under `root` — the command palette's file list,
+ * and {@link SearchPanel}'s own — or an empty list when no workspace is
+ * open. Both surfaces share this one call so they always search and list
+ * exactly the same files.
+ *
+ * @param root - The open project folder, or `null` when none is open.
+ * @returns Every file path under `root`, or `[]`.
+ */
+async function listWorkspaceFiles(root: string | null): Promise<string[]> {
+    return root === null ? [] : listFilesRecursive(root, listDirectory, tryReadTextFile, pathExists)
 }
 
 /**
@@ -433,8 +557,8 @@ function buildEditorDeck(controller: EditorController, welcome: WelcomeScreen): 
     return deck
 }
 
-/** A freshly-built accordion plus its two sections' constraints, in child order — see {@link buildExplorerSections}. */
-interface ExplorerSections {
+/** A freshly-built accordion plus its two sections' constraints, in child order — see {@link buildFilesViewSections}. */
+interface FilesViewSections {
     accordion: Accordion
     treeSection: AccordionConstraints
     propertiesSection: AccordionConstraints
@@ -450,13 +574,17 @@ interface ExplorerSections {
  * @param root - The open project folder, or `null` when none is open.
  * @returns The new accordion and its two sections' constraints.
  */
-function buildExplorerSections(root: string | null): ExplorerSections {
+function buildFilesViewSections(root: string | null): FilesViewSections {
     const accordion = new Accordion({ compact: true })
     const treeSection = new AccordionConstraints(treeSectionLabel(root), true, 'folder')
 
     treeSection.weight = TREE_SECTION_WEIGHT
 
-    return { accordion, treeSection, propertiesSection: new AccordionConstraints(PROPERTIES_SECTION_LABEL, true, 'circle-info') }
+    return {
+        accordion,
+        treeSection,
+        propertiesSection: new AccordionConstraints(PROPERTIES_SECTION_LABEL, true, 'circle-info'),
+    }
 }
 
 /**
@@ -520,6 +648,7 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
             ] },
             { label: 'Edit', glyph: 'code', items: () => [
                 { text: 'Find…', glyph: 'magnifying-glass', shortcut: FIND_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onFind },
+                { text: 'Find in Files…', glyph: 'magnifying-glass', shortcut: FIND_IN_FILES_SHORTCUT, enabled: actions.hasProjectRoot(), action: actions.onFindInFiles },
                 { separator: true },
                 { text: 'Format Document', glyph: 'pen-to-square', shortcut: FORMAT_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onFormat },
             ] },

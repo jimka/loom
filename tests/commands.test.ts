@@ -15,6 +15,8 @@ const actions = (over: Partial<PaletteCommandActions> = {}): PaletteCommandActio
     onCloseFile: () => {},
     onFormat: () => {},
     onFind: () => {},
+    hasProjectRoot: () => false,
+    onFindInFiles: () => {},
     isShowingHidden: () => false,
     onToggleHidden: () => {},
     isShowingIgnored: () => false,
@@ -107,5 +109,19 @@ describe('buildPaletteCommands', () => {
         findCommand(commands, 'save').run()
 
         expect(onSave).toHaveBeenCalledOnce()
+    })
+
+    it('omits Find in Files outright with no project root open', () => {
+        const commands = buildPaletteCommands(actions())
+
+        expect(commands.some(c => c.id === 'find-in-files')).toBe(false)
+    })
+
+    it('lists Find in Files, enabled, once a project root is open', () => {
+        const commands = buildPaletteCommands(actions({ hasProjectRoot: () => true }))
+        const command = findCommand(commands, 'find-in-files')
+
+        expect(command.title).toBe('Find in Files…')
+        expect(command.enabled).toBe(true)
     })
 })

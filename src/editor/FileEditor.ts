@@ -5,9 +5,10 @@ import { CodeEditor } from '@jimka/typescript-ui/component/editor'
 import { ToggleButton } from '@jimka/typescript-ui/component/button'
 import { MarkdownViewer } from '@jimka/typescript-ui/component/display'
 import { baseName } from '../data/paths'
+import type { MatchLocation } from '../data/projectSearch'
 import { languageForPath, isMarkdownPath } from './languages'
 import { FileBreadcrumbs } from './FileBreadcrumbs'
-import { openFindPanel } from './editorSearch'
+import { openFindPanel, revealRange } from './editorSearch'
 
 /** How long an edit waits before the preview re-renders, in milliseconds.
  *  Shorter than `session.ts`'s 500ms save debounce: a session write is disk
@@ -247,6 +248,25 @@ class FileEditor extends Container {
         }
 
         openFindPanel(this._editor)
+    }
+
+    /** Selects and scrolls to `at` in this file's editor, dropping out of the
+     *  Markdown preview first if it is showing — unlike {@link openFind}'s
+     *  early return, the caller asked for a specific position in the
+     *  *source*, so showing the rendered preview would not answer the
+     *  request. The two-line drop-out is the one {@link syncPreviewAvailability}
+     *  already uses; `setSelected` does not re-fire the toggle's `"action"` event.
+     *
+     * @param at - The match's location to reveal.
+     * @param focus - Whether to also move keyboard focus into the editor. Defaults to `true`.
+     */
+    revealMatch(at: MatchLocation, focus: boolean = true): void {
+        if (this._previewing) {
+            this._previewToggle.setSelected(false)
+            this.setPreviewing(false)
+        }
+
+        revealRange(this._editor, at, focus)
     }
 
     /** Whether Save would do anything: the document is dirty, or has no path yet. */

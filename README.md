@@ -14,6 +14,11 @@ known limitations are tracked in [`TODO.md`](TODO.md).
 
 ## Highlights
 
+- **Sidebar rail** — a narrow strip of icon buttons on the sidebar's edge
+  switches its content between two views: **Files** (the file tree and the
+  Properties panel, stacked as today) and **Search**. Selecting one shows
+  only that view's content; *Toggle Explorer* (Ctrl/Cmd+B) still hides the
+  whole sidebar, rail included.
 - **File tree** — open a project folder, browse it, lazily loading each
   directory as it's expanded; each row shows a per-file-type icon — see
   [`src/fileIcons.ts`](src/fileIcons.ts) for the icon map. The tree's own
@@ -46,6 +51,16 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   the *match case*, *regexp*, and *by word* toggles refine the query.
   Replace one match at a time or all of them at once with *replace* and
   *replace all*.
+- **Project search** — Ctrl/Cmd+Shift+F switches the sidebar to its
+  **Search** view; Enter runs a case-insensitive substring search over
+  every file the command palette lists. Results build into a tree grouped
+  by folder, with each matching file as a branch (labeled with its match
+  count) and each line match as a leaf under it. As in the file tree, a
+  single click (or an arrow-key move) previews a row in the reusable temp
+  tab — a file branch opens the file, a match opens it with that match
+  selected — and a double click opens it permanently. A file too large to
+  open, or that looks binary (a NUL byte in its first
+  8000 characters, git's own rule), is skipped.
 - **Welcome screen** — shown in place of the tab strip whenever no file is
   open, under the Loom mark, offering *Open Folder…* and naming the current
   project once one is.

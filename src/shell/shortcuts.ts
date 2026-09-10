@@ -25,6 +25,7 @@ export const TOGGLE_EXPLORER_SHORTCUT = 'Ctrl/Cmd+B'
 export const EXIT_SHORTCUT = 'Ctrl/Cmd+Q'
 export const COMMAND_PALETTE_SHORTCUT = 'Ctrl/Cmd+P'
 export const FIND_SHORTCUT = 'Ctrl/Cmd+F'
+export const FIND_IN_FILES_SHORTCUT = 'Ctrl/Cmd+Shift+F'
 
 /**
  * Whether a keydown is a `Ctrl/Cmd(+Shift)+<key>` chord with no other
@@ -81,6 +82,11 @@ export function isFindChord(event: KeyboardEvent): boolean {
     return isCtrlChord(event, 'f')
 }
 
+/** Whether a keydown is the Find-in-Files chord (Ctrl/Cmd+Shift+F). */
+export function isFindInFilesChord(event: KeyboardEvent): boolean {
+    return isCtrlChord(event, 'f', true)
+}
+
 /** Whether a keydown is the Toggle-Explorer chord (Ctrl/Cmd+B). */
 export function isToggleExplorerChord(event: KeyboardEvent): boolean {
     return isCtrlChord(event, 'b')
@@ -112,6 +118,8 @@ export interface AcceleratorActions {
     onFormat: () => void
     /** Ctrl/Cmd+F — opens the find/replace bar over the active editor. */
     onFind: () => void
+    /** Ctrl/Cmd+Shift+F — switches to and focuses the explorer's Search view. */
+    onFindInFiles: () => void
     /** Ctrl/Cmd+B — collapses/expands the explorer pane. */
     onToggleExplorer: () => void
     /** Ctrl/Cmd+Q — requests the window close. */
@@ -144,6 +152,8 @@ export function installAccelerators(actions: AcceleratorActions): void {
             actions.onCloseFile()
         } else if (isFormatChord(event)) {
             actions.onFormat()
+        } else if (isFindInFilesChord(event)) {
+            actions.onFindInFiles()
         } else if (isFindChord(event)) {
             actions.onFind()
         } else if (isToggleExplorerChord(event)) {
