@@ -259,6 +259,245 @@ export function findMatches(path: string, text: string, compiled: CompiledQuery,
     return matches
 }
 
+/** {@link LINE_SPLIT}, wrapped in a capturing group so `String.split` keeps
+ *  each line's own separator as its own array entry instead of discarding
+ *  it — built from `LINE_SPLIT`'s own source so the two can never drift
+ *  apart. Content sits at even indices, its following separator (if any) at
+ *  the next odd index; the last entry is always content, matching
+ *  `LINE_SPLIT`'s own line-counting behaviour (a file ending in a newline
+ *  reports one extra, empty, trailing line — inherited unchanged from
+ *  `findMatches`, not a new quirk). */
+const LINE_SPLIT_KEEPING_ENDINGS = new RegExp(`(${LINE_SPLIT.source})`)
+
+/**
+ * `text` split into alternating content/line-ending entries, keeping every
+ * line's own separator instead of discarding it the way {@link LINE_SPLIT}
+ * does — a replace pass must never rewrite a line ending that isn't part of
+ * a match, or a project-wide pass would silently turn every CRLF file it
+ * writes into LF.
+ *
+ * @param text - The file's text.
+ * @returns `text` split on {@link LINE_SPLIT_KEEPING_ENDINGS}.
+ */
+function splitKeepingLineEndings(text: string): string[] {
+    return text.split(LINE_SPLIT_KEEPING_ENDINGS)
+}
+
+/**
+ * `replacement` with `@codemirror/search`'s own group-reference syntax
+ * resolved against `match` — `$&` for the whole match, `$$` for a literal
+ * `$`, and `$1` through `$9`+ for a captured group, falling back to the
+ * literal template text when the group doesn't exist. Only called for a
+ * `regexp` query; a `substring` query's replacement is used as-is by its own
+ * caller.
+ *
+ * @param replacement - The replacement template, as typed into the Replace field.
+ * @param match - The `RegExpExecArray` the template's group references resolve against.
+ * @returns `replacement` with every `$`-reference resolved.
+ */
+function resolveReplacement(replacement: string, match: RegExpExecArray): string {
+    return replacement.replace(/\$([$&]|\d+)/g, (whole, ref: string) => {
+        if (ref === '&') {
+            return match[0]
+        }
+
+        if (ref === '$') {
+            return '$'
+        }
+
+        for (let length = ref.length; length > 0; length -= 1) {
+            const groupNumber = Number(ref.slice(0, length))
+
+            if (groupNumber > 0 && groupNumber < match.length) {
+                return (match[groupNumber] ?? '') + ref.slice(length)
+            }
+        }
+
+        return whole
+    })
+}
+
+/**
+ * Every occurrence of `needle` in `line`, replaced with `replacement` —
+ * mirrors {@link substringSpans}' own scanning shape, but builds the
+ * replaced text instead of reporting spans.
+ *
+ * @param line - The line to scan.
+ * @param needle - The substring to search for, already case-folded when `caseSensitive` is `false`.
+ * @param caseSensitive - Whether `line` is matched as-is or case-folded before searching.
+ * @param replacement - The literal text every occurrence is replaced with.
+ * @returns The line with every occurrence replaced, and how many were replaced.
+ */
+function replaceLineAllSubstring(
+    line: string, needle: string, caseSensitive: boolean, replacement: string,
+): { text: string; count: number } {
+    const haystack = caseSensitive ? line : line.toLowerCase()
+    let result = ''
+    let cursor = 0
+    let count = 0
+    let column = haystack.indexOf(needle)
+
+    while (column !== -1) {
+        result += line.slice(cursor, column) + replacement
+        cursor = column + needle.length
+        count += 1
+        column = haystack.indexOf(needle, cursor)
+    }
+
+    return { text: result + line.slice(cursor), count }
+}
+
+/**
+ * Every occurrence of `re` in `line`, replaced with `replacement` resolved
+ * per match via {@link resolveReplacement} — mirrors {@link regexpSpans}' own
+ * scanning shape (reset `lastIndex` per line, skip a zero-length match, step
+ * `lastIndex` forward by one so a pattern that can match nothing can never
+ * loop), but builds the replaced text instead of reporting spans.
+ *
+ * @param line - The line to scan.
+ * @param re - The shared, `g`-flagged regular expression to match against `line`.
+ * @param replacement - The replacement template, resolved per match.
+ * @returns The line with every occurrence replaced, and how many were replaced.
+ */
+function replaceLineAllRegexp(line: string, re: RegExp, replacement: string): { text: string; count: number } {
+    re.lastIndex = 0
+
+    let result = ''
+    let cursor = 0
+    let count = 0
+    let match = re.exec(line)
+
+    while (match !== null) {
+        if (match[0].length === 0) {
+            re.lastIndex += 1
+        } else {
+            result += line.slice(cursor, match.index) + resolveReplacement(replacement, match)
+            cursor = match.index + match[0].length
+            count += 1
+        }
+
+        match = re.exec(line)
+    }
+
+    return { text: result + line.slice(cursor), count }
+}
+
+/**
+ * Every occurrence `compiled` finds on `line`, replaced with `replacement`.
+ *
+ * @param line - The line to scan.
+ * @param compiled - The query to scan for, as a substring or a regular expression.
+ * @param replacement - The replacement text or template.
+ * @returns The line with every occurrence replaced, and how many were replaced.
+ */
+function replaceLineAll(line: string, compiled: CompiledQuery, replacement: string): { text: string; count: number } {
+    return compiled.kind === 'regexp'
+        ? replaceLineAllRegexp(line, compiled.re, replacement)
+        : replaceLineAllSubstring(line, compiled.needle, compiled.caseSensitive, replacement)
+}
+
+/**
+ * Every occurrence `compiled` currently finds in `text`, replaced with
+ * `replacement` — `$1`/`$&`/`$$` resolved per match for a regex query,
+ * verbatim for a substring query. Only the matched spans change; every other
+ * character, line endings included, is copied through untouched.
+ *
+ * @param text - The file's current text.
+ * @param compiled - The query to scan for, as a substring or a regular expression.
+ * @param replacement - The replacement text (a substring query) or template (a regexp query).
+ * @returns The new text, and how many occurrences were replaced. `count === 0`
+ *   returns the original `text` value unchanged, so a caller can skip a write
+ *   by checking `count` alone.
+ */
+export function replaceAllInText(
+    text: string, compiled: CompiledQuery, replacement: string,
+): { text: string; count: number } {
+    const parts = splitKeepingLineEndings(text)
+    let count = 0
+
+    for (let index = 0; index < parts.length; index += 2) {
+        const line = replaceLineAll(parts[index], compiled, replacement)
+
+        parts[index] = line.text
+        count += line.count
+    }
+
+    return { text: count === 0 ? text : parts.join(''), count }
+}
+
+/**
+ * Replaces the occurrence of `compiled` at `column` on `line`, verifying it
+ * is still there first.
+ *
+ * @param line - The line to verify and replace on.
+ * @param column - The 0-based column the match is expected at.
+ * @param compiled - The query to scan for, as a substring or a regular expression.
+ * @param replacement - The replacement text (a substring query) or template (a regexp query).
+ * @returns The line with the occurrence replaced, or `null` when nothing matches at `column` any more.
+ */
+function replaceOneOnLine(line: string, column: number, compiled: CompiledQuery, replacement: string): string | null {
+    if (compiled.kind === 'substring') {
+        const haystack = compiled.caseSensitive ? line : line.toLowerCase()
+
+        if (!haystack.startsWith(compiled.needle, column)) {
+            return null
+        }
+
+        return line.slice(0, column) + replacement + line.slice(column + compiled.needle.length)
+    }
+
+    compiled.re.lastIndex = 0
+
+    let match = compiled.re.exec(line)
+
+    while (match !== null) {
+        if (match[0].length > 0 && match.index === column) {
+            return line.slice(0, column) + resolveReplacement(replacement, match) + line.slice(column + match[0].length)
+        }
+
+        if (match[0].length === 0) {
+            compiled.re.lastIndex += 1
+        }
+
+        match = compiled.re.exec(line)
+    }
+
+    return null
+}
+
+/**
+ * Replaces the single occurrence `at` names in `text`, verifying it is still
+ * there first. `at` normally comes from a `SearchMatch` an earlier
+ * `findMatches` run reported against a *different* copy of this file's text.
+ *
+ * @param text - The file's current text.
+ * @param at - Where the occurrence was last found: a 1-based line and a 0-based column within it.
+ * @param compiled - The query to scan for, as a substring or a regular expression.
+ * @param replacement - The replacement text (a substring query) or template (a regexp query).
+ * @returns The new text, or `null` when `at.line` no longer exists, or
+ *   nothing matches at `at.column` on that line any more.
+ */
+export function replaceOneInText(
+    text: string, at: MatchLocation, compiled: CompiledQuery, replacement: string,
+): string | null {
+    const parts = splitKeepingLineEndings(text)
+    const partIndex = (at.line - 1) * 2
+
+    if (partIndex >= parts.length) {
+        return null
+    }
+
+    const replacedLine = replaceOneOnLine(parts[partIndex], at.column, compiled, replacement)
+
+    if (replacedLine === null) {
+        return null
+    }
+
+    parts[partIndex] = replacedLine
+
+    return parts.join('')
+}
+
 /**
  * Walks `paths` in order, reading each through `readText` and reporting its
  * matches through `onFileMatches` as it goes — the `await` on every read

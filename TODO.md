@@ -11,13 +11,6 @@ nothing below has a plan yet.
   wanted later — it composes `Split` and `Tab` already, at the cost of
   tear-off windows, a panel registry, and `DockRegion` drop targets that
   phase one deliberately avoided.
-- **Project-wide replace.** The Search view (see `README.md`'s **Project
-  search** highlight) finds matches only. Replacing across files needs a
-  replace field on the panel, per-match and per-file apply, writing files
-  that aren't open in a tab, reconciling a replacement against a tab with
-  unsaved changes, and an undo story — CodeMirror's per-document history
-  doesn't cover an edit spanning forty files.
-
 ## Medium
 
 - **IntelliSense / LSP** or any language service.

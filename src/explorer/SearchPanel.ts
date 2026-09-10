@@ -2,13 +2,16 @@ import { Container, Event, callable } from '@jimka/typescript-ui/core'
 import { Insets } from '@jimka/typescript-ui/primitive'
 import { VBox, HBox } from '@jimka/typescript-ui/layout'
 import { TextField, Text, Checkbox } from '@jimka/typescript-ui/component/input'
+import { Button } from '@jimka/typescript-ui/component/button'
 import { Tree, IconLabelTreeNodeRenderer } from '@jimka/typescript-ui/component/tree'
 import type { TreeNode } from '@jimka/typescript-ui/component/tree'
+import { Menu, Notification } from '@jimka/typescript-ui/overlay'
 import { searchFiles, compileQuery } from '../data/projectSearch'
-import type { SearchMatch, SearchLimits, ReadFileText, SearchQuery } from '../data/projectSearch'
+import type { SearchMatch, SearchLimits, ReadFileText, SearchQuery, CompiledQuery } from '../data/projectSearch'
 import { glyphNameForPath } from '../fileIcons'
-import { searchResultNodes, searchSummaryText } from './searchResults'
+import { searchResultNodes, searchSummaryText, pluralize } from './searchResults'
 import type { SearchTreeNodeData, SearchStatus } from './searchResults'
+import { confirmReplaceAll } from './searchReplacePrompt'
 
 /** The ceilings a run stops at. `maxMatches` is four times
  *  `CommandPalette.MAX_PALETTE_RESULTS` (50): `Tree` is virtualised, so this
@@ -44,6 +47,17 @@ const REGEXP_LABEL = 'regexp'
  *  two controls rather than one run of text. */
 const TOGGLE_SPACING = 8
 
+/** The Replace field's placeholder — `@codemirror/search`'s own in-file
+ *  replace-field placeholder, copied verbatim. */
+const REPLACE_PLACEHOLDER = 'Replace'
+
+/** The panel's own Replace All button's label. */
+const REPLACE_ALL_LABEL = 'Replace All'
+
+/** The glyph shared by the Replace All button and the results tree's
+ *  per-match/per-file Replace context-menu items. */
+const REPLACE_GLYPH = 'right-left'
+
 /** An idle run's status, shared by construction and {@link SearchPanel.setProjectRoot}. */
 const IDLE_STATUS: SearchStatus = { phase: 'idle', matchCount: 0, fileCount: 0, filesSearched: 0 }
 
@@ -62,6 +76,14 @@ export interface SearchPanelParams {
     onCommitMatch: (match: SearchMatch) => void
     /** Fires when a file branch row is double-clicked, with no specific match location — opens it for keeps, in a permanent tab. */
     onCommitFile: (path: string) => void
+    /** Replaces the single occurrence `match` names; resolves whether it actually replaced anything. */
+    onReplaceMatch: (match: SearchMatch, compiled: CompiledQuery, replacement: string) => Promise<boolean>
+    /** Replaces every occurrence `compiled` finds in one file; resolves how many. */
+    onReplaceInFile: (path: string, compiled: CompiledQuery, replacement: string) => Promise<number>
+    /** Replaces every occurrence `compiled` finds across every one of `paths`; resolves the totals. */
+    onReplaceEverywhere: (
+        paths: readonly string[], compiled: CompiledQuery, replacement: string,
+    ) => Promise<{ matchesReplaced: number; filesChanged: number }>
     /** The open project folder, or `null` when none is open — result labels are shown relative to it. */
     projectRoot: string | null
 }
@@ -90,11 +112,21 @@ export interface SearchPanelParams {
  *
  * A run is cancelled by the run that replaces it, by {@link setProjectRoot},
  * or by this component being torn down — never by an explicit Stop control.
+ *
+ * A Replace field sits below the toggles, and the results tree gains a
+ * `"contextmenu"` listener: right-clicking a match leaf offers **Replace**,
+ * a file branch offers **Replace All in File** — each applies immediately
+ * against the *current* content (a live buffer when the file is open, disk
+ * otherwise), then re-runs the search. The panel's own **Replace All**
+ * button confirms the count first, then applies the same replacement to
+ * every match currently listed.
  */
 class SearchPanel extends Container {
     private readonly _queryField: TextField
     private readonly _matchCaseToggle: Checkbox
     private readonly _regexpToggle: Checkbox
+    private readonly _replaceField: TextField
+    private readonly _replaceAllButton: Button
     private readonly _resultsTree: Tree
     private readonly _statusText: Text
     private readonly _listFiles: () => Promise<string[]>
@@ -102,6 +134,12 @@ class SearchPanel extends Container {
     private readonly _onOpenMatch: (match: SearchMatch) => void
     private readonly _onCommitMatch: (match: SearchMatch) => void
     private readonly _onCommitFile: (path: string) => void
+    private readonly _onReplaceMatch: (match: SearchMatch, compiled: CompiledQuery, replacement: string) => Promise<boolean>
+    private readonly _onReplaceInFile: (path: string, compiled: CompiledQuery, replacement: string) => Promise<number>
+    private readonly _onReplaceEverywhere: (
+        paths: readonly string[], compiled: CompiledQuery, replacement: string,
+    ) => Promise<{ matchesReplaced: number; filesChanged: number }>
+    private readonly _menu = Menu()
 
     private _matches: SearchMatch[] = []
     private _root: string | null
@@ -112,6 +150,12 @@ class SearchPanel extends Container {
     /** Set while a coalesced tree rebuild is scheduled for the next frame —
      *  see {@link appendMatches}. `null` when no rebuild is pending. */
     private _pendingFlush: number | null = null
+    /** The `CompiledQuery` the *currently displayed* results came from — set
+     *  in {@link runSearch} at the same point `compiled` is computed there, so
+     *  it always matches what's on screen even if the query field has since
+     *  been edited without pressing Enter again. `null` while idle or
+     *  showing an invalid-regex status, when there is nothing to replace. */
+    private _activeQuery: CompiledQuery | null = null
 
     constructor(params: SearchPanelParams) {
         const queryField = new TextField({ placeholder: QUERY_PLACEHOLDER })
@@ -130,6 +174,12 @@ class SearchPanel extends Container {
             layoutManager: new HBox({ spacing: TOGGLE_SPACING }),
             components: [matchCaseToggle, regexpToggle],
         })
+        const replaceField = new TextField({ placeholder: REPLACE_PLACEHOLDER })
+        const replaceAllButton = Button({ text: REPLACE_ALL_LABEL, glyph: REPLACE_GLYPH, showText: true, compact: true, flat: true })
+        const replaceRow = Container({
+            layoutManager: new HBox({ spacing: TOGGLE_SPACING, itemAlign: 'center' }),
+            components: [{ component: replaceField, constraints: { weight: 1 } }, replaceAllButton],
+        })
 
         resultsTree.setRendererFactory(() => new IconLabelTreeNodeRenderer(node => {
             const data = node.data as SearchTreeNodeData
@@ -145,7 +195,9 @@ class SearchPanel extends Container {
             // own scrollbar, which crowded it when results overflowed.
             // weight: 1 makes the tree absorb the panel's leftover height,
             // the same role it plays in CommandPalette's own VBox.
-            components: [queryField, toggleRow, statusText, { component: resultsTree, constraints: { weight: 1 } }],
+            components: [
+                queryField, toggleRow, replaceRow, statusText, { component: resultsTree, constraints: { weight: 1 } },
+            ],
             // backgroundColor matches FileTree's own tree — both rail views
             // should read as the same surface — applied to the whole panel
             // rather than just resultsTree so the query field and status
@@ -163,6 +215,8 @@ class SearchPanel extends Container {
         this._queryField = queryField
         this._matchCaseToggle = matchCaseToggle
         this._regexpToggle = regexpToggle
+        this._replaceField = replaceField
+        this._replaceAllButton = replaceAllButton
         this._resultsTree = resultsTree
         this._statusText = statusText
         this._listFiles = params.listFiles
@@ -170,15 +224,21 @@ class SearchPanel extends Container {
         this._onOpenMatch = params.onOpenMatch
         this._onCommitMatch = params.onCommitMatch
         this._onCommitFile = params.onCommitFile
+        this._onReplaceMatch = params.onReplaceMatch
+        this._onReplaceInFile = params.onReplaceInFile
+        this._onReplaceEverywhere = params.onReplaceEverywhere
         this._root = params.projectRoot
 
         this.paintStatus(IDLE_STATUS)
+        this._replaceAllButton.setEnabled(false)
 
         Event.addListener(this._queryField, 'keydown', (e: KeyboardEvent) => this.handleKeyDown(e))
         this._matchCaseToggle.on('change', () => { void this.runSearch() })
         this._regexpToggle.on('change', () => { void this.runSearch() })
+        this._replaceAllButton.on('action', () => { void this.applyReplaceAll() })
         this._resultsTree.on('selection', this.handleSelection)
         this._resultsTree.on('dblclick', this.handleDblClick)
+        this._resultsTree.on('contextmenu', this.handleContextMenu)
     }
 
     /** Repoints the panel at a new project folder, cancelling any run and clearing the results. */
@@ -186,6 +246,8 @@ class SearchPanel extends Container {
         this._runId += 1
         this._root = root
         this._queryField.setValue('')
+        this._replaceField.setValue('')
+        this._activeQuery = null
         this.clearResults()
         this.paintStatus(IDLE_STATUS)
     }
@@ -245,6 +307,7 @@ class SearchPanel extends Container {
         this.clearResults()
 
         if (query.text === '') {
+            this._activeQuery = null
             this.paintStatus(IDLE_STATUS)
 
             return
@@ -253,11 +316,13 @@ class SearchPanel extends Container {
         const compiled = compileQuery(query)
 
         if (compiled === null) {
+            this._activeQuery = null
             this.paintStatus(INVALID_REGEX_STATUS)
 
             return
         }
 
+        this._activeQuery = compiled
         this.paintStatus({ phase: 'running', matchCount: 0, fileCount: 0, filesSearched: 0 })
 
         let files: string[]
@@ -328,6 +393,7 @@ class SearchPanel extends Container {
         this.cancelPendingFlush()
         this._resultsTree.setNodes(searchResultNodes(this._matches, this._root))
         this._resultsTree.expandAll()
+        this.syncReplaceAllEnabled()
     }
 
     /** Cancels a rebuild {@link appendMatches} scheduled for the next frame, if any. */
@@ -343,6 +409,7 @@ class SearchPanel extends Container {
         this.cancelPendingFlush()
         this._matches = []
         this._resultsTree.setNodes([])
+        this.syncReplaceAllEnabled()
     }
 
     /**
@@ -382,6 +449,109 @@ class SearchPanel extends Container {
         } else if (data?.kind === 'file') {
             this._onCommitFile(data.path)
         }
+    }
+
+    /**
+     * The tree's `"contextmenu"` event: a match leaf offers **Replace**, a
+     * file branch offers **Replace All in File**. A folder branch gets no
+     * menu (see the plan's `## Non-Goals`).
+     *
+     * @param node - The right-clicked node.
+     * @param event - The originating mouse event, for the menu's anchor point.
+     */
+    private readonly handleContextMenu = (node: TreeNode, event: MouseEvent): void => {
+        const data = node.data as SearchTreeNodeData
+
+        if (data.kind === 'match') {
+            this._menu.show(event.clientX, event.clientY, [
+                { text: 'Replace', glyph: REPLACE_GLYPH, action: () => { void this.applyMatchReplace(data.match) } },
+            ])
+        } else if (data.kind === 'file') {
+            this._menu.show(event.clientX, event.clientY, [
+                { text: 'Replace All in File', glyph: REPLACE_GLYPH, action: () => { void this.applyFileReplace(data.path) } },
+            ])
+        }
+    }
+
+    /**
+     * Replaces one match via {@link SearchPanelParams.onReplaceMatch}, then
+     * re-runs the search. A no-op while there is no {@link _activeQuery} — the
+     * context menu that reaches this only exists while results (and
+     * therefore a compiled query) are on screen, but the check is kept for
+     * the same reason {@link applyReplaceAll} keeps its own.
+     *
+     * @param match - The match to replace.
+     */
+    private async applyMatchReplace(match: SearchMatch): Promise<void> {
+        if (this._activeQuery === null) {
+            return
+        }
+
+        const compiled = this._activeQuery
+
+        await this._onReplaceMatch(match, compiled, this._replaceField.getValue())
+        await this.runSearch()
+    }
+
+    /**
+     * Replaces every occurrence in one file via
+     * {@link SearchPanelParams.onReplaceInFile}, then re-runs the search.
+     *
+     * @param path - The file to replace in.
+     */
+    private async applyFileReplace(path: string): Promise<void> {
+        if (this._activeQuery === null) {
+            return
+        }
+
+        const compiled = this._activeQuery
+
+        await this._onReplaceInFile(path, compiled, this._replaceField.getValue())
+        await this.runSearch()
+    }
+
+    /**
+     * The panel's own Replace All button: confirms the match/file counts via
+     * {@link confirmReplaceAll}, then replaces every currently-listed match
+     * via {@link SearchPanelParams.onReplaceEverywhere}, reports the result in
+     * a toast, and re-runs the search whether or not the run succeeded.
+     */
+    private async applyReplaceAll(): Promise<void> {
+        if (this._activeQuery === null || this._matches.length === 0) {
+            return
+        }
+
+        // Captured now, not after the `await` below: TypeScript can't carry a
+        // `this._activeQuery !== null` narrowing across an `await`, so `compiled`
+        // is a local `const` instead — its own narrowed type survives the wait
+        // for the confirmation dialog.
+        const compiled = this._activeQuery
+        const paths = [...new Set(this._matches.map(match => match.path))]
+
+        if (!(await confirmReplaceAll(this._matches.length, paths.length))) {
+            return
+        }
+
+        const replacement = this._replaceField.getValue()
+
+        this.paintStatus({ phase: 'replacing', matchCount: 0, fileCount: 0, filesSearched: 0 })
+
+        try {
+            const { matchesReplaced, filesChanged } = await this._onReplaceEverywhere(paths, compiled, replacement)
+
+            Notification.show(
+                `Replaced ${pluralize(matchesReplaced, 'match', 'matches')} in ${pluralize(filesChanged, 'file', 'files')}.`,
+                'success',
+            )
+        } finally {
+            await this.runSearch()
+        }
+    }
+
+    /** Enables the Replace All button exactly when the tree currently lists at
+     *  least one match. Called wherever {@link _matches} changes. */
+    private syncReplaceAllEnabled(): void {
+        this._replaceAllButton.setEnabled(this._matches.length > 0)
     }
 
     /**

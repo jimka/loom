@@ -13,7 +13,7 @@ export type SearchTreeNodeData =
 
 /** What the panel's status line is describing. */
 export interface SearchStatus {
-    phase: 'idle' | 'running' | 'failed' | 'invalid-regex' | 'complete' | 'match-limit' | 'file-limit'
+    phase: 'idle' | 'running' | 'replacing' | 'failed' | 'invalid-regex' | 'complete' | 'match-limit' | 'file-limit'
     matchCount: number
     fileCount: number
     filesSearched: number
@@ -189,7 +189,7 @@ export function searchResultNodes(matches: readonly SearchMatch[], root: string 
  * @param plural - The noun's plural form.
  * @returns `count` and the correctly-pluralized noun, space-separated.
  */
-function pluralize(count: number, singular: string, plural: string): string {
+export function pluralize(count: number, singular: string, plural: string): string {
     return `${count} ${count === 1 ? singular : plural}`
 }
 
@@ -227,6 +227,8 @@ export function searchSummaryText(status: SearchStatus): string {
             return 'Enter a query to search the project.'
         case 'running':
             return 'Searching…'
+        case 'replacing':
+            return 'Replacing…'
         case 'failed':
             return 'Could not read the project folder.'
         case 'invalid-regex':

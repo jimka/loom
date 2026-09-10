@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { isProbablyBinary, findMatches, searchFiles, compileQuery } from '../src/data/projectSearch'
-import type { ReadFileText, SearchMatch, SearchQuery } from '../src/data/projectSearch'
+import { isProbablyBinary, findMatches, searchFiles, compileQuery, replaceAllInText, replaceOneInText } from '../src/data/projectSearch'
+import type { ReadFileText, SearchMatch, SearchQuery, MatchLocation } from '../src/data/projectSearch'
 
 /** A NUL character, built at runtime rather than typed as a raw byte in this
  *  source file — a literal NUL in a text file makes `git diff` treat it as
@@ -401,5 +401,117 @@ describe('searchFiles', () => {
 
         expect(batches).toHaveLength(1)
         expect(batches[0]).not.toEqual([])
+    })
+})
+
+describe('replaceAllInText', () => {
+    it('replaces every case-insensitive occurrence of a plain substring', () => {
+        const compiled = compileQuery(query('foo'))!
+        const result = replaceAllInText('const Foo = foo', compiled, 'X')
+
+        expect(result).toEqual({ text: 'const X = X', count: 2 })
+    })
+
+    it('replaces only the exact-case occurrence when caseSensitive is set', () => {
+        const compiled = compileQuery(query('foo', { caseSensitive: true }))!
+        const result = replaceAllInText('const Foo = foo', compiled, 'X')
+
+        expect(result).toEqual({ text: 'const Foo = X', count: 1 })
+    })
+
+    it('substitutes captured groups for a regexp replacement template', () => {
+        const compiled = compileQuery(query('(\\w+)=(\\d+)', { regexp: true }))!
+        const result = replaceAllInText('x=5', compiled, '$2=$1')
+
+        expect(result).toEqual({ text: '5=x', count: 1 })
+    })
+
+    it('substitutes $& with the whole match', () => {
+        const compiled = compileQuery(query('foo', { regexp: true }))!
+        const result = replaceAllInText('foo', compiled, '[$&]')
+
+        expect(result).toEqual({ text: '[foo]', count: 1 })
+    })
+
+    it('resolves $$ to a literal $, leaving the following digit untouched', () => {
+        const compiled = compileQuery(query('foo', { regexp: true }))!
+        const result = replaceAllInText('foo', compiled, '$$1')
+
+        expect(result).toEqual({ text: '$1', count: 1 })
+    })
+
+    it('returns the original text unchanged when every match would be empty', () => {
+        const text = 'ab'
+        const compiled = compileQuery(query('x*', { regexp: true }))!
+        const result = replaceAllInText(text, compiled, 'Y')
+
+        expect(result.text).toBe(text)
+        expect(result.count).toBe(0)
+    })
+
+    it('keeps each line\'s own line ending untouched', () => {
+        const compiled = compileQuery(query('foo'))!
+        const result = replaceAllInText('foo\r\nfoo\n', compiled, 'X')
+
+        expect(result).toEqual({ text: 'X\r\nX\n', count: 2 })
+    })
+
+    it('never matches a pattern spanning a line break', () => {
+        const text = 'foo\nbar'
+        const compiled = compileQuery(query('foo\\nbar', { regexp: true }))!
+        const result = replaceAllInText(text, compiled, 'X')
+
+        expect(result.text).toBe(text)
+        expect(result.count).toBe(0)
+    })
+
+    it('returns the original text unchanged when nothing matches', () => {
+        const text = 'nothing'
+        const compiled = compileQuery(query('zzz'))!
+        const result = replaceAllInText(text, compiled, 'X')
+
+        expect(result.text).toBe(text)
+        expect(result.count).toBe(0)
+    })
+})
+
+describe('replaceOneInText', () => {
+    function at(line: number, column: number, length: number): MatchLocation {
+        return { line, column, length }
+    }
+
+    it('replaces the occurrence at the given location', () => {
+        const compiled = compileQuery(query('foo'))!
+        const result = replaceOneInText('const foo = 1', at(1, 6, 3), compiled, 'bar')
+
+        expect(result).toBe('const bar = 1')
+    })
+
+    it('returns null when the line has moved since the match was found', () => {
+        const compiled = compileQuery(query('foo'))!
+        const result = replaceOneInText('const bar = 1', at(1, 6, 3), compiled, 'bar')
+
+        expect(result).toBeNull()
+    })
+
+    it("returns null when the target line no longer exists", () => {
+        const compiled = compileQuery(query('a'))!
+        const result = replaceOneInText('only one line', at(5, 0, 1), compiled, 'X')
+
+        expect(result).toBeNull()
+    })
+
+    it('replaces only the targeted regexp occurrence, leaving an earlier one on the same line untouched', () => {
+        const compiled = compileQuery(query('(\\w)=(\\d)', { regexp: true }))!
+        const result = replaceOneInText('a=1 b=2', at(1, 4, 3), compiled, '$2=$1')
+
+        expect(result).toBe('a=1 2=b')
+    })
+
+    it('respects caseSensitive when verifying the targeted occurrence', () => {
+        const compiled = compileQuery(query('foo', { caseSensitive: true }))!
+        const result = replaceOneInText('Foo foo', at(1, 4, 3), compiled, 'X')
+
+        expect(result).toBe('Foo X')
     })
 })

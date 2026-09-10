@@ -183,6 +183,10 @@ describe('searchSummaryText', () => {
         )
     })
 
+    it('shows a replacing indicator', () => {
+        expect(searchSummaryText({ phase: 'replacing', matchCount: 0, fileCount: 0, filesSearched: 0 })).toBe('Replacing…')
+    })
+
     it('reports no matches', () => {
         expect(searchSummaryText({ phase: 'complete', matchCount: 0, fileCount: 0, filesSearched: 40 })).toBe('No matches.')
     })
