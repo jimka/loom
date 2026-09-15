@@ -51,6 +51,13 @@ const WIDEST_CURSOR_POSITION: CodeEditorCursorPosition = { line: 99_999, column:
  */
 const WIDEST_SELECTION = { characters: WIDEST_CURSOR_POSITION.offset, lines: WIDEST_CURSOR_POSITION.line }
 
+/** The longest of the language ids {@link languageForPath} can return
+ *  (`javascript`, `json`, `html`, `sql`, `markdown`, `css`, `python`) — the
+ *  worst case the status bar's language readout is measured against once at
+ *  startup, mirroring {@link WIDEST_CURSOR_POSITION} and
+ *  {@link WIDEST_SELECTION} above. */
+const WIDEST_LANGUAGE_ID = 'javascript'
+
 /** How an {@link EditorController.openFile} request should treat the tab it lands in. */
 export type OpenMode = 'temporary' | 'permanent'
 
@@ -161,6 +168,23 @@ class EditorController {
         }
 
         this._selectionText.setText('')
+
+        // `_languageText` changes on every active-tab switch (see `Tab.closeEntry`'s
+        // `selectNextContent`, which switches tabs on every close), so it gets the
+        // same measure-once treatment as the two readouts above — left on Text's
+        // default auto-measure, this call site was the one instance of the
+        // pattern above's reflow trap this constructor missed.
+        this._languageText.setText(WIDEST_LANGUAGE_ID)
+        this._languageText.measure()
+
+        const languageTextSize = this._languageText.getPreferredSize()
+
+        if (languageTextSize) {
+            this._languageText.setPreferredSize(languageTextSize)
+            this._languageText.setAutoMeasure(false)
+        }
+
+        this._languageText.setText('')
 
         this.statusBar.addRight(this._selectionText)
         this.statusBar.addRight(this._cursorText)

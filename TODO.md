@@ -66,29 +66,34 @@ nothing below has a plan yet.
   under `## Notes`), so whether a click reaches the system browser is up to
   the platform's webview. Each link's text is the URL itself, so the
   address stays readable either way.
-- **Inactive tabs stay in the layout tree — a standing forced-reflow trap.**
-  `Tab`'s layout manager hides every non-active tab's content with
-  `setVisible(false)`, which is `visibility: hidden`, not `display: none` —
-  so every file ever opened in a session keeps its live `CodeEditor` (gutter,
-  decorations, and all) participating in layout, even years into an editing
-  session with dozens of tabs open. This already caused one real bug: the
-  status bar's caret readout re-measured itself on every `cursorchange`
-  (`Text.setText`'s default auto-measure forces a synchronous
-  `getBoundingClientRect` reflow), and `cursorchange` fires continuously
-  during drag-select — cheap on the library's own demo panels (one or two
-  editors ever mounted), but scaling with every open tab in real Loom usage,
-  which made selection dragging feel sluggish. Fixed for that one call site
-  by fixing the readout's width and disabling auto-measure (see
-  `EditorController.ts`'s `WIDEST_CURSOR_POSITION`), but the underlying trap
-  is still there: any future feature that wires a frequent, per-keystroke or
-  per-mousemove event to a layout-forcing read (`getBoundingClientRect`,
+- **Frequent events wired to layout-forcing reads are still a trap — now
+  scaled by what is visible, not by every open tab.** `Tab` used to hide
+  inactive content with `visibility: hidden`, so every file ever opened kept
+  its live `CodeEditor` participating in layout, and every forced reflow paid
+  for all of them. `typescript-ui` now takes inactive tab pages
+  (`display: none`, merged 2026-09-14) and settled-collapsed `Split` panes /
+  `Border` regions (merged 2026-09-15) out of the render tree, restoring
+  their scroll offsets on re-show; measured in the real shell, a gutter drag
+  with ten tabs open went from 171 to 92 ms per frame, and one tab is
+  unchanged. What remains is the general rule: a forced layout still costs
+  in proportion to everything mounted *and visible* — each split group's
+  active editor, a populated tree — so any per-keystroke or per-mousemove
+  event wired to a layout-forcing read (`getBoundingClientRect`,
   `offsetWidth`, a `Text`/`Component` auto-measure, `Tree`/table
-  virtualization math) will pay a cost proportional to every open tab, not
-  just the active one. The real fix would be giving `Tab` a `display: none`
-  (or unmount) path for inactive content instead of `visibility: hidden`.
-  Split editor groups compound this rather than fixing it: each group's own
-  active editor is genuinely visible at once, so the cost above now scales
-  with the number of groups open, not just the number of tabs.
+  virtualization math) pays that once per event. Two instances were found
+  in the status bar, both a `Text` left on its default auto-measure
+  (`Text.setText` → `calculateSize` → synchronous reflow): the caret
+  readout, re-measured on every `cursorchange` during a drag-select, and
+  the language readout, re-set on every active-tab switch — `Tab.closeEntry`
+  switches tabs on every close, so closing N tabs forced N extra reflows,
+  visible as frame times staying elevated for seconds after closing tabs
+  back down to one. Both are fixed the same way (measure the widest value
+  once at startup, pin the preferred size, `setAutoMeasure(false)`; see
+  `WIDEST_CURSOR_POSITION` / `WIDEST_LANGUAGE_ID` in `EditorController.ts`),
+  and a before/after trace confirmed the clustered forced layouts gone. Any
+  new readout fed from a frequent event needs the same treatment. Split
+  editor groups multiply the visible-editor count, so they raise the
+  per-event cost rather than lowering it.
 - **A remembered tab outside the project root stays closed.** Launch
   restore grants the remembered project root and its subtree, nothing
   else, so a tab remembered from outside that root *and* outside
@@ -98,6 +103,26 @@ nothing below has a plan yet.
   path that no longer reads. Covering it would widen the launch-time grant
   from one directory to an unbounded list of individually remembered
   files.
+- **The visible editors' own resize work is the remaining gutter-drag cost.**
+  Two perf rounds in `typescript-ui` (see its `plans/implemented/`: the
+  forced-layout coalescing round across `Split`, `ScrollStrip`/`TabBar`,
+  `Tree`, `Panel`, `Accordion`, `DragManager` and `AbstractWindow`; then the
+  scroll-shadow edge strips, undisplayed inactive tab pages, collapsed panes
+  leaving the render tree, and `ScrollStrip`'s clamp-signature read gate)
+  removed the library's own per-frame costs from a gutter drag. Real-shell
+  numbers (WebKitGTK, software-rendered, rAF-paced synthetic drag, ms per
+  frame): explorer gutter with one editor ≈70 against ≈52 with no project
+  open; ten tabs 171 → 92; in a 2×2 editor grid the horizontal gutter went
+  220 → 107, level with the vertical gutter's 112. What is left scales with
+  the number of *visible* editors whose box changes — roughly 15–20 ms per
+  frame each — and is CodeMirror's own re-measure on resize (its
+  `measure`/`getScrollOffset` cycle, plus wrap points under `lineWrap`).
+  Not investigated yet: whether Loom or the library could defer that
+  re-measure to the settle frame of a drag (the coalescing shape the
+  library now uses for its own resize reads) without visible lag, or
+  whether it is already as cheap as it gets. Measure any attempt in
+  WebKitGTK (MiniBrowser drives the real shell), not Chromium — paint and
+  layout costs do not transfer between the two.
 - **Three hint labels stay a hardcoded mid-grey under both themes.**
   `SearchPanel.ts`, `PropertiesPanel.ts`, and `WelcomeScreen.ts` each paint a
   de-emphasised hint text `rgb(140, 140, 140)`, and the `Theme` interface has
