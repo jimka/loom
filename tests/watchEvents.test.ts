@@ -1,73 +1,117 @@
 import { describe, it, expect } from 'vitest'
 import {
-    refreshTargets, minimalRoots, isContentChangeKind, isListingChangeKind, changesListing, externalChangeOutcome,
+    refreshTargets, mergeRefreshTargets, isContentChangeKind, isListingChangeKind, changesListing, externalChangeOutcome,
 } from '../src/data/watchEvents'
 
-describe('minimalRoots', () => {
-    it('drops a directory whose parent is also present', () => {
-        expect(minimalRoots(['/p', '/p/src'])).toEqual(['/p'])
-    })
-
-    it('gives the same result regardless of input order', () => {
-        expect(minimalRoots(['/p/src', '/p'])).toEqual(['/p'])
-    })
-
-    it('keeps both siblings, neither containing the other', () => {
-        expect(minimalRoots(['/p/a', '/p/b'])).toEqual(['/p/a', '/p/b'])
-    })
-
-    it('deduplicates a repeated entry', () => {
-        expect(minimalRoots(['/p', '/p'])).toEqual(['/p'])
-    })
-
-    it('does not treat a shared prefix as containment', () => {
-        expect(minimalRoots(['/p', '/px/a'])).toEqual(['/p', '/px/a'])
-    })
-
-    it('returns an empty array for an empty input', () => {
-        expect(minimalRoots([])).toEqual([])
-    })
-})
-
 describe('refreshTargets', () => {
-    it("targets a changed file's own directory", () => {
-        expect(refreshTargets('/p', ['/p/src/a.ts'])).toEqual(['/p/src'])
+    it("targets a changed file's folder shallowly and the file itself deeply", () => {
+        expect(refreshTargets('/p', ['/p/src/a.ts'])).toEqual([
+            { path: '/p/src', deep: false },
+            { path: '/p/src/a.ts', deep: true },
+        ])
     })
 
-    it("targets a changed .gitignore's own directory", () => {
-        expect(refreshTargets('/p', ['/p/.gitignore'])).toEqual(['/p'])
+    it("targets a changed .gitignore's folder deeply, covering the file itself", () => {
+        expect(refreshTargets('/p', ['/p/.gitignore'])).toEqual([{ path: '/p', deep: true }])
     })
 
-    it('targets one directory shared by both ends of a rename', () => {
-        expect(refreshTargets('/p', ['/p/old', '/p/new'])).toEqual(['/p'])
+    it('targets the shared folder once for both ends of a rename, and each end deeply', () => {
+        expect(refreshTargets('/p', ['/p/old', '/p/new'])).toEqual([
+            { path: '/p', deep: false },
+            { path: '/p/old', deep: true },
+            { path: '/p/new', deep: true },
+        ])
     })
 
-    it('drops a target already covered by another target', () => {
-        expect(refreshTargets('/p', ['/p/a.ts', '/p/src/b.ts'])).toEqual(['/p'])
+    it('keeps a changed folder below another shallow target, ancestors first', () => {
+        expect(refreshTargets('/p', ['/p/a.ts', '/p/src/b.ts'])).toEqual([
+            { path: '/p', deep: false },
+            { path: '/p/src', deep: false },
+            { path: '/p/a.ts', deep: true },
+            { path: '/p/src/b.ts', deep: true },
+        ])
     })
 
-    it("ignores a change inside the workspace's own .loom folder", () => {
+    it('lets a .gitignore make its folder deep, covering every other change in it', () => {
+        expect(refreshTargets('/p', ['/p/src/a.ts', '/p/src/.gitignore'])).toEqual([{ path: '/p/src', deep: true }])
+    })
+
+    it('drops a change in a subfolder that a deep .gitignore target already covers', () => {
+        expect(refreshTargets('/p', ['/p/lib/.gitignore', '/p/lib/x/y.ts'])).toEqual([{ path: '/p/lib', deep: true }])
+    })
+
+    it("ignores a change inside the workspace's own .loom folder, or to the folder itself", () => {
         expect(refreshTargets('/p', ['/p/.loom/workspace.json'])).toEqual([])
-    })
-
-    it('ignores a change to the .loom folder itself, not only its contents', () => {
         expect(refreshTargets('/p', ['/p/.loom'])).toEqual([])
     })
 
-    it('ignores a path outside the project root', () => {
+    it('ignores a path outside the project root, the root itself, and an empty batch', () => {
         expect(refreshTargets('/p', ['/other/x.ts'])).toEqual([])
-    })
-
-    it("ignores the root itself, whose parent is outside the project", () => {
         expect(refreshTargets('/p', ['/p'])).toEqual([])
-    })
-
-    it('returns an empty array for an empty batch', () => {
         expect(refreshTargets('/p', [])).toEqual([])
     })
 
     it('resolves a Windows-shaped batch the same way', () => {
-        expect(refreshTargets('C:\\p', ['C:\\p\\src\\a.ts'])).toEqual(['C:\\p\\src'])
+        expect(refreshTargets('C:\\p', ['C:\\p\\src\\a.ts'])).toEqual([
+            { path: 'C:\\p\\src', deep: false },
+            { path: 'C:\\p\\src\\a.ts', deep: true },
+        ])
+    })
+
+    it('targets a folder swapped in by a move deeply, so its loaded contents are re-read', () => {
+        expect(refreshTargets('/p', ['/p/lib'])).toEqual([
+            { path: '/p', deep: false },
+            { path: '/p/lib', deep: true },
+        ])
+    })
+})
+
+describe('mergeRefreshTargets', () => {
+    it('keeps one target per path, deep winning in either order', () => {
+        expect(mergeRefreshTargets([{ path: '/p/a', deep: false }, { path: '/p/a', deep: true }]))
+            .toEqual([{ path: '/p/a', deep: true }])
+        expect(mergeRefreshTargets([{ path: '/p/a', deep: true }, { path: '/p/a', deep: false }]))
+            .toEqual([{ path: '/p/a', deep: true }])
+    })
+
+    it('drops a target below a deep target', () => {
+        expect(mergeRefreshTargets([{ path: '/p', deep: true }, { path: '/p/src', deep: false }]))
+            .toEqual([{ path: '/p', deep: true }])
+    })
+
+    it('keeps a target below a shallow target', () => {
+        expect(mergeRefreshTargets([{ path: '/p', deep: false }, { path: '/p/src', deep: false }]))
+            .toEqual([{ path: '/p', deep: false }, { path: '/p/src', deep: false }])
+    })
+
+    it('keeps a deep target below a shallow target', () => {
+        expect(mergeRefreshTargets([{ path: '/p', deep: false }, { path: '/p/src', deep: true }]))
+            .toEqual([{ path: '/p', deep: false }, { path: '/p/src', deep: true }])
+    })
+
+    it('does not treat a shared prefix as containment', () => {
+        expect(mergeRefreshTargets([{ path: '/p', deep: true }, { path: '/px/a', deep: false }]))
+            .toEqual([{ path: '/p', deep: true }, { path: '/px/a', deep: false }])
+    })
+
+    it('drops a target below a deep target in a Windows-shaped path', () => {
+        expect(mergeRefreshTargets([{ path: 'C:\\p', deep: true }, { path: 'C:\\p\\src', deep: false }]))
+            .toEqual([{ path: 'C:\\p', deep: true }])
+    })
+
+    it('orders ancestors first, whatever the input order', () => {
+        expect(mergeRefreshTargets([{ path: '/p/src', deep: false }, { path: '/p', deep: false }]))
+            .toEqual([{ path: '/p', deep: false }, { path: '/p/src', deep: false }])
+    })
+
+    it('returns an empty array for an empty input, and leaves its input untouched', () => {
+        const input = [{ path: '/p/src', deep: false }, { path: '/p', deep: true }]
+
+        expect(mergeRefreshTargets([])).toEqual([])
+
+        mergeRefreshTargets(input)
+
+        expect(input).toEqual([{ path: '/p/src', deep: false }, { path: '/p', deep: true }])
     })
 })
 
