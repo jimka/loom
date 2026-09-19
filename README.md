@@ -29,7 +29,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   menu's **Show Hidden Files** and **Show Ignored Files** toggles bring each
   class back independently. The tree follows changes made outside the app —
   another editor, a `git checkout`, a build tool — and editing a
-  `.gitignore` re-filters everything below its own directory. A single
+  `.gitignore` re-filters everything below its own directory. Only a
+  created, deleted, or renamed entry re-lists its folder; saving a file,
+  from Loom or anywhere else, leaves the tree as it is. A single
   click opens a file in a reusable temp tab; a double click opens it
   permanently. Right-clicking a directory, a file, or empty tree space opens
   a context menu offering New File/New Folder, Rename, Delete, and Copy
@@ -37,7 +39,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
 - **Properties** — a second, collapsible section under the file tree,
   showing the selected file or folder's name, path, type, size, and
   last-modified time. Selecting a row with a click or the arrow keys updates
-  it; with nothing selected it says so.
+  it; with nothing selected it says so. It also refreshes when the selected
+  file changes on disk — a save from Loom included — or, for a folder, when
+  an entry directly inside it is created, deleted, or renamed.
 - **Command palette** — Ctrl/Cmd+P opens a fuzzy file finder over every file
   in the project; the first match is highlighted as soon as you type, so
   Enter opens it directly; arrow keys only move the highlight, and nothing
