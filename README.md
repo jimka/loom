@@ -92,7 +92,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   file's type, without the tab closing or reopening. Open tabs follow
   changes made outside the app too: a buffer with no unsaved changes
   reloads, and one with unsaved changes asks whether to reload from disk or
-  keep them.
+  keep them. Every editor on screen — the one showing in each split group
+  or floating window, not only the focused one — catches up at once; a
+  background tab catches up when it is next shown.
 - **Split editor groups** — drag a tab onto the edge of the editor area to
   split it, and the dragged file opens in the new group beside the first;
   drag a tab between groups to move it, or off a strip entirely to tear it
