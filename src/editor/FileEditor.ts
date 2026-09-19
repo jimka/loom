@@ -76,6 +76,7 @@ class FileEditor extends Container {
     private _preview: MarkdownViewer | null = null
     private _previewing = false
     private _refreshTimer: ReturnType<typeof setTimeout> | null = null
+    private _shownListener: (() => void) | null = null
 
     constructor(params: FileEditorParams) {
         const editor = new CodeEditor(params.text, { language: languageForPath(params.path) ?? undefined })
@@ -329,6 +330,34 @@ class FileEditor extends Container {
     /** Drops the external-change flag. */
     clearExternalChange(): void {
         this._externalChange = false
+    }
+
+    /**
+     * Registers the callback run each time this editor comes on screen — its
+     * tab activated, its group revealed, or its float shown — replacing any
+     * earlier one. `EditorController` resolves a pending external change
+     * there, so a background tab catches up the moment it is shown.
+     *
+     * @param fn - Called each time this editor becomes effectively visible.
+     */
+    setShownListener(fn: () => void): void {
+        this._shownListener = fn
+    }
+
+    /**
+     * Runs the {@link setShownListener} callback when this editor comes on
+     * screen. `Tab` hides an inactive panel by undisplaying an ancestor, which
+     * this component's own flags never see; the library's effective-visibility
+     * reconcile walks that change down to here.
+     *
+     * @param effective - Whether this editor is now effectively visible.
+     */
+    protected onEffectiveVisibilityChange(effective: boolean): void {
+        super.onEffectiveVisibilityChange(effective)
+
+        if (effective) {
+            this._shownListener?.()
+        }
     }
 
     /** Whether this file occupies the strip's temp tab — the one a temporary open recycles. */

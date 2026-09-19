@@ -5,7 +5,7 @@ import { Text } from '@jimka/typescript-ui/component/input'
 import { LabeledGrid } from '@jimka/typescript-ui/component/container'
 import { statEntry } from '../data/workspace'
 import type { EntryInfo } from '../data/workspace'
-import { PROPERTY_LABELS, entryPropertyRows } from './entryProperties'
+import { PROPERTY_LABELS, entryPropertyRows, isEntryAffected } from './entryProperties'
 import type { SelectedEntry } from './entryProperties'
 
 /** The `Card` deck's two page ids. */
@@ -78,6 +78,22 @@ class PropertiesPanel extends Container {
         this.applyRows(entry, null)
         this._card.setVisibleComponentId(GRID_PAGE_ID)
         void this.loadInfo(entry)
+    }
+
+    /**
+     * Re-reads the shown entry's metadata when a watcher batch changed it —
+     * see {@link isEntryAffected}. The current rows stay on screen until the
+     * fresh read lands, so a save of the selected file updates its size and
+     * modified time without the panel blanking first; a batch that does not
+     * touch the entry leaves the panel alone.
+     *
+     * @param paths - The changed paths the watcher reported.
+     * @param listingChanged - Whether the batch can have changed what a directory lists.
+     */
+    refreshChanged(paths: string[], listingChanged: boolean): void {
+        if (this._entry !== null && isEntryAffected(this._entry, paths, listingChanged)) {
+            void this.loadInfo(this._entry)
+        }
     }
 
     /** Repoints the panel at a new project folder and repaints the current row. */

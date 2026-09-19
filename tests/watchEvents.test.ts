@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { refreshTargets, minimalRoots, isContentChangeKind, externalChangeOutcome } from '../src/data/watchEvents'
+import {
+    refreshTargets, minimalRoots, isContentChangeKind, isListingChangeKind, changesListing, externalChangeOutcome,
+} from '../src/data/watchEvents'
 
 describe('minimalRoots', () => {
     it('drops a directory whose parent is also present', () => {
@@ -96,6 +98,66 @@ describe('isContentChangeKind', () => {
 
     it('accepts the "other" string kind', () => {
         expect(isContentChangeKind('other')).toBe(true)
+    })
+})
+
+describe('isListingChangeKind', () => {
+    it('rejects a data modify, which is what a save reports', () => {
+        expect(isListingChangeKind({ modify: { kind: 'data', mode: 'any' } })).toBe(false)
+    })
+
+    it('rejects a content-only data modify', () => {
+        expect(isListingChangeKind({ modify: { kind: 'data', mode: 'content' } })).toBe(false)
+    })
+
+    it('rejects a metadata modify', () => {
+        expect(isListingChangeKind({ modify: { kind: 'metadata', mode: 'write-time' } })).toBe(false)
+    })
+
+    it('rejects an access event', () => {
+        expect(isListingChangeKind({ access: { kind: 'close', mode: 'write' } })).toBe(false)
+    })
+
+    it('accepts a create event', () => {
+        expect(isListingChangeKind({ create: { kind: 'file' } })).toBe(true)
+    })
+
+    it('accepts a remove event', () => {
+        expect(isListingChangeKind({ remove: { kind: 'folder' } })).toBe(true)
+    })
+
+    it('accepts a rename modify', () => {
+        expect(isListingChangeKind({ modify: { kind: 'rename', mode: 'both' } })).toBe(true)
+    })
+
+    it('accepts an unspecific modify', () => {
+        expect(isListingChangeKind({ modify: { kind: 'any' } })).toBe(true)
+    })
+
+    it('accepts the "any" string kind', () => {
+        expect(isListingChangeKind('any')).toBe(true)
+    })
+
+    it('accepts the "other" string kind', () => {
+        expect(isListingChangeKind('other')).toBe(true)
+    })
+})
+
+describe('changesListing', () => {
+    it('is false for a data modify of an ordinary file', () => {
+        expect(changesListing({ modify: { kind: 'data', mode: 'any' } }, ['/p/src/a.ts'])).toBe(false)
+    })
+
+    it('is true for a data modify of a .gitignore', () => {
+        expect(changesListing({ modify: { kind: 'data', mode: 'any' } }, ['/p/src/.gitignore'])).toBe(true)
+    })
+
+    it('is true for a create of an ordinary file', () => {
+        expect(changesListing({ create: { kind: 'file' } }, ['/p/src/a.ts'])).toBe(true)
+    })
+
+    it('is true when any path in a data-modify batch is a .gitignore', () => {
+        expect(changesListing({ modify: { kind: 'data', mode: 'any' } }, ['/p/a.ts', '/p/.gitignore'])).toBe(true)
     })
 })
 

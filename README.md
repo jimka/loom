@@ -29,7 +29,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   menu's **Show Hidden Files** and **Show Ignored Files** toggles bring each
   class back independently. The tree follows changes made outside the app —
   another editor, a `git checkout`, a build tool — and editing a
-  `.gitignore` re-filters everything below its own directory. A single
+  `.gitignore` re-filters everything below its own directory. Only a
+  created, deleted, or renamed entry re-lists its folder; saving a file,
+  from Loom or anywhere else, leaves the tree as it is. A single
   click opens a file in a reusable temp tab; a double click opens it
   permanently. Right-clicking a directory, a file, or empty tree space opens
   a context menu offering New File/New Folder, Rename, Delete, and Copy
@@ -37,7 +39,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
 - **Properties** — a second, collapsible section under the file tree,
   showing the selected file or folder's name, path, type, size, and
   last-modified time. Selecting a row with a click or the arrow keys updates
-  it; with nothing selected it says so.
+  it; with nothing selected it says so. It also refreshes when the selected
+  file changes on disk — a save from Loom included — or, for a folder, when
+  an entry directly inside it is created, deleted, or renamed.
 - **Command palette** — Ctrl/Cmd+P opens a fuzzy file finder over every file
   in the project; the first match is highlighted as soon as you type, so
   Enter opens it directly; arrow keys only move the highlight, and nothing
@@ -88,7 +92,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   file's type, without the tab closing or reopening. Open tabs follow
   changes made outside the app too: a buffer with no unsaved changes
   reloads, and one with unsaved changes asks whether to reload from disk or
-  keep them.
+  keep them. Every editor on screen — the one showing in each split group
+  or floating window, not only the focused one — catches up at once; a
+  background tab catches up when it is next shown.
 - **Split editor groups** — drag a tab onto the edge of the editor area to
   split it, and the dragged file opens in the new group beside the first;
   drag a tab between groups to move it, or off a strip entirely to tear it

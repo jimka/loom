@@ -314,15 +314,17 @@ class EditorController {
     }
 
     /**
-     * Flags every open file the batch names, and resolves the active one now.
-     * A background file's resolution is deferred until {@link handlePanelFocus}
-     * makes it active — there is no second code path and no stashed disk text
-     * for it in the meantime.
+     * Flags every open file the batch names, and resolves every one of them
+     * that is on screen now — the focused editor, and the one showing in each
+     * other group or float. A background tab's resolution is deferred until
+     * it comes on screen, through the listener each `FileEditor` gets from
+     * {@link addFileTab}/{@link newFile} — there is no stashed disk text for
+     * it in the meantime.
      *
      * @param paths - The batch of changed paths the watcher reported.
      */
     markExternalChanges(paths: string[]): void {
-        const active = this.getActiveFile()
+        const onScreen: FileEditor[] = []
 
         for (const path of new Set(paths)) {
             const file = this.findByPath(path)
@@ -333,10 +335,38 @@ class EditorController {
 
             file.markExternalChange()
 
-            if (file === active) {
-                void this.resolvePendingExternalChange(file)
+            if (this.isOnScreen(file)) {
+                onScreen.push(file)
             }
         }
+
+        void this.resolveExternalChanges(onScreen)
+    }
+
+    /**
+     * Resolves each of `files`' pending external changes in turn, so several
+     * files with unsaved changes raise their prompts one after another rather
+     * than stacked on top of each other.
+     *
+     * @param files - The open files to resolve.
+     */
+    private async resolveExternalChanges(files: FileEditor[]): Promise<void> {
+        for (const file of files) {
+            await this.resolvePendingExternalChange(file)
+        }
+    }
+
+    /**
+     * Whether `file` is still open and effectively visible. The open check
+     * matters for a file closed while its conflict prompt was up: a removed
+     * panel has no ancestors left to hide it, so its own visibility alone
+     * would still read as shown.
+     *
+     * @param file - The file to test.
+     * @returns Whether `file` is open and on screen.
+     */
+    private isOnScreen(file: FileEditor): boolean {
+        return this._openFiles.get(file.getPanelId()) === file && file.isEffectivelyVisible()
     }
 
     /**
@@ -429,6 +459,7 @@ class EditorController {
         })
 
         file.onDirtyChange(() => this.handleDirtyChange(file))
+        file.setShownListener(() => { void this.resolvePendingExternalChange(file) })
         file.getEditor().on('cursorchange', () => this.handleCursorChange(file))
         file.getEditor().on('selectionchange', () => this.handleSelectionChange(file))
         this.dock.addPanel({ id: panelId, title: file.getName(), glyph: glyphNameForPath(file.getName()), content: file })
@@ -568,6 +599,7 @@ class EditorController {
 
         file.setTemporary(temporary)
         file.onDirtyChange(() => this.handleDirtyChange(file))
+        file.setShownListener(() => { void this.resolvePendingExternalChange(file) })
         file.getEditor().on('cursorchange', () => this.handleCursorChange(file))
         file.getEditor().on('selectionchange', () => this.handleSelectionChange(file))
         this.dock.addPanel({ id: panelId, title: file.getName(), glyph: glyphNameForPath(path), content: file })
@@ -1185,11 +1217,13 @@ class EditorController {
     /**
      * Resolves `file`'s pending external-change flag: reads it from disk and
      * applies the outcome {@link externalChangeOutcome} decides. The flag is
-     * cleared on entry, not at the end, so a change landing while the prompt
-     * is open re-arms it — picked up the next time this file's tab is
-     * activated. A no-op when the file has no pending change, has no path, or
-     * is already being resolved (`_resolvingExternal` joins a second batch
-     * naming the same path rather than opening a second prompt for it).
+     * cleared on entry, not at the end, so a change landing while the disk
+     * read or the prompt is in flight re-arms it; once this resolution ends,
+     * a re-armed flag is resolved again straight away while the file is still
+     * on screen, and otherwise the next time it comes on screen. A no-op when
+     * the file has no pending change, has no path, or is already being
+     * resolved (`_resolvingExternal` joins a second batch naming the same
+     * path rather than opening a second prompt for it).
      *
      * @param file - The open file whose pending external change to resolve.
      */
@@ -1225,6 +1259,10 @@ class EditorController {
             }
         } finally {
             this._resolvingExternal.delete(path)
+        }
+
+        if (file.hasExternalChange() && this.isOnScreen(file)) {
+            await this.resolvePendingExternalChange(file)
         }
     }
 

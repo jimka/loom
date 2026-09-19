@@ -137,6 +137,17 @@ nothing below has a plan yet.
   pre-existing readability gap, not a deliberate tradeoff; fixing it
   properly needs a `text.muted` token in the library first, not a
   Loom-side color pick.
+- **A created, deleted, or renamed entry still rebuilds the whole tree.**
+  Saves no longer touch the tree, but a listing change re-lists the
+  entry's folder through `Tree.setNodes`, which collapses every node and
+  clears the selection; `FileTree.rebuild` then replays expansion (reading
+  every expanded folder below the re-listed one from disk again),
+  selection, and scroll. An editor that saves atomically — writing a
+  temporary file and renaming it over the original — reports a rename, so
+  it lands here too. The fix needs node-level insert/remove/update on
+  `Tree` in the library first (typescript-ui's
+  `plans/tree-node-level-updates.md`), then a Loom change that applies a
+  fresh listing to just the affected folder node.
 
 ## Notes
 
