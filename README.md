@@ -27,11 +27,15 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   *Files* before one is open). Hidden (leading-dot)
   and `.gitignore`-ignored entries are filtered out by default; the View
   menu's **Show Hidden Files** and **Show Ignored Files** toggles bring each
-  class back independently. The tree follows changes made outside the app —
-  another editor, a `git checkout`, a build tool — and editing a
-  `.gitignore` re-filters everything below its own directory. Only a
-  created, deleted, or renamed entry re-lists its folder; saving a file,
-  from Loom or anywhere else, leaves the tree as it is. A single
+  class back independently, without collapsing any open folder. The tree
+  follows changes made outside the app — another editor, a `git checkout`,
+  a build tool — and editing a `.gitignore` re-filters everything below its
+  own directory. Only a created, deleted, or renamed entry re-lists its
+  folder; saving a file, from Loom or anywhere else, leaves the tree as it
+  is. A re-listed folder changes in place: new entries appear and vanished
+  ones disappear, while open folders stay open, the selected row stays
+  selected, and the scroll position holds. A renamed entry counts as a new
+  one, so a renamed folder comes back collapsed. A single
   click opens a file in a reusable temp tab; a double click opens it
   permanently. Right-clicking a directory, a file, or empty tree space opens
   a context menu offering New File/New Folder, Rename, Delete, and Copy

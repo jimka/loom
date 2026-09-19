@@ -475,13 +475,10 @@ class EditorShell extends Container {
      * it has any), then schedules a session save. Settings reapplication is
      * `await`ed and finishes *before* the expansion restore starts, not just
      * ordered before it in source: `FileTree.setShowHidden`/`setShowIgnored`
-     * each reload the tree from its root — which collapses every expansion —
-     * and both now return the reload's own promise (mirroring
-     * `FileTree.setProjectRoot`) precisely so this method can await that
-     * completion rather than racing it; restoring expansion first, or
-     * firing the settings reload without awaiting it, would each let a
-     * still-in-flight reload land after the expansion restore and collapse
-     * it right back. No `catch` around the listing itself — a failed
+     * each re-filter every loaded folder and return that re-filter's own
+     * promise, and a saved expanded folder that only the new toggles reveal
+     * — a hidden `.github`, say — exists in the tree only once the re-filter
+     * has landed. No `catch` around the listing itself — a failed
      * listing rejects up through the `async` callback registered in the
      * constructor, which `EditorController.openProjectFolder` awaits and
      * reports via `Dialog.error`; `openRecentProject` still leaves it as an
@@ -526,7 +523,7 @@ class EditorShell extends Container {
         const root = this._tree.getProjectRoot()
 
         if (root !== null && isUnderRoot(root, path)) {
-            await this._tree.refreshSubtree(parentDir(path))
+            await this._tree.refreshDirectory(parentDir(path))
         }
     }
 

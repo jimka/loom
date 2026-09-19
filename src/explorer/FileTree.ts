@@ -8,7 +8,8 @@ import {
 } from '../data/workspace'
 import type { DirectoryItem, StopWatching } from '../data/workspace'
 import { expansionOrder } from '../data/session'
-import { refreshTargets, minimalRoots } from '../data/watchEvents'
+import { refreshTargets, mergeRefreshTargets } from '../data/watchEvents'
+import type { RefreshTarget } from '../data/watchEvents'
 import { glyphNameForPath } from '../fileIcons'
 import { joinPath, parentDir } from '../data/paths'
 import {
@@ -18,18 +19,18 @@ import type { IgnoreChain } from '../data/gitignore'
 import { messageOf } from '../errors'
 import { promptNewEntryName, promptRenameName, confirmDelete } from './fileTreePrompts'
 import type { SelectedEntry } from './entryProperties'
+import { reconcileChildren, findNodeByPath } from './fileTreeNodes'
+import type { FileTreeNodeData } from './fileTreeNodes'
 
 /** How long changed paths accumulate before the tree refreshes, in
  *  milliseconds. Batches the several messages one native flush still delivers
- *  into a single rebuild. */
+ *  into a single refresh pass. */
 const TREE_REFRESH_DEBOUNCE_MS = 150
 
-/** Domain payload `FileTree` attaches to every node via `TreeNode.data`. */
-interface FileTreeNodeData {
-    path: string
-    isDir: boolean
-    /** The ignore chain governing this node from above — what `loadDirectory` takes as its `parentChain`. */
-    parentChain: IgnoreChain
+/** A folder's visible entries and the ignore chain that governs them. */
+interface DirectoryListing {
+    items: DirectoryItem[]
+    chain: IgnoreChain
 }
 
 /** Constructor parameters for {@link FileTree}. */
@@ -69,9 +70,12 @@ class FileTree extends Tree {
     private _showHidden = false
     private _showIgnored = false
     private _stopWatching: StopWatching | null = null
-    private _pendingDirs = new Set<string>()
+    private _pendingTargets: RefreshTarget[] = []
     private _refreshTimer: ReturnType<typeof setTimeout> | null = null
-    /** Every {@link refreshSubtree} call chains onto this so at most one rebuild runs at a time. */
+    /** Every refresh — the watcher's, the tree's own actions', a Save As's,
+     *  and the Show Hidden/Show Ignored toggles' — chains onto this so they
+     *  run one at a time: each reconciles against the children the previous
+     *  one installed, and an older listing never lands over a newer one. */
     private _refreshChain: Promise<void> = Promise.resolve()
 
     constructor(params: FileTreeParams) {
@@ -194,7 +198,7 @@ class FileTree extends Tree {
     /**
      * Prompts for a new file's name inside `dir`, creates it, and opens it.
      * `selectPath` reveals it even when `dir` was collapsed or never loaded:
-     * `refreshSubtree` is then a no-op (see `## Architecture Decisions`), but
+     * `refreshDirectory` is then a no-op (see `## Architecture Decisions`), but
      * `selectPath`'s own existing fallback — already used to sync the tree to
      * the active tab — expands and loads whatever is needed to find the new
      * path, so no separate "expand the directory" step is needed here.
@@ -216,7 +220,7 @@ class FileTree extends Tree {
             return
         }
 
-        await this.refreshSubtree(dir)
+        await this.refreshDirectory(dir)
         await this.selectPath(path)
         this._onOpenFile(path)
     }
@@ -242,11 +246,11 @@ class FileTree extends Tree {
             return
         }
 
-        await this.refreshSubtree(dir)
+        await this.refreshDirectory(dir)
         await this.selectPath(path)
     }
 
-    /** Prompts for `path`'s new name, renames it on disk, relocates any open tab under it, and refreshes/reselects the tree.
+    /** Prompts for `path`'s new name, renames it on disk, relocates any open tab under it, and refreshes the tree and selects the renamed entry.
      *
      * @param path - The file or folder to rename.
      * @param isDir - Whether `path` is a directory.
@@ -267,7 +271,7 @@ class FileTree extends Tree {
         }
 
         this._onPathRenamed(path, newPath)
-        await this.refreshSubtree(parentDir(path))
+        await this.refreshDirectory(parentDir(path))
         await this.selectPath(newPath)
     }
 
@@ -292,7 +296,7 @@ class FileTree extends Tree {
         }
 
         this._onPathDeleted(path)
-        await this.refreshSubtree(parentDir(path))
+        await this.refreshDirectory(parentDir(path))
     }
 
     /** Copies `path` to the clipboard and shows a brief success toast — the only action with no visible tree change of its own.
@@ -363,47 +367,55 @@ class FileTree extends Tree {
     }
 
     /**
-     * Re-lists `dir` and rebuilds every directory the tree had loaded below
-     * it, re-applying the hidden/ignored filters and re-reading every
-     * `.gitignore` on the way down. Expansion, selection, and scroll
-     * position are preserved where the entries still exist. A no-op when
-     * `dir` is not the project root and not a directory whose listing the
-     * tree has loaded.
+     * Re-lists `dir` in place: entries still there keep their rows,
+     * expansion, loaded children and selection; new entries appear; vanished
+     * ones disappear. Folders below `dir` are not re-read. A no-op when `dir`
+     * is neither the project root nor a folder the tree has loaded. Queued on
+     * {@link _refreshChain} behind every refresh already running.
      *
-     * Every call — from the watcher's own batched flush, from
-     * `EditorShell`'s post-save hook, and from any future caller — is
-     * chained onto {@link _refreshChain}, so at most one rebuild ever runs
-     * at a time: a second rebuild starting before the first finishes would
-     * snapshot expansion the first hadn't restored yet and collapse
-     * whatever it hadn't reached.
-     *
-     * @param dir - The directory to refresh.
+     * @param dir - The folder to re-list.
      */
-    async refreshSubtree(dir: string): Promise<void> {
-        const run = this._refreshChain.then(() => this.performRefreshSubtree(dir))
+    async refreshDirectory(dir: string): Promise<void> {
+        return this.queueRefresh({ path: dir, deep: false })
+    }
+
+    /**
+     * Runs `target`'s refresh after every refresh already queued on
+     * {@link _refreshChain}.
+     *
+     * @param target - The path to re-list, and whether to go deep.
+     * @returns A promise that settles, with the refresh's own outcome, once it has run.
+     */
+    private queueRefresh(target: RefreshTarget): Promise<void> {
+        const run = this._refreshChain.then(() => this.performRefresh(target))
 
         this._refreshChain = run.then(() => undefined, () => undefined)
 
         return run
     }
 
-    /** {@link refreshSubtree}'s actual work, run strictly after every earlier queued refresh. */
-    private async performRefreshSubtree(dir: string): Promise<void> {
+    /**
+     * {@link queueRefresh}'s actual work: finds `target`'s folder node and
+     * re-lists it; skips a target that is not a loaded folder.
+     *
+     * @param target - The path to re-list, and whether to go deep.
+     */
+    private async performRefresh(target: RefreshTarget): Promise<void> {
         if (this._root === null) {
             return
         }
 
-        if (dir === this._root) {
-            await this.rebuild(dir, null, this._rootChain)
+        if (target.path === this._root) {
+            await this.relistDirectory(null, target.path, this._rootChain, target.deep)
 
             return
         }
 
-        const node = this.findLoadedNode(dir)
+        const node = this.findLoadedNode(target.path)
 
-        // A directory the tree never listed contributes nothing on screen, so
+        // A folder the tree never listed contributes nothing on screen, so
         // there is nothing to repair — and re-listing it here would eagerly
-        // load a branch the user never opened.
+        // load a branch the user never opened. A file target lands here too.
         if (node === null || node.children === undefined) {
             return
         }
@@ -414,48 +426,88 @@ class FileTree extends Tree {
             return
         }
 
-        await this.rebuild(dir, node, data.parentChain)
+        await this.relistDirectory(node, target.path, data.parentChain, target.deep)
     }
 
     /**
-     * Re-lists `dir` under `parentChain` and installs the result as `node`'s
-     * children — or as the root node set when `node` is `null` — then
-     * replays the expansion, selection, and scroll position `setNodes`
-     * cleared.
+     * Reads `dir`, reconciles the listing against `node`'s current children
+     * (or the root level when `node` is `null`), writes the fresh chain into
+     * every child's `parentChain`, and installs the result. With `deep`,
+     * then does the same for every loaded folder among the new children.
      *
-     * @param dir - The directory to re-list.
-     * @param node - The node whose children to replace, or `null` to replace
-     *   the whole root node set.
+     * @param node - The folder node to re-list, or `null` for the root level.
+     * @param dir - The folder's path.
      * @param parentChain - The ignore chain governing `dir` from above.
+     * @param deep - Whether to also re-list every loaded folder below `dir`.
      */
-    private async rebuild(dir: string, node: TreeNode | null, parentChain: IgnoreChain): Promise<void> {
-        const expanded = this.getExpandedPaths()
-        const selected = this.selectedPath()
-        const scrollY = this._scroller?.getScrollY() ?? 0
-        const children = await this.loadDirectory(dir, parentChain)
+    private async relistDirectory(node: TreeNode | null, dir: string, parentChain: IgnoreChain, deep: boolean): Promise<void> {
+        const listing = await this.readListing(dir, parentChain)
 
-        if (node === null) {
-            this.setNodes(children)
-        } else {
-            node.children = children
-            this.setNodes(this.getNodes())
+        // The project changed while the listing was read: this root-level
+        // result belongs to the previous project.
+        if (node === null && this._root !== dir) {
+            return
         }
 
-        await this.expandPaths(expanded)
-        this.reselect(selected)
+        const existing = node === null ? this.getNodes() : (node.children ?? [])
+        const children = reconcileChildren(existing, listing.items, item => this.toNode(item, listing.chain))
 
-        // Restored last so it wins over any incidental scroll `reselect`
-        // (via `selectNode`'s reveal behaviour) may have just caused —
-        // `setNodes` clamped the offset to the rebuilt, still-collapsed
-        // content height, and neither expansion nor selection replay it.
-        this.setScrollY(scrollY)
+        for (const child of children) {
+            const data = child.data as FileTreeNodeData
+
+            data.parentChain = listing.chain
+        }
+
+        this.applyChildren(node, children)
+
+        if (deep) {
+            await this.relistLoadedChildren(children)
+        }
     }
 
-    /** The selected row's path, or `null` when nothing is selected. */
-    private selectedPath(): string | null {
-        const data = this.getSelectedNode()?.data as FileTreeNodeData | undefined
+    /**
+     * A deep refresh's recursion: re-lists each folder in `children` that
+     * has loaded its own children. A new folder node is never loaded, so
+     * only a reused one is re-read.
+     *
+     * @param children - The child list just installed.
+     */
+    private async relistLoadedChildren(children: TreeNode[]): Promise<void> {
+        for (const child of children) {
+            const data = child.data as FileTreeNodeData
 
-        return data?.path ?? null
+            if (!data.isDir || child.children === undefined) {
+                continue
+            }
+
+            try {
+                await this.relistDirectory(child, data.path, data.parentChain, true)
+            } catch {
+                // A folder removed while the refresh walked down; the removal
+                // is its parent's own next watcher event.
+            }
+        }
+    }
+
+    /**
+     * Installs `children` under `parent` with `Tree.setChildren`, then tells
+     * the properties panel when that call dropped the selected row —
+     * `setChildren` removes a node without emitting `"selection"`. A
+     * selection that survives is not reported again: it still describes the
+     * same entry, and a change to that entry itself reaches the panel through
+     * {@link _onPathsChanged} instead.
+     *
+     * @param parent - The folder node whose children to replace, or `null` for the root level.
+     * @param children - The new child list; stored by reference, so never changed afterwards.
+     */
+    private applyChildren(parent: TreeNode | null, children: TreeNode[]): void {
+        const selected = this.getSelectedNode()
+
+        this.setChildren(parent, children)
+
+        if (this.getSelectedNode() !== selected) {
+            this.notifySelectedEntry()
+        }
     }
 
     /**
@@ -471,48 +523,24 @@ class FileTree extends Tree {
         this._onSelectEntry(data === undefined ? null : { path: data.path, isDir: data.isDir })
     }
 
-    /**
-     * Re-selects `path` when the rebuild left a node for it. Deliberately not
-     * `selectPath`: that falls back to `revealByPredicate`, which would load
-     * every unloaded branch hunting for a path the refresh may have just
-     * removed. Reports the selection only when the rebuild changed it — the
-     * entry vanished — since a selection that survived still describes the
-     * same entry; a change to that entry itself reaches the properties panel
-     * through {@link _onPathsChanged} instead.
-     *
-     * @param path - The path to re-select, or `null`.
-     */
-    private reselect(path: string | null): void {
-        const node = path === null ? null : this.findLoadedNode(path)
-
-        if (node !== null) {
-            this.selectNode(node)
-        }
-
-        if (this.selectedPath() !== path) {
-            this.notifySelectedEntry()
-        }
-    }
-
     /** Whether hidden (leading-dot) entries are currently shown. */
     isShowingHidden(): boolean {
         return this._showHidden
     }
 
     /**
-     * Sets whether hidden entries are shown, and reloads the tree from its
-     * root to apply the change — which collapses every expansion (see the
-     * plan's `## Potential Challenges`). Returns the reload's own promise, so
-     * a caller that needs to sequence work after the reload actually
-     * completes (e.g. restoring tree expansion afterward) can `await` it
-     * instead of racing it — mirroring {@link setProjectRoot}'s own
-     * awaitable reload.
+     * Sets whether hidden entries are shown, and re-filters every loaded
+     * folder in place to apply the change — expansion, selection and scroll
+     * are kept. Returns the re-filter's own promise, which settles once it is
+     * done, so a caller that needs to sequence work after it (e.g. restoring
+     * tree expansion afterward) can `await` it instead of racing it —
+     * mirroring {@link setProjectRoot}'s own awaitable load.
      *
      * @param value - Whether to show hidden entries.
      */
     async setShowHidden(value: boolean): Promise<void> {
         this._showHidden = value
-        await this.reload()
+        await this.refilterTree()
     }
 
     /** Whether `.gitignore`-ignored entries are currently shown. */
@@ -521,25 +549,29 @@ class FileTree extends Tree {
     }
 
     /**
-     * Sets whether ignored entries are shown, and reloads the tree from its
-     * root to apply the change. Returns the reload's own promise, for the
-     * same reason {@link setShowHidden} does.
+     * Sets whether ignored entries are shown, and re-filters every loaded
+     * folder in place to apply the change — expansion, selection and scroll
+     * are kept. Returns the re-filter's own promise, for the same reason
+     * {@link setShowHidden} does.
      *
      * @param value - Whether to show ignored entries.
      */
     async setShowIgnored(value: boolean): Promise<void> {
         this._showIgnored = value
-        await this.reload()
+        await this.refilterTree()
     }
 
-    /** Reloads the tree from `_root` using `_rootChain`; a no-op before any root is set. */
-    private async reload(): Promise<void> {
+    /**
+     * Re-applies the hidden/ignored toggles to every loaded folder in place,
+     * through the same deep refresh a changed root `.gitignore` gets, queued
+     * on {@link _refreshChain}. A no-op before any root is set.
+     */
+    private async refilterTree(): Promise<void> {
         if (this._root === null) {
             return
         }
 
-        this.setNodes(await this.loadDirectory(this._root, this._rootChain))
-        this.notifySelectedEntry()
+        await this.queueRefresh({ path: this._root, deep: true })
     }
 
     /** The absolute paths of the currently expanded directory nodes. */
@@ -566,54 +598,52 @@ class FileTree extends Tree {
     }
 
     /**
-     * Depth-first search over the currently loaded nodes for the one carrying
-     * `path`. Performs no I/O of its own — it finds a nested directory only
-     * because an earlier {@link expandPaths} step already expanded (and
-     * therefore loaded) its parent.
+     * Finds the loaded node carrying `path`, walking down from the root level
+     * along the path (see {@link findNodeByPath}). Performs no I/O of its own
+     * — it finds a nested directory only because an earlier
+     * {@link expandPaths} step already expanded (and therefore loaded) its
+     * parent.
      *
      * @param path - The absolute path to find.
      * @returns The matching node, or `null` when it isn't loaded.
      */
     private findLoadedNode(path: string): TreeNode | null {
-        const search = (nodes: TreeNode[]): TreeNode | null => {
-            for (const node of nodes) {
-                if ((node.data as FileTreeNodeData).path === path) {
-                    return node
-                }
-
-                const found = node.children ? search(node.children) : null
-
-                if (found) {
-                    return found
-                }
-            }
-
-            return null
-        }
-
-        return search(this.getNodes())
+        return findNodeByPath(this.getNodes(), path)
     }
 
     /**
      * Lists `dir`, extends `parentChain` with `dir`'s own `.gitignore` when it
-     * has one, and maps the entries the current toggles don't exclude into
-     * `TreeNode` literals. `dir`'s listing is checked for a `.gitignore` entry
-     * before issuing the extra read — a directory without one costs nothing —
-     * and that check runs before filtering, so a hidden `.gitignore` is never
-     * dropped before its own rules are read (see the plan's architecture
-     * decisions).
+     * has one, and keeps the entries the current toggles don't exclude.
+     * `dir`'s listing is checked for a `.gitignore` entry before issuing the
+     * extra read — a directory without one costs nothing — and that check
+     * runs before filtering, so a hidden `.gitignore` is never dropped before
+     * its own rules are read (see the plan's architecture decisions).
+     *
+     * @param dir - The directory to list.
+     * @param parentChain - The ignore chain governing `dir` from above.
+     * @returns `dir`'s visible entries and the chain that governs them.
+     */
+    private async readListing(dir: string, parentChain: IgnoreChain): Promise<DirectoryListing> {
+        const items = await listDirectory(dir)
+        const chain = items.some(item => !item.isDir && item.name === GITIGNORE_NAME)
+            ? extendIgnoreChain(parentChain, dir, await tryReadTextFile(joinPath(dir, GITIGNORE_NAME)))
+            : parentChain
+
+        return { items: items.filter(item => this.isEntryVisible(item, chain)), chain }
+    }
+
+    /**
+     * Lists `dir` (see {@link readListing}) and maps its visible entries into
+     * `TreeNode` literals.
      *
      * @param dir - The directory to list.
      * @param parentChain - The ignore chain governing `dir` from above.
      * @returns `dir`'s visible children as tree nodes.
      */
     private async loadDirectory(dir: string, parentChain: IgnoreChain): Promise<TreeNode[]> {
-        const items = await listDirectory(dir)
-        const chain = items.some(item => !item.isDir && item.name === GITIGNORE_NAME)
-            ? extendIgnoreChain(parentChain, dir, await tryReadTextFile(joinPath(dir, GITIGNORE_NAME)))
-            : parentChain
+        const listing = await this.readListing(dir, parentChain)
 
-        return this.toNodes(items.filter(item => this.isEntryVisible(item, chain)), chain)
+        return listing.items.map(item => this.toNode(item, listing.chain))
     }
 
     /**
@@ -637,23 +667,30 @@ class FileTree extends Tree {
     }
 
     /**
-     * Maps a directory listing into `TreeNode` literals. A directory node's
-     * `loadChildren` closure receives `chain` unchanged, not the child's own
-     * extended chain — the child extends it with its own `.gitignore` when
-     * {@link loadDirectory} lists it.
+     * Builds one entry's node. A folder's `loadChildren` reads the node's own
+     * `data.parentChain` when it runs — not `chain` as captured here — so a
+     * refresh that rewrites that field reaches a folder that has not loaded
+     * yet. The closure must therefore hold the very `data` object placed on
+     * the node, never a copy. The folder extends that chain with its own
+     * `.gitignore` when {@link loadDirectory} lists it.
+     *
+     * @param item - The directory entry.
+     * @param chain - The ignore chain governing `item`'s directory.
+     * @returns The entry's node.
      */
-    private toNodes(items: DirectoryItem[], chain: IgnoreChain): TreeNode[] {
-        return items.map(item => item.isDir
-            ? {
-                    label: item.name,
-                    hasChildren: true,
-                    loadChildren: () => this.loadDirectory(item.path, chain),
-                    data: { path: item.path, isDir: true, parentChain: chain } as FileTreeNodeData,
-                }
-            : {
-                    label: item.name,
-                    data: { path: item.path, isDir: false, parentChain: chain } as FileTreeNodeData,
-                })
+    private toNode(item: DirectoryItem, chain: IgnoreChain): TreeNode {
+        const data: FileTreeNodeData = { path: item.path, isDir: item.isDir, parentChain: chain }
+
+        if (!item.isDir) {
+            return { label: item.name, data }
+        }
+
+        return {
+            label: item.name,
+            hasChildren: true,
+            loadChildren: () => this.loadDirectory(data.path, data.parentChain),
+            data,
+        }
     }
 
     /**
@@ -691,8 +728,8 @@ class FileTree extends Tree {
 
     /**
      * Reports a batch of changed paths, and — when the batch can have changed
-     * a directory listing — records the directories it affects and arms the
-     * refresh. A batch that only rewrote files in place, which is what every
+     * a directory listing — records the batch's refresh targets (see
+     * `refreshTargets`) and arms the refresh. A batch that only rewrote files in place, which is what every
      * save is, re-lists nothing: the tree shows each entry's name and icon,
      * and neither depends on the file's content.
      *
@@ -710,11 +747,9 @@ class FileTree extends Tree {
             return
         }
 
-        for (const dir of refreshTargets(this._root, paths)) {
-            this._pendingDirs.add(dir)
-        }
+        this._pendingTargets.push(...refreshTargets(this._root, paths))
 
-        if (this._pendingDirs.size > 0) {
+        if (this._pendingTargets.length > 0) {
             this.scheduleRefresh()
         }
     }
@@ -741,24 +776,24 @@ class FileTree extends Tree {
     }
 
     /**
-     * Refreshes each pending directory. `minimalRoots` has already removed
-     * any target another target covers, so the order between the survivors
-     * does not matter; `refreshSubtree`'s own {@link _refreshChain} is what
-     * keeps this flush's rebuilds from interleaving with each other or with
-     * a concurrent call from outside the watcher (e.g. `EditorShell`'s
-     * post-save hook).
+     * Merges the pending targets (see `mergeRefreshTargets`) and queues each
+     * on {@link _refreshChain}, ancestors first — so a folder its parent's
+     * refresh just removed is skipped rather than read. The chain is what
+     * keeps this flush's refreshes from interleaving with each other or with
+     * a concurrent one from outside the watcher (a tree action, a Save As, a
+     * toggle).
      */
     private async flushPendingRefresh(): Promise<void> {
-        const dirs = minimalRoots([...this._pendingDirs])
+        const targets = mergeRefreshTargets(this._pendingTargets)
 
-        this._pendingDirs.clear()
+        this._pendingTargets = []
 
-        for (const dir of dirs) {
+        for (const target of targets) {
             try {
-                await this.refreshSubtree(dir)
+                await this.queueRefresh(target)
             } catch {
-                // A directory that vanished between the event and the
-                // refresh leaves the tree as it was.
+                // A folder that vanished between the event and the refresh
+                // leaves the tree as it was.
             }
         }
     }

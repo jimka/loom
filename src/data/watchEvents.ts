@@ -1,31 +1,44 @@
 // Pure watch-event decision logic — no Tauri imports, so it runs in
 // vitest's `node` environment. Three callers, each asking a different
-// question: `src/explorer/FileTree.ts`'s watcher asks *which* directories a
+// question: `src/explorer/FileTree.ts`'s watcher asks *which* paths a
 // batch of listing-changing paths means the tree must re-list
-// (`refreshTargets`/`minimalRoots`); `src/data/workspace.ts`'s
+// (`refreshTargets`/`mergeRefreshTargets`); `src/data/workspace.ts`'s
 // `watchDirectory` asks *whether* one native event is relevant at all
 // (`isContentChangeKind`) and whether it can have changed a directory
 // listing (`changesListing`), since that is the only other place a
 // `WatchEvent` is ever seen; `EditorController`'s external-change
 // resolution asks what a change to an already-open file means for its
 // buffer (`externalChangeOutcome`).
-import { joinPath, parentDir, isUnderRoot, baseName } from './paths'
+import { joinPath, parentDir, isUnderRoot, baseName, pathSegments } from './paths'
 import { WORKSPACE_DIR_NAME } from './workspaceState'
 import { GITIGNORE_NAME } from './gitignore'
 
+/** One path the tree must re-list after a watcher batch. */
+export interface RefreshTarget {
+    /** A folder to re-list, or a changed path that may be one; the refresh
+     *  skips a target that is not a loaded folder when it runs. */
+    path: string
+    /** Whether to also re-list every loaded folder below `path`, re-reading
+     *  each `.gitignore` on the way down. */
+    deep: boolean
+}
+
 /**
- * The directories the tree must refresh for a batch of changed filesystem
- * paths: each path's own directory, dropping paths outside `root`, paths
- * inside `root`'s `.loom` folder, and any directory another target already
- * covers.
+ * The paths the tree must re-list for a batch of changed filesystem paths.
+ * Each changed path yields two targets: its own folder — shallow, or deep
+ * when the path is a `.gitignore`, whose rules govern everything below that
+ * folder — and the path itself, deep, in case it is a folder replaced in
+ * place, whose contents no event names. Paths outside `root`, `root`
+ * itself, and paths inside `root`'s `.loom` folder yield nothing. The result
+ * is merged by {@link mergeRefreshTargets}.
  *
  * @param root - The project folder the tree is watching.
  * @param changedPaths - The batch of paths the watcher reported as changed.
- * @returns The minimal set of directories to re-list.
+ * @returns The targets to refresh, ancestors first.
  */
-export function refreshTargets(root: string, changedPaths: string[]): string[] {
+export function refreshTargets(root: string, changedPaths: string[]): RefreshTarget[] {
     const stateDir = joinPath(root, WORKSPACE_DIR_NAME)
-    const dirs: string[] = []
+    const targets: RefreshTarget[] = []
 
     for (const path of changedPaths) {
         if (!isUnderRoot(root, path) || isUnderRoot(stateDir, path)) {
@@ -34,25 +47,79 @@ export function refreshTargets(root: string, changedPaths: string[]): string[] {
 
         const dir = parentDir(path)
 
-        if (isUnderRoot(root, dir)) {
-            dirs.push(dir)
+        if (!isUnderRoot(root, dir)) {
+            continue
         }
+
+        targets.push({ path: dir, deep: baseName(path) === GITIGNORE_NAME })
+        targets.push({ path, deep: true })
     }
 
-    return minimalRoots(dirs)
+    return mergeRefreshTargets(targets)
 }
 
 /**
- * `dirs` with any entry that has a strict ancestor in `dirs` removed,
- * deduplicated.
+ * Merges refresh targets: one target per path, deep when any target for it
+ * is; a target strictly below a deep target is dropped, since the deep one
+ * re-lists it; and the rest are ordered ancestors first, so a folder its
+ * parent's refresh removes is skipped instead of failing its own read. A
+ * target below a *shallow* one is kept — a shallow refresh re-lists only its
+ * own folder. Paths are compared segment by segment, as `isUnderRoot`
+ * compares them. Never changes `targets`.
  *
- * @param dirs - The candidate directories.
- * @returns The subset with no entry contained in another.
+ * @param targets - The targets to merge, in any order, possibly repeating a path.
+ * @returns The merged targets, ancestors first; equal-length paths keep their first-seen order.
  */
-export function minimalRoots(dirs: string[]): string[] {
-    const unique = [...new Set(dirs)]
+export function mergeRefreshTargets(targets: readonly RefreshTarget[]): RefreshTarget[] {
+    const deepByPath = new Map<string, boolean>()
 
-    return unique.filter(dir => !unique.some(other => other !== dir && isUnderRoot(other, dir)))
+    for (const target of targets) {
+        deepByPath.set(target.path, (deepByPath.get(target.path) ?? false) || target.deep)
+    }
+
+    const merged = [...deepByPath].map(([path, deep]) => ({ path, deep }))
+    const deepKeys = new Set(merged.filter(target => target.deep).map(target => segmentKey(pathSegments(target.path))))
+
+    // An ancestor's path is always shorter, the same ordering `expansionOrder`
+    // uses; the sort is stable, so equal lengths keep first-seen order.
+    return merged
+        .filter(target => !hasDeepAncestor(target.path, deepKeys))
+        .sort((a, b) => a.path.length - b.path.length)
+}
+
+/**
+ * Whether a strict ancestor of `path` is a deep target. Looks each ancestor
+ * up in `deepKeys` rather than comparing `path` against every deep target,
+ * so merging a large watcher batch — a build or `npm install` writing
+ * thousands of files, each its own deep target — stays linear in the batch
+ * instead of quadratic.
+ *
+ * @param path - The target's path.
+ * @param deepKeys - Every deep target's {@link segmentKey}.
+ * @returns Whether a deep target strictly contains `path`.
+ */
+function hasDeepAncestor(path: string, deepKeys: ReadonlySet<string>): boolean {
+    const segments = pathSegments(path)
+
+    for (let length = 0; length < segments.length; length++) {
+        if (deepKeys.has(segmentKey(segments.slice(0, length)))) {
+            return true
+        }
+    }
+
+    return false
+}
+
+/**
+ * One string per path, equal for two paths exactly when `isUnderRoot` would
+ * count each as under the other — the same separator-agnostic segment
+ * comparison, as a `Set` key.
+ *
+ * @param segments - The path's segments, as `pathSegments` splits them.
+ * @returns The segments joined with `/`, which no segment contains.
+ */
+function segmentKey(segments: readonly string[]): string {
+    return segments.join('/')
 }
 
 /**
