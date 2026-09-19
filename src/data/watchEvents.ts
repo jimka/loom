@@ -1,15 +1,17 @@
 // Pure watch-event decision logic — no Tauri imports, so it runs in
 // vitest's `node` environment. Three callers, each asking a different
 // question: `src/explorer/FileTree.ts`'s watcher asks *which* directories a
-// batch of already-relevant changed paths means the tree must re-list
+// batch of listing-changing paths means the tree must re-list
 // (`refreshTargets`/`minimalRoots`); `src/data/workspace.ts`'s
 // `watchDirectory` asks *whether* one native event is relevant at all
-// (`isContentChangeKind`), since that is the only other place a
+// (`isContentChangeKind`) and whether it can have changed a directory
+// listing (`changesListing`), since that is the only other place a
 // `WatchEvent` is ever seen; `EditorController`'s external-change
 // resolution asks what a change to an already-open file means for its
 // buffer (`externalChangeOutcome`).
-import { joinPath, parentDir, isUnderRoot } from './paths'
+import { joinPath, parentDir, isUnderRoot, baseName } from './paths'
 import { WORKSPACE_DIR_NAME } from './workspaceState'
+import { GITIGNORE_NAME } from './gitignore'
 
 /**
  * The directories the tree must refresh for a batch of changed filesystem
@@ -75,6 +77,50 @@ export function isContentChangeKind(kind: unknown): boolean {
     }
 
     return !('access' in kind)
+}
+
+/**
+ * Whether a native watch event's reported kind can have changed which
+ * entries a directory holds — an entry created, removed, or renamed —
+ * rather than only an existing entry's content or metadata. A save, from
+ * this app or any editor that rewrites a file in place, reports a `data`
+ * modify, which leaves every listing as it was. The unspecific kinds
+ * (`'any'`, `'other'`, and a modify of kind `'any'` or `'other'`) count as
+ * listing changes: a backend that cannot say what happened — or a watcher
+ * overflow asking for a rescan — must not leave the tree stale. Takes the
+ * kind as `unknown` for the same reason {@link isContentChangeKind} does.
+ *
+ * @param kind - The event's own reported kind.
+ * @returns Whether `kind` can have changed a directory listing.
+ */
+export function isListingChangeKind(kind: unknown): boolean {
+    if (!isContentChangeKind(kind)) {
+        return false
+    }
+
+    if (typeof kind !== 'object' || kind === null || !('modify' in kind)) {
+        return true
+    }
+
+    const modify = kind.modify
+    const modifyKind = typeof modify === 'object' && modify !== null && 'kind' in modify ? modify.kind : undefined
+
+    return modifyKind !== 'data' && modifyKind !== 'metadata'
+}
+
+/**
+ * Whether a native watch event can have changed what the file tree lists:
+ * its kind creates, removes, or renames an entry (see
+ * {@link isListingChangeKind}), or it rewrote a `.gitignore` — whose rules
+ * decide which of the entries below it the tree shows, even though no entry
+ * itself appeared or vanished.
+ *
+ * @param kind - The event's own reported kind.
+ * @param paths - The paths the event names.
+ * @returns Whether the tree must re-list the directories `paths` sit in.
+ */
+export function changesListing(kind: unknown, paths: string[]): boolean {
+    return isListingChangeKind(kind) || paths.some(path => baseName(path) === GITIGNORE_NAME)
 }
 
 /** What a watcher-reported change to an open file means for its buffer. */

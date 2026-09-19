@@ -46,8 +46,10 @@ export interface FileTreeParams {
     onPathDeleted: (path: string) => void
     /** Called after the tree renames a file or folder, with its old and new paths. */
     onPathRenamed: (oldPath: string, newPath: string) => void
-    /** Called with the raw batch of changed paths the watcher reported, before any tree filtering. */
-    onPathsChanged: (paths: string[]) => void
+    /** Called with the raw batch of changed paths the watcher reported, before any tree filtering, and
+     *  whether the batch can have changed what a directory lists — `false` for a file whose content was
+     *  only rewritten in place, such as a save. */
+    onPathsChanged: (paths: string[], listingChanged: boolean) => void
 }
 
 /**
@@ -60,7 +62,7 @@ class FileTree extends Tree {
     private readonly _onOpenFile: (path: string) => void
     private readonly _onPathDeleted: (path: string) => void
     private readonly _onPathRenamed: (oldPath: string, newPath: string) => void
-    private readonly _onPathsChanged: (paths: string[]) => void
+    private readonly _onPathsChanged: (paths: string[], listingChanged: boolean) => void
     private readonly _menu = Menu()
     private _root: string | null = null
     private _rootChain: IgnoreChain = EMPTY_IGNORE_CHAIN
@@ -473,7 +475,10 @@ class FileTree extends Tree {
      * Re-selects `path` when the rebuild left a node for it. Deliberately not
      * `selectPath`: that falls back to `revealByPredicate`, which would load
      * every unloaded branch hunting for a path the refresh may have just
-     * removed.
+     * removed. Reports the selection only when the rebuild changed it — the
+     * entry vanished — since a selection that survived still describes the
+     * same entry; a change to that entry itself reaches the properties panel
+     * through {@link _onPathsChanged} instead.
      *
      * @param path - The path to re-select, or `null`.
      */
@@ -484,7 +489,9 @@ class FileTree extends Tree {
             this.selectNode(node)
         }
 
-        this.notifySelectedEntry()
+        if (this.selectedPath() !== path) {
+            this.notifySelectedEntry()
+        }
     }
 
     /** Whether hidden (leading-dot) entries are currently shown. */
@@ -661,7 +668,7 @@ class FileTree extends Tree {
     private startWatching(root: string): void {
         this.stopWatching()
 
-        void watchDirectory(root, paths => { this.handleFileSystemChange(paths) })
+        void watchDirectory(root, (paths, listingChanged) => { this.handleFileSystemChange(paths, listingChanged) })
             .then(stop => {
                 if (this._root === root) {
                     this._stopWatching = stop
@@ -683,17 +690,25 @@ class FileTree extends Tree {
     }
 
     /**
-     * Records the directories a batch of changed paths affects, and arms the
-     * refresh.
+     * Reports a batch of changed paths, and — when the batch can have changed
+     * a directory listing — records the directories it affects and arms the
+     * refresh. A batch that only rewrote files in place, which is what every
+     * save is, re-lists nothing: the tree shows each entry's name and icon,
+     * and neither depends on the file's content.
      *
      * @param paths - The changed paths the watcher reported.
+     * @param listingChanged - Whether the batch can have changed what a directory lists.
      */
-    private handleFileSystemChange(paths: string[]): void {
+    private handleFileSystemChange(paths: string[], listingChanged: boolean): void {
         if (this._root === null) {
             return
         }
 
-        this._onPathsChanged(paths)
+        this._onPathsChanged(paths, listingChanged)
+
+        if (!listingChanged) {
+            return
+        }
 
         for (const dir of refreshTargets(this._root, paths)) {
             this._pendingDirs.add(dir)

@@ -165,7 +165,10 @@ class EditorShell extends Container {
             onOpenFile:    (path: string) => { void controller.openFile(path, 'permanent') },
             onPathDeleted: (path: string) => controller.closeFilesUnder(path),
             onPathRenamed: (oldPath: string, newPath: string) => controller.relocateOpenFiles(oldPath, newPath),
-            onPathsChanged: (paths: string[]) => controller.markExternalChanges(paths),
+            onPathsChanged: (paths: string[], listingChanged: boolean) => {
+                controller.markExternalChanges(paths)
+                properties.refreshChanged(paths, listingChanged)
+            },
         })
 
         void tree.setShowHidden(settings.showHiddenFiles)

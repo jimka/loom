@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-    formatSize, formatTimestamp, entryPropertyRows, PROPERTY_LABELS, NO_VALUE,
+    formatSize, formatTimestamp, entryPropertyRows, isEntryAffected, PROPERTY_LABELS, NO_VALUE,
 } from '../src/explorer/entryProperties'
 
 describe('formatSize', () => {
@@ -108,5 +108,34 @@ describe('entryPropertyRows', () => {
             { label: 'Size', value: '0 B' },
             { label: 'Modified', value: NO_VALUE },
         ])
+    })
+})
+
+describe('isEntryAffected', () => {
+    const file = { path: '/p/src/a.ts', isDir: false }
+    const folder = { path: '/p/src', isDir: true }
+
+    it('is true when the entry itself changed', () => {
+        expect(isEntryAffected(file, ['/p/src/a.ts'], false)).toBe(true)
+    })
+
+    it('is false when only another file changed', () => {
+        expect(isEntryAffected(file, ['/p/src/b.ts'], false)).toBe(false)
+    })
+
+    it('is true for a folder when an entry directly inside it was created or removed', () => {
+        expect(isEntryAffected(folder, ['/p/src/new.ts'], true)).toBe(true)
+    })
+
+    it('is false for a folder when a file inside it was only rewritten', () => {
+        expect(isEntryAffected(folder, ['/p/src/a.ts'], false)).toBe(false)
+    })
+
+    it('is false for a folder when the listing change was deeper down', () => {
+        expect(isEntryAffected(folder, ['/p/src/deep/new.ts'], true)).toBe(false)
+    })
+
+    it('is false for a file when a sibling was created', () => {
+        expect(isEntryAffected(file, ['/p/src/new.ts'], true)).toBe(false)
     })
 })

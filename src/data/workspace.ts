@@ -13,7 +13,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { joinPath, sortDirEntries } from './paths'
 import { APP_NAME } from '../appIdentity'
 import { WORKSPACE_DIR_NAME } from './workspaceState'
-import { isContentChangeKind } from './watchEvents'
+import { isContentChangeKind, changesListing } from './watchEvents'
 
 /** One entry in a directory listing, as `FileTree` and `EditorController` consume it. */
 export interface DirectoryItem {
@@ -273,18 +273,22 @@ export type StopWatching = () => void
 
 /**
  * Watches `dir` and everything under it, calling `onChange` with the changed
- * paths. Rejects when the platform or the app's filesystem scope refuses the
- * watch.
+ * paths and whether the change can have altered a directory listing. Rejects
+ * when the platform or the app's filesystem scope refuses the watch.
  *
  * @param dir - The directory to watch, recursively.
  * @param onChange - Called with the batch of changed paths the native
- *   watcher's own debounce coalesced.
+ *   watcher's own debounce coalesced, and whether that change can have
+ *   altered what a directory lists (see {@link changesListing}).
  * @returns A function that stops the watch.
  */
-export async function watchDirectory(dir: string, onChange: (paths: string[]) => void): Promise<StopWatching> {
+export async function watchDirectory(
+    dir: string,
+    onChange: (paths: string[], listingChanged: boolean) => void,
+): Promise<StopWatching> {
     return watch(dir, event => {
         if (isContentChangeKind(event.type)) {
-            onChange(event.paths)
+            onChange(event.paths, changesListing(event.type, event.paths))
         }
     }, { recursive: true, delayMs: FS_WATCH_DELAY_MS })
 }

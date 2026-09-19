@@ -2,7 +2,7 @@
 // so it stays unit testable: vitest.config.ts runs in the `node` environment
 // with no DOM, and a module that imports @jimka/typescript-ui's components
 // touches `document` at load time.
-import { baseName, relativeTo } from '../data/paths'
+import { baseName, parentDir, relativeTo } from '../data/paths'
 import type { EntryInfo } from '../data/workspace'
 
 /** Size units, ascending, each {@link SIZE_STEP}× the previous. Binary units
@@ -97,4 +97,20 @@ export function entryPropertyRows(
         { label: 'Size', value: entry.isDir || info === null ? NO_VALUE : formatSize(info.size) },
         { label: 'Modified', value: info === null || info.modified === null ? NO_VALUE : formatTimestamp(info.modified) },
     ]
+}
+
+/**
+ * Whether a watcher batch changed what the properties panel shows for
+ * `entry`: the entry's own path is among `paths`, or `entry` is a folder and
+ * the batch created, removed, or renamed an entry directly inside it — which
+ * moves the folder's own modified time, though the folder itself is not
+ * among the changed paths.
+ *
+ * @param entry - The entry the panel shows.
+ * @param paths - The changed paths the watcher reported.
+ * @param listingChanged - Whether the batch can have changed what a directory lists.
+ * @returns Whether the panel must re-read `entry`'s metadata.
+ */
+export function isEntryAffected(entry: SelectedEntry, paths: readonly string[], listingChanged: boolean): boolean {
+    return paths.some(path => path === entry.path || (listingChanged && entry.isDir && parentDir(path) === entry.path))
 }
