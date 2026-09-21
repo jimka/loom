@@ -37,7 +37,12 @@ Glyph.register(
     right_from_bracket, clock_rotate_left, magnifying_glass, gear, circle_info, list_ol, right_left, ...FILE_ICON_GLYPHS,
 )
 
-Body.init({ layoutManager: Fit(), favicon: APP_FAVICON })
+// Started here rather than inside `start`, and awaited there: the options are
+// applied on this tick, so the theme's web font begins activating while the
+// session and settings are still being read. No component may be constructed
+// until this resolves, or its text is measured against the fallback face and
+// keeps that width for the life of the page.
+const bodyReady = Body.init({ layoutManager: Fit(), favicon: APP_FAVICON })
 
 /**
  * Composes the shell and restores the last session. A wrapper function
@@ -62,6 +67,8 @@ async function start(): Promise<void> {
 
     applyTheme(settings.theme)
 
+    const body = await bodyReady
+
     const controller = new EditorController()
 
     controller.seedRecents(session.recentProjects, session.recentFiles)
@@ -69,7 +76,7 @@ async function start(): Promise<void> {
 
     const shell = EditorShell(controller, session, settings)
 
-    Body.getInstance().addComponent(shell)
+    body.addComponent(shell)
 
     void shell.restoreSession(session)
 }
