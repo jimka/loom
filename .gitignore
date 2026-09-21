@@ -5,7 +5,3 @@ src-tauri/target/
 .worktrees/
 branches.txt
 merge.sh
-
-# QA harness output (qa/README.md)
-qa/results/
-qa/logs/

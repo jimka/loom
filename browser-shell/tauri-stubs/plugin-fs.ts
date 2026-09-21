@@ -1,7 +1,7 @@
-// QA-only Tauri stub, used only by the harness's dev server. Backs
-// @tauri-apps/plugin-fs with the dev server's /__fsops middleware (see
-// ../vite.config.qa.ts), so FileTree/SearchPanel see this repo's real directory
-// tree instead of throwing outside Tauri.
+// Browser-shell Tauri stub, used only by ../vite.config.browser.ts. Backs
+// @tauri-apps/plugin-fs with that dev server's /__fsops middleware, so
+// FileTree/SearchPanel see this checkout's real directory tree instead of
+// throwing outside Tauri.
 export const BaseDirectory = { Config: 'config' } as const
 
 async function fsGet(op: string, params: Record<string, string>): Promise<Response> {
