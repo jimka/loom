@@ -174,9 +174,18 @@ npm run tauri:dev
 
 `tauri:dev` is the real dev flow — it launches the native window backed by
 Tauri's filesystem and dialog plugins. `npm run dev` alone only serves the
-web frontend via Vite (useful for quick UI iteration), without those native
-plugins, so folder/file access won't work in a browser tab.
+web frontend via Vite, without those native plugins; in a plain browser tab
+the app stops while loading, because `src/data/workspace.ts` asks the OS
+plugin for the platform as it loads. Use `npm run dev:browser` to run the
+shell in a browser tab.
 
+- `npm run dev:browser` — the real shell in a plain browser tab, for checks
+  driven through the chrome-devtools tools. Every `@tauri-apps/*` import is
+  swapped for a stub in `browser-shell/tauri-stubs/`, and file reads come
+  from this checkout's own files. Set `window.__FAKE_PROJECT_ROOT__` to a
+  folder inside the checkout, then click *Open Folder…*. Writes, saves and
+  file watching do nothing. It serves on port 1420, as `tauri:dev` does, so
+  only one of the two can run at a time.
 - `npm run typecheck` — strict TypeScript check, no emit.
 - `npm test` — run the vitest suite.
 - `npm run build` — frontend production build.

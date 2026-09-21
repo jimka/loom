@@ -1,4 +1,4 @@
-// QA-only Tauri stub, used only by the harness's dev server.
+// Browser-shell Tauri stub, used only by ../vite.config.browser.ts.
 function noopWindow() {
     return {
         setTitle: async (_title: string) => {},

@@ -8,6 +8,6 @@
     "types": [],
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["src", "tests", "qa", "vite.config.ts", "vitest.config.ts"],
-  "exclude": ["qa/vite.config.qa.ts"]
+  "include": ["src", "tests", "browser-shell", "vite.config.ts", "vitest.config.ts"],
+  "exclude": ["browser-shell/vite.config.browser.ts"]
 }

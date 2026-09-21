@@ -110,19 +110,23 @@ nothing below has a plan yet.
   scroll-shadow edge strips, undisplayed inactive tab pages, collapsed panes
   leaving the render tree, and `ScrollStrip`'s clamp-signature read gate)
   removed the library's own per-frame costs from a gutter drag. Real-shell
-  numbers (WebKitGTK, software-rendered, rAF-paced synthetic drag, ms per
-  frame): explorer gutter with one editor ≈70 against ≈52 with no project
-  open; ten tabs 171 → 92; in a 2×2 editor grid the horizontal gutter went
-  220 → 107, level with the vertical gutter's 112. What is left scales with
-  the number of *visible* editors whose box changes — roughly 15–20 ms per
-  frame each — and is CodeMirror's own re-measure on resize (its
-  `measure`/`getScrollOffset` cycle, plus wrap points under `lineWrap`).
-  Not investigated yet: whether Loom or the library could defer that
-  re-measure to the settle frame of a drag (the coalescing shape the
-  library now uses for its own resize reads) without visible lag, or
-  whether it is already as cheap as it gets. Measure any attempt in
-  WebKitGTK (MiniBrowser drives the real shell), not Chromium — paint and
-  layout costs do not transfer between the two.
+  numbers, from the WebKitGTK harness Loom kept in `qa/` until 2026-09-21
+  (software-rendered, rAF-paced synthetic drag, ms per frame): explorer
+  gutter with one editor ≈70 against ≈52 with no project open; ten tabs
+  171 → 92; in a 2×2 editor grid the horizontal gutter went 220 → 107, level
+  with the vertical gutter's 112. What is left scales with the number of
+  *visible* editors whose box changes — roughly 15–20 ms per frame each — and
+  is CodeMirror's own re-measure on resize (its `measure`/`getScrollOffset`
+  cycle, plus wrap points under `lineWrap`). Not investigated yet: whether
+  Loom or the library could defer that re-measure to the settle frame of a
+  drag (the coalescing shape the library now uses for its own resize reads)
+  without visible lag, or whether it is already as cheap as it gets. Measure
+  any attempt in WebKitGTK, not Chromium — paint and layout costs do not
+  transfer between the two — with the library's QA app (`typescript-ui`'s
+  `packages/qa`), whose `shell-deep` panel shows four editors and
+  `code-document` one. Its numbers are not comparable with the figures
+  above, which came from Loom's own shell; a WebKit Timeline recording of
+  Loom under `npm run tauri:dev` shows whether a result holds in the app.
 - **Three hint labels stay a hardcoded mid-grey under both themes.**
   `SearchPanel.ts`, `PropertiesPanel.ts`, and `WelcomeScreen.ts` each paint a
   de-emphasised hint text `rgb(140, 140, 140)`, and the `Theme` interface has
