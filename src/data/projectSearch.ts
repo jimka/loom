@@ -49,6 +49,16 @@ export interface SearchMatch extends MatchLocation {
     lineText: string
 }
 
+/** One replacement inside a document: the `[from, to)` range of the text it was computed against, and the text that takes its place. */
+export interface TextEdit {
+    /** 0-based offset where the replaced range starts. */
+    from: number
+    /** 0-based offset where the replaced range ends (exclusive). */
+    to: number
+    /** The text that replaces the range. */
+    insert: string
+}
+
 /** How a run ended. */
 export type SearchCompletion = 'complete' | 'match-limit' | 'file-limit' | 'cancelled'
 
@@ -426,16 +436,58 @@ export function replaceAllInText(
 }
 
 /**
- * Replaces the occurrence of `compiled` at `column` on `line`, verifying it
- * is still there first.
+ * The smallest single edit that turns `before` into `after`: everything
+ * between their common prefix and their common suffix. The suffix is never
+ * allowed to overlap the prefix, so a text that only shrank or only grew
+ * still yields a valid range. Compares UTF-16 code units, the same units
+ * `CodeEditor` offsets count.
  *
- * @param line - The line to verify and replace on.
+ * @param before - The text the edit applies to.
+ * @param after - The text the edit must produce.
+ * @returns The edit, or `null` when the two texts are equal.
+ */
+export function editBetween(before: string, after: string): TextEdit | null {
+    if (before === after) {
+        return null
+    }
+
+    const limit = Math.min(before.length, after.length)
+    let prefix = 0
+
+    while (prefix < limit && before.charCodeAt(prefix) === after.charCodeAt(prefix)) {
+        prefix += 1
+    }
+
+    let suffix = 0
+
+    while (
+        suffix < limit - prefix
+        && before.charCodeAt(before.length - 1 - suffix) === after.charCodeAt(after.length - 1 - suffix)
+    ) {
+        suffix += 1
+    }
+
+    return { from: prefix, to: before.length - suffix, insert: after.slice(prefix, after.length - suffix) }
+}
+
+/** The occurrence {@link matchAtColumn} found: its length now, and the text that replaces it. */
+interface ColumnMatch {
+    length: number
+    insert: string
+}
+
+/**
+ * The occurrence of `compiled` that starts at `column` on `line`, verifying
+ * it is still there.
+ *
+ * @param line - The line to verify on.
  * @param column - The 0-based column the match is expected at.
  * @param compiled - The query to scan for, as a substring or a regular expression.
  * @param replacement - The replacement text (a substring query) or template (a regexp query).
- * @returns The line with the occurrence replaced, or `null` when nothing matches at `column` any more.
+ * @returns The occurrence's current length and its resolved replacement, or
+ *   `null` when nothing matches at `column` any more.
  */
-function replaceOneOnLine(line: string, column: number, compiled: CompiledQuery, replacement: string): string | null {
+function matchAtColumn(line: string, column: number, compiled: CompiledQuery, replacement: string): ColumnMatch | null {
     if (compiled.kind === 'substring') {
         const haystack = compiled.caseSensitive ? line : line.toLowerCase()
 
@@ -443,7 +495,7 @@ function replaceOneOnLine(line: string, column: number, compiled: CompiledQuery,
             return null
         }
 
-        return line.slice(0, column) + replacement + line.slice(column + compiled.needle.length)
+        return { length: compiled.needle.length, insert: replacement }
     }
 
     compiled.re.lastIndex = 0
@@ -452,7 +504,7 @@ function replaceOneOnLine(line: string, column: number, compiled: CompiledQuery,
 
     while (match !== null) {
         if (match[0].length > 0 && match.index === column) {
-            return line.slice(0, column) + resolveReplacement(replacement, match) + line.slice(column + match[0].length)
+            return { length: match[0].length, insert: resolveReplacement(replacement, match) }
         }
 
         if (match[0].length === 0) {
@@ -466,9 +518,45 @@ function replaceOneOnLine(line: string, column: number, compiled: CompiledQuery,
 }
 
 /**
+ * The edit that replaces the single occurrence `at` names in `text`,
+ * verifying it is still there first. `at` normally comes from a `SearchMatch`
+ * an earlier `findMatches` run reported against a *different* copy of this
+ * file's text. Its line and column address the same character in any copy
+ * whose lines are unchanged, whatever line endings each copy uses, so the
+ * returned offsets are always offsets into `text` itself.
+ *
+ * @param text - The text the edit will be applied to — for an open file, the editor's own `getValue()`.
+ * @param at - Where the occurrence was last found: a 1-based line and a 0-based column within it.
+ * @param compiled - The query to scan for, as a substring or a regular expression.
+ * @param replacement - The replacement text (a substring query) or template (a regexp query).
+ * @returns The edit, or `null` when `at.line` no longer exists, or nothing
+ *   matches at `at.column` on that line any more.
+ */
+export function replacementEditAt(
+    text: string, at: MatchLocation, compiled: CompiledQuery, replacement: string,
+): TextEdit | null {
+    const parts = splitKeepingLineEndings(text)
+    const partIndex = (at.line - 1) * 2
+
+    if (partIndex >= parts.length) {
+        return null
+    }
+
+    const found = matchAtColumn(parts[partIndex], at.column, compiled, replacement)
+
+    if (found === null) {
+        return null
+    }
+
+    const lineStart = parts.slice(0, partIndex).reduce((sum, part) => sum + part.length, 0)
+    const from = lineStart + at.column
+
+    return { from, to: from + found.length, insert: found.insert }
+}
+
+/**
  * Replaces the single occurrence `at` names in `text`, verifying it is still
- * there first. `at` normally comes from a `SearchMatch` an earlier
- * `findMatches` run reported against a *different* copy of this file's text.
+ * there first — {@link replacementEditAt}'s edit, applied.
  *
  * @param text - The file's current text.
  * @param at - Where the occurrence was last found: a 1-based line and a 0-based column within it.
@@ -480,22 +568,13 @@ function replaceOneOnLine(line: string, column: number, compiled: CompiledQuery,
 export function replaceOneInText(
     text: string, at: MatchLocation, compiled: CompiledQuery, replacement: string,
 ): string | null {
-    const parts = splitKeepingLineEndings(text)
-    const partIndex = (at.line - 1) * 2
+    const edit = replacementEditAt(text, at, compiled, replacement)
 
-    if (partIndex >= parts.length) {
+    if (edit === null) {
         return null
     }
 
-    const replacedLine = replaceOneOnLine(parts[partIndex], at.column, compiled, replacement)
-
-    if (replacedLine === null) {
-        return null
-    }
-
-    parts[partIndex] = replacedLine
-
-    return parts.join('')
+    return text.slice(0, edit.from) + edit.insert + text.slice(edit.to)
 }
 
 /**

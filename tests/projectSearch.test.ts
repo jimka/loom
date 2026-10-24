@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { isProbablyBinary, findMatches, searchFiles, compileQuery, replaceAllInText, replaceOneInText } from '../src/data/projectSearch'
-import type { ReadFileText, SearchMatch, SearchQuery, MatchLocation } from '../src/data/projectSearch'
+import { isProbablyBinary, findMatches, searchFiles, compileQuery, replaceAllInText, replaceOneInText, replacementEditAt, editBetween } from '../src/data/projectSearch'
+import type { ReadFileText, SearchMatch, SearchQuery, MatchLocation, TextEdit } from '../src/data/projectSearch'
 
 /** A NUL character, built at runtime rather than typed as a raw byte in this
  *  source file — a literal NUL in a text file makes `git diff` treat it as
@@ -513,5 +513,87 @@ describe('replaceOneInText', () => {
         const result = replaceOneInText('Foo foo', at(1, 4, 3), compiled, 'X')
 
         expect(result).toBe('Foo X')
+    })
+
+    it('keeps CRLF line endings around the replaced occurrence', () => {
+        const compiled = compileQuery(query('foo'))!
+        const result = replaceOneInText('foo\r\nbar foo\r\n', at(2, 4, 3), compiled, 'X')
+
+        expect(result).toBe('foo\r\nbar X\r\n')
+    })
+})
+
+describe('replacementEditAt', () => {
+    function at(line: number, column: number, length: number): MatchLocation {
+        return { line, column, length }
+    }
+
+    it('offsets an LF document by its earlier lines', () => {
+        const compiled = compileQuery(query('foo'))!
+
+        expect(replacementEditAt('foo\nbar foo\n', at(2, 4, 3), compiled, 'X')).toEqual({ from: 8, to: 11, insert: 'X' })
+    })
+
+    it('counts both characters of a CRLF line ending', () => {
+        const compiled = compileQuery(query('foo'))!
+
+        expect(replacementEditAt('foo\r\nbar foo\r\n', at(2, 4, 3), compiled, 'X')).toEqual({ from: 9, to: 12, insert: 'X' })
+    })
+
+    it('counts a lone CR as a line ending', () => {
+        const compiled = compileQuery(query('foo'))!
+
+        expect(replacementEditAt('foo\rbar foo', at(2, 4, 3), compiled, 'X')).toEqual({ from: 8, to: 11, insert: 'X' })
+    })
+
+    it('resolves a regexp template against the current match', () => {
+        const compiled = compileQuery(query('f(o+)', { regexp: true }))!
+
+        expect(replacementEditAt('foo\nbar foooo', at(2, 4, 3), compiled, '<$1>')).toEqual({ from: 8, to: 13, insert: '<oooo>' })
+    })
+
+    it('uses the current match length, not the recorded one', () => {
+        const compiled = compileQuery(query('fo+', { regexp: true }))!
+
+        expect(replacementEditAt('x fooo', at(1, 2, 2), compiled, 'X')).toEqual({ from: 2, to: 6, insert: 'X' })
+    })
+
+    it('returns null when nothing matches at the column any more', () => {
+        const compiled = compileQuery(query('foo'))!
+
+        expect(replacementEditAt('foo\nbar baz\n', at(2, 4, 3), compiled, 'X')).toBeNull()
+    })
+
+    it('returns null when the target line no longer exists', () => {
+        const compiled = compileQuery(query('foo'))!
+
+        expect(replacementEditAt('foo\nbar foo\n', at(5, 0, 3), compiled, 'X')).toBeNull()
+    })
+})
+
+describe('editBetween', () => {
+    it('replaces only the span between the common prefix and suffix', () => {
+        expect(editBetween('a foo b foo c', 'a X b X c')).toEqual({ from: 2, to: 11, insert: 'X b X' })
+    })
+
+    it('returns null for equal texts', () => {
+        expect(editBetween('abc', 'abc')).toBeNull()
+    })
+
+    it('never lets the suffix overlap the prefix', () => {
+        expect(editBetween('aaa', 'aa')).toEqual({ from: 2, to: 3, insert: '' })
+    })
+
+    it('reports a pure insertion as an empty range', () => {
+        expect(editBetween('foo', 'food')).toEqual({ from: 3, to: 3, insert: 'd' })
+    })
+
+    it('round-trips a CRLF replace-all result', () => {
+        const before = 'a foo\r\nmid\r\nfoo b'
+        const { text: after } = replaceAllInText(before, compileQuery(query('foo'))!, 'X')
+        const edit: TextEdit | null = editBetween(before, after)
+
+        expect(edit).toEqual({ from: 2, to: 15, insert: 'X\r\nmid\r\nX' })
+        expect(before.slice(0, edit!.from) + edit!.insert + before.slice(edit!.to)).toBe(after)
     })
 })
