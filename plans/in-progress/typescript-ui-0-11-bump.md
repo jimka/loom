@@ -813,3 +813,18 @@ exercise formatting through a live editor, layout, or keyboard focus):
     `@jimka/typescript-ui` link under nvm still points at the
     pre-monorepo repo root, and the main tree's symlink target is absolute,
     where npm would have written a relative one.
+
+---
+
+## Implementation Notes
+
+- **TODO.md's *Frequent events* entry departs from the plan's prescribed
+  block in one sentence.** The plan's text said that since 0.10 an
+  auto-measured `Text` "measures at the next layout pass instead". The audit
+  found that wrong: `Text.setText` has marked its measurement dirty and
+  scheduled a layout, rather than measuring on the spot, since before the
+  status-bar pins landed (it does so at library v0.5.0 and v0.8.0). The only
+  0.10 change is the single-line canvas path. The sentence now names only
+  that change, matching `EditorController.ts`'s constructor comment. The
+  `[^pin-stays]` footnote above repeats the same mistaken framing; it is left
+  as written, because this note records it.
