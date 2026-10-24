@@ -12,7 +12,10 @@
 // browser or OS binding on the Ctrl/Cmd+S family. CodeMirror's default
 // keymap binds none of these, so the window listener sees them even while
 // the caret is in the document (see the plan's "Potential Challenges" note
-// on Ctrl+S).
+// on Ctrl+S). Every chord does nothing while a modal dialog is open (see
+// dispatchAccelerator), as SqlAdminShell.ts's installAccelerators does.
+
+import { LayerManager } from '@jimka/typescript-ui/core'
 
 /** Display labels shown on the menu items' shortcut hints. */
 export const NEW_FILE_SHORTCUT = 'Ctrl/Cmd+N'
@@ -129,44 +132,70 @@ export interface AcceleratorActions {
 }
 
 /**
+ * The callback `event`'s chord dispatches to. Checked in the order listed,
+ * the same order the listener used before this table existed.
+ *
+ * @param event - The keydown event.
+ * @param actions - The callbacks each chord dispatches to.
+ * @returns The matching callback, or `null` when `event` is not one of the app's chords.
+ */
+function acceleratorFor(event: KeyboardEvent, actions: AcceleratorActions): (() => void) | null {
+    const bindings: ReadonlyArray<readonly [(event: KeyboardEvent) => boolean, () => void]> = [
+        [isNewFileChord, actions.onNewFile],
+        [isOpenFolderChord, actions.onOpenFolder],
+        [isSaveAsChord, actions.onSaveAs],
+        [isSaveChord, actions.onSave],
+        [isCloseFileChord, actions.onCloseFile],
+        [isFormatChord, actions.onFormat],
+        [isFindInFilesChord, actions.onFindInFiles],
+        [isFindChord, actions.onFind],
+        [isToggleExplorerChord, actions.onToggleExplorer],
+        [isCommandPaletteChord, actions.onOpenCommandPalette],
+        [isExitChord, actions.onExit],
+    ]
+    const binding = bindings.find(([matches]) => matches(event))
+
+    return binding ? binding[1] : null
+}
+
+/**
+ * Runs the callback `event`'s chord dispatches to, unless a modal layer is
+ * open. Behind a modal the app is inert, so whatever a chord opened or
+ * focused there would be out of reach, and Ctrl/Cmd+W or Ctrl/Cmd+Q would
+ * stack a second unsaved-changes prompt over the first.
+ *
+ * @param event - The keydown event.
+ * @param actions - The callbacks each chord dispatches to.
+ * @param modalOpen - Whether a modal layer is open, as `LayerManager.hasModalLayer()` reports it.
+ * @returns Whether `event` is one of the app's chords, whether or not it ran.
+ */
+export function dispatchAccelerator(event: KeyboardEvent, actions: AcceleratorActions, modalOpen: boolean): boolean {
+    const action = acceleratorFor(event, actions)
+
+    if (action === null) {
+        return false
+    }
+
+    if (!modalOpen) {
+        action()
+    }
+
+    return true
+}
+
+/**
  * Installs the app's global accelerators as a single `window` keydown
- * listener. `preventDefault()` is called only for a chord actually handled,
- * so every other key reaching `window` (Tab traversal, browser-default
- * shortcuts the app doesn't bind) keeps its default behaviour.
+ * listener. `preventDefault()` is called for every chord of the app's,
+ * including one a modal suppressed, so a webview's own binding for the same
+ * key (print on Ctrl/Cmd+P, find on Ctrl/Cmd+F) never opens over the modal;
+ * every other key reaching `window` (Tab traversal, browser shortcuts the
+ * app doesn't bind) keeps its default behaviour.
  *
  * @param actions - The callbacks each chord dispatches to.
  */
 export function installAccelerators(actions: AcceleratorActions): void {
     window.addEventListener('keydown', (event: KeyboardEvent) => {
-        let matched = true
-
-        if (isNewFileChord(event)) {
-            actions.onNewFile()
-        } else if (isOpenFolderChord(event)) {
-            actions.onOpenFolder()
-        } else if (isSaveAsChord(event)) {
-            actions.onSaveAs()
-        } else if (isSaveChord(event)) {
-            actions.onSave()
-        } else if (isCloseFileChord(event)) {
-            actions.onCloseFile()
-        } else if (isFormatChord(event)) {
-            actions.onFormat()
-        } else if (isFindInFilesChord(event)) {
-            actions.onFindInFiles()
-        } else if (isFindChord(event)) {
-            actions.onFind()
-        } else if (isToggleExplorerChord(event)) {
-            actions.onToggleExplorer()
-        } else if (isCommandPaletteChord(event)) {
-            actions.onOpenCommandPalette()
-        } else if (isExitChord(event)) {
-            actions.onExit()
-        } else {
-            matched = false
-        }
-
-        if (matched) {
+        if (dispatchAccelerator(event, actions, LayerManager.hasModalLayer())) {
             event.preventDefault()
         }
     })
