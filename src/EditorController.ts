@@ -1,8 +1,8 @@
 import { StatusBar } from '@jimka/typescript-ui/component/container'
 import { Text, Link } from '@jimka/typescript-ui/component/input'
 import { Dialog, Tooltip, Dock } from '@jimka/typescript-ui/overlay'
-import type { DockPanelEvent } from '@jimka/typescript-ui/overlay'
-import type { TabCloseController, LayoutState } from '@jimka/typescript-ui/layout'
+import type { DockPanelEvent, DockCloseController } from '@jimka/typescript-ui/overlay'
+import type { LayoutState } from '@jimka/typescript-ui/layout'
 import type { FormatOptions, CodeEditorCursorPosition } from '@jimka/typescript-ui/component/editor'
 import { FileEditor } from './editor/FileEditor'
 import { cursorLabel } from './editor/cursorLabel'
@@ -1399,9 +1399,13 @@ class EditorController {
      * `"beforeclose"`: a clean file closes immediately. A dirty file vetoes
      * the close and starts the unsaved-changes prompt instead. Fires for
      * every user-initiated destroy — a tab ✕ and a float window's chrome
-     * ✕ — while `removePanel` stays the unguarded programmatic path.
+     * ✕ — while `removePanel` stays the unguarded programmatic path. A
+     * float's chrome ✕ fires it once for every panel the window holds, all
+     * sharing one controller, so vetoing for any dirty panel keeps the whole
+     * window open, its clean panels included, and each dirty panel raises its
+     * own prompt.
      */
-    private handleBeforePanelClose = (event: DockPanelEvent, controller: TabCloseController): void => {
+    private handleBeforePanelClose = (event: DockPanelEvent, controller: DockCloseController): void => {
         const file = this._openFiles.get(event.id)
 
         if (!file || !file.isDirty()) {
