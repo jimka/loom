@@ -121,18 +121,19 @@ class EditorController {
         this._languageText = new Text('')
 
         // `cursorchange` fires once per caret position, not once per click —
-        // dragging out a selection fires it continuously. Left on Text's default
-        // auto-measure, every one of those `setText` calls would force a
-        // synchronous DOM reflow (an off-screen probe element measured via
-        // `getBoundingClientRect`) to grow or shrink the readout by a few
-        // pixels. That reflow is a full-document layout flush, so its cost
-        // scales with everything else mounted — every open tab's editor in
-        // every dock group, including the inactive ones `Tab` keeps
-        // `visibility: hidden` rather than unmounted — which is what makes
-        // selection drag feel sluggish once more than a couple of files are
-        // open. Measuring once
-        // against a generous worst case and fixing the width means later
-        // `setText` calls only touch the DOM text node.
+        // dragging out a selection fires it continuously. Left on Text's
+        // default auto-measure, every one of those `setText` calls schedules
+        // a re-layout of the status bar and re-measures the readout to grow or
+        // shrink it by a few pixels. Before typescript-ui 0.10 that
+        // measurement read an off-screen probe element with
+        // `getBoundingClientRect` — a forced full-document layout whose cost
+        // scaled with every editor on screen — which made selection drag feel
+        // sluggish once a few files were open. 0.10 measures a single line on
+        // a canvas instead, with no forced layout; this measure-once treatment
+        // stays until a WebKitGTK recording shows it buys nothing (see
+        // TODO.md's *Frequent events wired to layout-forcing reads*).
+        // Measuring once against a generous worst case and fixing the width
+        // means later `setText` calls only touch the DOM text node.
         //
         // Right-aligned so the reserved width's slack sits between the flex
         // spacer and the readout — merging into the spacer's own empty space —
@@ -1362,16 +1363,18 @@ class EditorController {
 
     /**
      * Registered as a `"selectionchange"` listener on each open file's editor:
-     * repaints the status bar's selection readout. Needed alongside
-     * {@link handleCursorChange} because the two events dedupe independently —
-     * `"cursorchange"` on the caret's own position (`selection.main.head`),
-     * `"selectionchange"` on the selection's normalized span
-     * (`main.from`/`main.to`). A change that widens or collapses the span
-     * without moving the head fires `"selectionchange"` alone: `Ctrl/Cmd+A`
-     * with the caret already at the document's end is one case (the head stays
-     * put; only `from` moves), so a caret-only wiring would leave the readout
-     * blank. A file that is not the active one is ignored, mirroring
-     * {@link handleCursorChange}.
+     * repaints the status bar's selection readout. Since typescript-ui 0.11
+     * the event fires whenever the primary selection's `from`, `to`,
+     * character count or line count changes — every caret move included — so
+     * a plain caret move reaches {@link syncSelectionMetrics} twice, from here
+     * and from {@link handleCursorChange}. The second call costs nothing:
+     * `Text.setText` returns early on an unchanged string. This listener is
+     * still needed alongside {@link handleCursorChange}, because a selection
+     * can change without the caret moving: `Ctrl/Cmd+A` with the caret
+     * already at the document's end leaves the head in place and moves only
+     * `from`, which fires `"selectionchange"` alone, so a caret-only wiring
+     * would leave the readout blank. A file that is not the active one is
+     * ignored, mirroring {@link handleCursorChange}.
      */
     private handleSelectionChange = (file: FileEditor): void => {
         if (file !== this.getActiveFile()) {

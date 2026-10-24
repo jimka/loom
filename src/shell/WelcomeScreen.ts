@@ -17,10 +17,13 @@ import { APP_FAVICON } from '../appIdentity'
 const MARK_SIZE_PX = 80
 
 /**
- * The mark's locked display size. Passed as all three of `preferredSize`,
- * `minSize` and `maxSize`: `Image.getPreferredSize` reports the picture's
- * natural dimensions and ignores the `preferredSize` constraint, so the
- * min/max pair is what actually holds the 240×240 artwork at MARK_SIZE_PX.
+ * The mark's locked display size, passed as all three of `preferredSize`,
+ * `minSize` and `maxSize`. `preferredSize` is the 80×80 the layout asks for;
+ * the min/max pair keeps a layout from moving off it. `VBox` shrinks the
+ * children of a column too short for them toward their minimum height while
+ * leaving their width alone, so without `minSize` a short editor pane would
+ * squash the square mark into a wide strip; `maxSize` likewise stops a
+ * stretching layout from growing it.
  */
 const MARK_SIZE = { width: MARK_SIZE_PX, height: MARK_SIZE_PX }
 

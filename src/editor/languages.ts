@@ -1,9 +1,8 @@
-// Extension → language id map, plus the two CodeMirror grammars the library
-// doesn't ship. registerLanguage is called once here, at module scope,
-// mirroring how the library's own component/editor barrel registers its
-// five built-ins (javascript, json, html, sql, markdown) as an import side
-// effect — importing this module is what makes css/python available too.
-import { registerLanguage, getLanguage } from '@jimka/typescript-ui/component/editor'
+// Extension → language id map. Every id it resolves to is one of the
+// library's own built-in languages (javascript, json, html, sql, markdown,
+// css, python), which the `@jimka/typescript-ui/component/editor` barrel
+// registers as an import side effect, so this module registers nothing itself.
+import { getLanguage } from '@jimka/typescript-ui/component/editor'
 import { extensionOf } from '../data/paths'
 
 /** The language id `languageForPath` resolves Markdown extensions to.
@@ -59,8 +58,8 @@ export function isMarkdownPath(path: string | null): boolean {
 
 /**
  * Whether a language has a registered formatter — the question format-on-save
- * asks before reformatting a document. `false` for a language registered with
- * a grammar only (`css` and `python`, below), for an id no one registered, and
+ * asks before reformatting a document. `false` for a language the library
+ * registers with a grammar only (`python`), for an id no one registered, and
  * for a buffer with no language at all.
  *
  * @param languageId - A `CodeEditor` language id, or `null` when the editor has none.
@@ -70,23 +69,3 @@ export function isMarkdownPath(path: string | null): boolean {
 export function hasFormatter(languageId: string | null): boolean {
     return languageId !== null && getLanguage(languageId)?.loadFormatter !== undefined
 }
-
-registerLanguage({
-    id: 'css',
-    label: 'CSS',
-    loadExtension: async () => {
-        const { css } = await import('@codemirror/lang-css')
-
-        return css()
-    },
-})
-
-registerLanguage({
-    id: 'python',
-    label: 'Python',
-    loadExtension: async () => {
-        const { python } = await import('@codemirror/lang-python')
-
-        return python()
-    },
-})

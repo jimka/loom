@@ -6,7 +6,7 @@
 import { Markdown, Image } from '@jimka/typescript-ui/component/display'
 import { Container } from '@jimka/typescript-ui/core'
 import { Spacer } from '@jimka/typescript-ui/component/container'
-import { Fit, HBox, VBox } from '@jimka/typescript-ui/layout'
+import { HBox, VBox } from '@jimka/typescript-ui/layout'
 import { DismissDialog } from './DismissDialog'
 import { APP_NAME, APP_TAGLINE, APP_FAVICON } from '../appIdentity'
 
@@ -29,10 +29,8 @@ const MARK_SIZE_PX = 80
 
 /**
  * The mark's locked display size, passed as `preferredSize`, `minSize` and
- * `maxSize` alike. See `WelcomeScreen.ts`'s identical constant for why all
- * three are required: `Image.getPreferredSize()` reports the artwork's
- * natural 240×240 size and ignores the `preferredSize` constraint, so only
- * the min/max pair actually clamps the rendered size.
+ * `maxSize` alike — the same lock `WelcomeScreen.ts`'s identical constant
+ * applies, for the reason its comment gives.
  */
 const MARK_SIZE = { width: MARK_SIZE_PX, height: MARK_SIZE_PX }
 
@@ -71,47 +69,20 @@ const ABOUT_MARKDOWN = `${APP_TAGLINE}
 export function openAboutDialog(): void {
     const mark = Image(APP_FAVICON, { preferredSize: MARK_SIZE, minSize: MARK_SIZE, maxSize: MARK_SIZE })
 
-    // Forces the `<img>` element into existence right away. `Dialog` measures
-    // its content's height synchronously in its own constructor, before the
-    // dialog — and this mark along with it — is ever attached to the
-    // document, and `Image.getPreferredSize` reads the element's natural size
-    // unconditionally, with no fallback for "not rendered yet". Left
-    // unrendered, that measurement throws instead of using the `preferredSize`
-    // above; rendering it up front here gives that measurement an element to
-    // read.
-    mark.getElement(true)
-
-    // `Image.getPreferredSize` ignores `mark`'s own `preferredSize` (and its
-    // `minSize`/`maxSize` clamp, which only takes effect once the dialog
-    // actually lays the mark out) and always reports the artwork's raw
-    // 240×240 natural size — confirmed straight from
-    // `@jimka/typescript-ui`'s source, and at odds with that option's own
-    // documented contract. Wrapping `mark` in a `Fit`-managed slot with an
-    // explicit `preferredSize` hides that raw 240 from everything upstream:
-    // the slot's own `getPreferredSize` returns the explicit 80×80 directly,
-    // without recursing into `Fit` (and so never into `mark`) for a size.
-    // Skipping this slot broke in two different ways, both traced back to
-    // that same raw 240: `Dialog` measures the whole content tree's preferred
-    // size once, synchronously, before the dialog is ever shown — reserving
-    // its height as if the mark were 240px tall, not 80 — and the flex row
-    // below split its *leftover* width on the assumption the mark needed
-    // 240px, not 80, leaving it off-centre with a dead gap on one side.
-    const markSlot = Container({ layoutManager: Fit(), components: [mark], preferredSize: MARK_SIZE })
-
     // Two equal-weight flex spacers, rather than the outer VBox's own
     // `itemAlign: 'center'`: that alignment is shared by every child in the
     // VBox, and the Markdown block below needs the opposite — full width, not
-    // centred at its own natural size. Flanking `markSlot` with spacers that
+    // centred at its own natural size. Flanking `mark` with spacers that
     // absorb the row's leftover space evenly keeps it centred, while the row
     // itself stays free to stretch to the dialog's full width under the outer
     // VBox's `stretch` alignment (a single centred child would report the
     // *row's* own max size as 80×80 too, capping it at 80px before `stretch`
     // ever gets to grow it — flex spacers report an unbounded max of their
     // own, so the row's aggregate stays unbounded no matter how narrow
-    // `markSlot` is).
+    // `mark` is).
     const markRow = Container({
         layoutManager: new HBox(),
-        components: [Spacer.flex(), markSlot, Spacer.flex()],
+        components: [Spacer.flex(), mark, Spacer.flex()],
     })
 
     const body = Container({

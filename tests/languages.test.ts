@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { getLanguage } from '@jimka/typescript-ui/component/editor'
 import { languageForPath, isMarkdownPath, hasFormatter } from '../src/editor/languages'
 
 describe('languageForPath', () => {
@@ -14,7 +15,7 @@ describe('languageForPath', () => {
         expect(languageForPath('/p/README.md')).toBe('markdown')
     })
 
-    it('resolves an uppercase extension case-insensitively to the app-registered css', () => {
+    it('resolves an uppercase extension case-insensitively to css', () => {
         expect(languageForPath('/p/style.CSS')).toBe('css')
     })
 
@@ -53,7 +54,7 @@ describe('languageForPath', () => {
         expect(languageForPath('/p/f.markdown')).toBe('markdown')
     })
 
-    it('resolves .py to the app-registered python', () => {
+    it('resolves .py to python', () => {
         expect(languageForPath('/p/f.py')).toBe('python')
     })
 
@@ -113,11 +114,11 @@ describe('hasFormatter', () => {
         expect(hasFormatter('markdown')).toBe(true)
     })
 
-    it('resolves css to false, registered by Loom with a grammar only', () => {
-        expect(hasFormatter('css')).toBe(false)
+    it('resolves css to true', () => {
+        expect(hasFormatter('css')).toBe(true)
     })
 
-    it('resolves python to false, registered by Loom with a grammar only', () => {
+    it('resolves python to false, registered by the library with a grammar only', () => {
         expect(hasFormatter('python')).toBe(false)
     })
 
@@ -127,5 +128,16 @@ describe('hasFormatter', () => {
 
     it('resolves null to false', () => {
         expect(hasFormatter(null)).toBe(false)
+    })
+})
+
+describe('language registration', () => {
+    it('resolves every mapped extension to a language the library registers', () => {
+        for (const path of ['/p/f.js', '/p/f.json', '/p/f.html', '/p/f.sql', '/p/f.md', '/p/f.css', '/p/f.py']) {
+            const id = languageForPath(path)
+
+            expect(id).not.toBeNull()
+            expect(getLanguage(id!)).toBeDefined()
+        }
     })
 })

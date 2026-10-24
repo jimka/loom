@@ -456,8 +456,11 @@ class SearchPanel extends Container {
      * file branch offers **Replace All in File**. A folder branch gets no
      * menu (see the plan's `## Non-Goals`).
      *
-     * @param node - The right-clicked node.
-     * @param event - The originating mouse event, for the menu's anchor point.
+     * @param node - The right-clicked node, or the current node for
+     *   Shift+F10 or the ContextMenu key.
+     * @param event - The originating mouse event, or the tree's synthetic
+     *   one under the current row for a key-raised menu; its
+     *   `clientX`/`clientY` anchor the menu either way.
      */
     private readonly handleContextMenu = (node: TreeNode, event: MouseEvent): void => {
         const data = node.data as SearchTreeNodeData
