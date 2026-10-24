@@ -36,10 +36,11 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   ones disappear, while open folders stay open, the selected row stays
   selected, and the scroll position holds. A renamed entry counts as a new
   one, so a renamed folder comes back collapsed. A single
-  click opens a file in a reusable temp tab; a double click opens it
-  permanently. Right-clicking a directory, a file, or empty tree space opens
-  a context menu offering New File/New Folder, Rename, Delete, and Copy
-  Path.
+  click opens a file in a reusable temp tab; a double click, or Enter on the
+  selected row, opens it permanently. Right-clicking a directory, a file, or
+  empty tree space — or pressing Shift+F10 or the ContextMenu key on the
+  selected row — opens a context menu offering New File/New Folder, Rename,
+  Delete, and Copy Path.
 - **Properties** — a second, collapsible section under the file tree,
   showing the selected file or folder's name, path, type, size, and
   last-modified time. Selecting a row with a click or the arrow keys updates
@@ -54,12 +55,13 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   Explorer, and the rest of the menu bar — instead, with a command that can't
   run right now (Save with nothing to save, Find… with no file open) listed
   greyed out and doing nothing when activated, just as in the menu bar.
-- **Find & replace** — Ctrl/Cmd+F opens CodeMirror's own find/replace bar
-  over the active file's editor; every match in the document highlights as
-  you type, Enter and Shift+Enter walk to the next and previous match, and
-  the *match case*, *regexp*, and *by word* toggles refine the query.
-  Replace one match at a time or all of them at once with *replace* and
-  *replace all*.
+- **Find & replace** — Ctrl/Cmd+F opens the editor's search panel, a
+  floating card pinned to the active editor's upper-right corner; every
+  match in the document highlights as you type, Enter and Shift+Enter walk
+  to the next and previous match, and the *match case*, *whole word*, and
+  *regular expression* toggles refine the query. Replace one match at a
+  time or all of them at once with *replace* and *replace all*; Escape
+  closes the panel.
 - **Project search** — Ctrl/Cmd+Shift+F switches the sidebar to its
   **Search** view, and Enter runs the query over every file the command
   palette lists, as a plain substring or — with the *regexp* toggle — a
@@ -71,7 +73,8 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   with its match count) and each line match as a leaf under it. As in the
   file tree, a single click (or an arrow-key move) previews a row in the
   reusable temp tab — a file branch opens the file, a match opens it with
-  that match selected — and a double click opens it permanently. A file too
+  that match selected — and a double click, or Enter, opens it
+  permanently. A file too
   large to open, or that looks binary (a NUL byte in its first
   8000 characters, git's own rule), is skipped. A **Replace** field below the
   toggles holds the replacement text; right-clicking a match leaf offers
@@ -140,7 +143,7 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   [`src/editor/languages.ts`](src/editor/languages.ts) for the extension map.
 - **Format Document**, and a **Toggle Explorer** command to hide/show the
   file tree. Saving reformats the document first, for the languages that
-  have a formatter (JavaScript/TypeScript, JSON, HTML, SQL, Markdown), in
+  have a formatter (JavaScript/TypeScript, JSON, HTML, SQL, Markdown, CSS), in
   whatever style the settings file's `formatting` block asks for.
 - **Theme** — *View > Dark Theme* (and the matching command-palette entry)
   switches the whole UI between the library's light and dark themes, with no
