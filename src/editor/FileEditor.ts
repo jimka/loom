@@ -248,11 +248,11 @@ class FileEditor extends Container {
         return this._editor
     }
 
-    /** Opens the find/replace bar over this file's editor. A no-op while the
-     *  Markdown preview is showing: `Card` hides the editor with
-     *  `setVisible(false)`, which leaves it laid out but invisible, so the
-     *  panel and its focused find field would open where the user can't see
-     *  them. */
+    /** Opens the search card over this file's editor and focuses its find
+     *  field. A no-op while the Markdown preview is showing: `Card` hides the
+     *  editor with `setVisible(false)`, which leaves it laid out but
+     *  invisible, so the card and its focused find field would open where the
+     *  user can't see them. */
     openFind(): void {
         if (this._previewing) {
             return

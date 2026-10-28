@@ -1095,7 +1095,7 @@ class EditorController {
         }
     }
 
-    /** Opens the find/replace bar over the active file's editor. */
+    /** Opens the search card over the active file's editor, with its find field focused. */
     findInActive(): void {
         this.getActiveFile()?.openFind()
     }
