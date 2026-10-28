@@ -151,7 +151,8 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   already open.
 - **New files** — *File > New File* (Ctrl/Cmd+N) opens an empty, untitled
   tab with the caret in it; *Save* prompts for a location the first time
-  it's saved.
+  it's saved. An empty untitled tab shows a hint that it stays plain text
+  until saved; the `untitledPlaceholder` setting changes or hides it.
 - **Save / Save As**, with an unsaved-changes prompt on closing a modified
   file or exiting with modified files open.
 - **Syntax highlighting** for JavaScript/TypeScript (and their JSX/module
@@ -165,16 +166,27 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   switches the whole UI between the library's light and dark themes, with no
   reload. The choice is written to the app-wide settings file, so it
   survives a restart.
+- **Word wrap** — *View > Word Wrap* (and the matching command-palette
+  entry) wraps long lines in every open editor at once. Like the theme,
+  the choice is written to the app-wide settings file.
 - **Settings** — an app-wide `settings.json` under Loom's config folder,
   and an optional per-project override at `<project>/.loom/settings.json`.
   *File > Open Settings* and *File > Open Workspace Settings* create and
   open each file directly. Covers whether saving reformats the document and
   in what style (indent width, line width, quote style, and the rest — per
-  language, only where that language's formatter honours the field), the
-  tree's default Show Hidden/Show Ignored state, the window title template,
-  the tab strip's width cap, and the light/dark theme — see
-  [`src/data/settings.ts`](src/data/settings.ts) for the full set and each
-  one's default.
+  language, only where that language's formatter honours the field); the
+  editors' tab width (`tabSize`, also the indent width formatting uses when
+  `formatting` sets no `indentWidth`), word wrap, line numbers, parse-error
+  underlines (`lint`, off by default — it marks some valid TypeScript and
+  all JSX as errors), visible whitespace, and the hint an empty untitled tab
+  shows; the drag mode for the explorer, editor-group and floating-window
+  edges (`resizeMode`: `"live"` reflows the content as you drag,
+  `"outline"` moves a line and lays out once on release, which is cheaper
+  with several editors on screen); the tree's default Show Hidden/Show
+  Ignored state, the window title template, the tab strip's width cap, and
+  the light/dark theme — see [`src/data/settings.ts`](src/data/settings.ts)
+  for the full set and each one's default. A change made by editing either
+  file applies at the next launch or project switch.
 
 ## Architecture
 

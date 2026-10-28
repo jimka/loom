@@ -128,6 +128,25 @@ nothing below has a plan yet.
   `code-document` one. Its numbers are not comparable with the figures
   above, which came from Loom's own shell; a WebKit Timeline recording of
   Loom under `npm run tauri:dev` shows whether a result holds in the app.
+  The `resizeMode` setting (`"outline"`) sidesteps this cost rather than
+  removing it: the panes hold still while a line follows the pointer, and
+  each visible editor re-measures once, on release. The trade-off is that
+  the content no longer reflows during the drag. Not measured in WebKitGTK
+  yet.
+- **Lint marks valid TypeScript, and every JSX tag, as an error.** Loom
+  maps `.ts`, `.tsx`, `.js` and `.jsx` to the library's one `javascript`
+  language, whose grammar (`@lezer/javascript` 1.5.4, TypeScript dialect,
+  no JSX) fails on some valid TypeScript: an arrow function's type
+  predicate (`(x): x is T => …`), a definite assignment (`let x!: T`),
+  `export { type T }`, labelled or optional tuple elements,
+  `typeof import('…')`, `declare module '…'`, `import x = require('…')`
+  and `abstract new () => T`. With the `lint` setting on, three of Loom's
+  own 72 TypeScript files show a false error. JSX is not parsed at all, so
+  `.jsx`/`.tsx` files are also mis-highlighted, with lint on or off. That
+  is why `lint` is off by default. The fix belongs upstream: a JSX option
+  on the `javascript` language, like `sql`'s `dialect`, which Loom would
+  pass for `.jsx`/`.tsx`; and the TypeScript false positives in the
+  grammar itself.
 - **Three hint labels stay a hardcoded mid-grey under both themes.**
   `SearchPanel.ts`, `PropertiesPanel.ts`, and `WelcomeScreen.ts` each paint a
   de-emphasised hint text `rgb(140, 140, 140)`, and the `Theme` interface has
