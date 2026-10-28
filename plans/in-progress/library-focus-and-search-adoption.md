@@ -769,3 +769,29 @@ Saves are no-ops in the browser shell, so no case saves.
     page, inside a raised window), which only a live DOM shows. V1, V4 and
     V6 are run red against the unmodified code in step 3, so each manual
     check is known to be able to fail.
+
+---
+
+## Implementation Notes
+
+- **Suite size.** The plan expected 549 tests; the branch it is stacked on
+  (`tree-move-on-rename`) had already raised the suite to 567. All 567 pass
+  before and after, with no new tests, as the plan prescribed.
+- **Line numbers.** Every edit site had drifted by about twelve lines after
+  `tree-move-on-rename`; the code at each site was unchanged, so the edits
+  went in as written.
+- **Red baseline.** V1, V4 and V6 were run against the unmodified code on
+  library master and all three failed as predicted: V1 left focus on the
+  tree with the card open; V4 moved focus to the `TabWindow`'s dialog
+  element; the double-click of V6 left focus on the tree.
+- **V3.** Typing `>Find` in the palette lists *Find in Files…* first, so
+  Enter alone runs project search. The check pressed ArrowDown once to reach
+  *Find…*, then Enter; the result matched the plan.
+- **V5 and V11 in the harness.** A search-result row is as wide as its
+  longest line, so the devtools click, which lands on the row's centre, hit
+  the editor beside the sidebar. Both cases were driven with a synthetic
+  pointer and mouse sequence on the row's visible left edge instead. Every
+  V1–V12 case then passed as the plan describes.
+- **Launch restore (Expected Behaviour 7)** was not checked: the browser
+  shell writes no session, and `npm run tauri:dev` cannot run in this
+  sandbox. It remains a by-eye check under Tauri.
