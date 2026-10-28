@@ -261,6 +261,18 @@ class FileEditor extends Container {
         openFindPanel(this._editor)
     }
 
+    /** Moves keyboard focus into this file's editor once the editor has laid
+     *  out. `CodeEditor.focus()` does nothing before the editor mounts its
+     *  view (on its first sized layout) or while its tab page is hidden, and
+     *  a tab opened or activated a moment ago is still in one of those two
+     *  states — so the focus waits for `onFirstLayout`, as
+     *  `SearchPanel.focusQuery` does for its query field. */
+    focusEditor(): void {
+        this._editor.onFirstLayout(() => {
+            this._editor.focus()
+        })
+    }
+
     /** Selects and scrolls to `at` in this file's editor, dropping out of the
      *  Markdown preview first if it is showing — unlike {@link openFind}'s
      *  early return, the caller asked for a specific position in the

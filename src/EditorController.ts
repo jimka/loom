@@ -1,7 +1,7 @@
 import { StatusBar } from '@jimka/typescript-ui/component/container'
 import { Text, Link } from '@jimka/typescript-ui/component/input'
 import { Dialog, Tooltip, Dock } from '@jimka/typescript-ui/overlay'
-import type { DockPanelEvent, DockCloseController } from '@jimka/typescript-ui/overlay'
+import type { DockPanelEvent, DockCloseController, DockFocusPanelOptions } from '@jimka/typescript-ui/overlay'
 import type { LayoutState } from '@jimka/typescript-ui/layout'
 import type { FormatOptions, CodeEditorCursorPosition } from '@jimka/typescript-ui/component/editor'
 import { FileEditor } from './editor/FileEditor'
@@ -57,6 +57,16 @@ const WIDEST_SELECTION = { characters: WIDEST_CURSOR_POSITION.offset, lines: WID
  *  startup, mirroring {@link WIDEST_CURSOR_POSITION} and
  *  {@link WIDEST_SELECTION} above. */
 const WIDEST_LANGUAGE_ID = 'javascript'
+
+/**
+ * The options every `dock.focusPanel` call passes: activate the tab and raise
+ * a floating window that holds it, without moving keyboard focus. A
+ * selection-driven open (a tree or search-results click or arrow key) must
+ * leave focus where it is, and an open the user asked for moves focus into
+ * the editor itself through `FileEditor.focusEditor` — never onto a tab
+ * button or a window frame, which is where the dock's default would put it.
+ */
+const ACTIVATE_WITHOUT_FOCUS: DockFocusPanelOptions = { focus: false }
 
 /** How an {@link EditorController.openFile} request should treat the tab it lands in. */
 export type OpenMode = 'temporary' | 'permanent'
@@ -457,7 +467,7 @@ class EditorController {
         this._projectRoot = root
     }
 
-    /** Opens an empty untitled buffer in a new panel and activates it. */
+    /** Opens an empty untitled buffer in a new panel, activates it, and moves keyboard focus into its editor. */
     newFile(): void {
         this._untitledCount += 1
         this._panelIdSeq += 1
@@ -477,8 +487,9 @@ class EditorController {
         file.getEditor().on('selectionchange', () => this.handleSelectionChange(file))
         this.dock.addPanel({ id: panelId, title: file.getName(), glyph: glyphNameForPath(file.getName()), content: file })
         this._openFiles.set(panelId, file)
-        this.dock.focusPanel(panelId)
+        this.dock.focusPanel(panelId, ACTIVATE_WITHOUT_FOCUS)
         this.syncActive()
+        file.focusEditor()
     }
 
     /**
@@ -490,10 +501,12 @@ class EditorController {
      * tab of its own; defaults to `'permanent'`. A repeat call for a path
      * already being read joins the first call rather than starting a second
      * read, and a `'permanent'` request upgrades a `'temporary'` one already
-     * in flight for the same path. A `'permanent'` open also moves keyboard
-     * focus into the file's editor, ready to type; `'temporary'` leaves focus
-     * wherever it was, since that mode exists for browsing without leaving
-     * the caller (the tree, the command palette's query field).
+     * in flight for the same path. A `'permanent'` open moves keyboard focus
+     * into the file's editor, ready to type, once that editor has laid out. A
+     * `'temporary'` open leaves focus wherever it was, since that mode exists
+     * for browsing without leaving the caller (the file tree, the search
+     * results). Either way the dock activates the tab, and raises a floating
+     * window holding it, without taking focus itself.
      *
      * @param path - The file to open.
      * @param mode - Which kind of tab to open it in.
@@ -507,10 +520,10 @@ class EditorController {
                 this.pinTab(existing)
             }
 
-            this.dock.focusPanel(existing.getPanelId())
+            this.dock.focusPanel(existing.getPanelId(), ACTIVATE_WITHOUT_FOCUS)
 
             if (mode === 'permanent') {
-                existing.getEditor().focus()
+                existing.focusEditor()
             }
 
             return
@@ -551,11 +564,11 @@ class EditorController {
 
         const file = this.addFileTab(path, text, settled === 'temporary')
 
-        this.dock.focusPanel(file.getPanelId())
+        this.dock.focusPanel(file.getPanelId(), ACTIVATE_WITHOUT_FOCUS)
         this.syncActive()
 
         if (settled === 'permanent') {
-            file.getEditor().focus()
+            file.focusEditor()
         }
     }
 
@@ -693,14 +706,16 @@ class EditorController {
             this.dock.setLayoutState(arrangement)
         }
 
-        // Focused after the restore, not during: `setLayoutState` activates
+        // Activated after the restore, not during: `setLayoutState` activates
         // one panel per group itself, so the remembered active file has to
-        // win the focus back afterward.
+        // win back afterward — and its editor takes keyboard focus, as after
+        // any open the user asked for.
         const activeFile = activePath !== null ? this.findByPath(activePath) : null
         const toActivate = activeFile ?? firstOpened
 
         if (toActivate) {
-            this.dock.focusPanel(toActivate.getPanelId())
+            this.dock.focusPanel(toActivate.getPanelId(), ACTIVATE_WITHOUT_FOCUS)
+            toActivate.focusEditor()
         }
 
         this.syncActive()
