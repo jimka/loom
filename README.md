@@ -122,7 +122,8 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   tear it off into a floating window. The window title, the status bar, and
   *Find…* all follow whichever group has focus. Group layout, each group's
   tab order and active tab, and every floating window's position come back
-  on the next launch.
+  on the next launch; a resize of the gutter between groups is saved as
+  soon as the drag ends.
 - **Breadcrumbs** — a path band above each editor showing where the open
   file sits inside the project folder.
 - **Status bar** — the caret's line, column, and position in the document

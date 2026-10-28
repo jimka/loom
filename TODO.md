@@ -10,9 +10,6 @@ nothing below has a plan yet.
 
 - **IntelliSense / LSP** or any language service.
 - **Git integration**, including a dirty-vs-committed indicator in the tree.
-- **Re-saving the dock layout on a gutter drag.** `Dock` emits nothing when
-  a split ratio changes, so a gutter drag inside the editor area is only
-  persisted at the next dock event or on exit.
 
 ## Low
 
@@ -154,6 +151,11 @@ nothing below has a plan yet.
   so following file renames would move the selection and the tab onto the
   backup. A folder rename the watcher does not report as a single rename
   event still comes back collapsed, as before.
+- **Some editor-layout changes wait for the next save.** A tab reordered
+  within its strip and a floating window moved or resized are written at
+  the next dock event or on exit, because `Dock` emits no event for either
+  — by design, per its *Saving and restoring* docs. A gutter drag between
+  groups is saved as soon as it ends (`splitresize`).
 
 ## Notes
 
