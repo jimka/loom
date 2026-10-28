@@ -121,24 +121,36 @@ export interface SortableEntry {
  * @returns A new array in directories-first, case-insensitive name order.
  */
 export function sortDirEntries<T extends SortableEntry>(items: T[]): T[] {
-    return [...items].sort((a, b) => {
-        if (a.isDir !== b.isDir) {
-            return a.isDir ? -1 : 1
-        }
+    return [...items].sort(compareDirEntries)
+}
 
-        const lowerA = a.name.toLowerCase()
-        const lowerB = b.name.toLowerCase()
+/**
+ * The comparison {@link sortDirEntries} sorts by: directories before files,
+ * then case-insensitively by `name`, then by the raw name. The file tree
+ * places a renamed or moved node with the same rule, so the next re-list
+ * keeps it where it is.
+ *
+ * @param a - The first entry.
+ * @param b - The second entry.
+ * @returns A negative number when `a` sorts first, a positive one when `b` does, and `0` for the same name and kind.
+ */
+export function compareDirEntries(a: SortableEntry, b: SortableEntry): number {
+    if (a.isDir !== b.isDir) {
+        return a.isDir ? -1 : 1
+    }
 
-        if (lowerA !== lowerB) {
-            return lowerA < lowerB ? -1 : 1
-        }
+    const lowerA = a.name.toLowerCase()
+    const lowerB = b.name.toLowerCase()
 
-        if (a.name === b.name) {
-            return 0
-        }
+    if (lowerA !== lowerB) {
+        return lowerA < lowerB ? -1 : 1
+    }
 
-        return a.name < b.name ? -1 : 1
-    })
+    if (a.name === b.name) {
+        return 0
+    }
+
+    return a.name < b.name ? -1 : 1
 }
 
 /**

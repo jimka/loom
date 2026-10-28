@@ -13,7 +13,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { joinPath, sortDirEntries } from './paths'
 import { APP_NAME } from '../appIdentity'
 import { WORKSPACE_DIR_NAME } from './workspaceState'
-import { isContentChangeKind, changesListing } from './watchEvents'
+import { isContentChangeKind, changesListing, renamePairOf } from './watchEvents'
+import type { RenamePair } from './watchEvents'
 
 /** One entry in a directory listing, as `FileTree` and `EditorController` consume it. */
 export interface DirectoryItem {
@@ -273,22 +274,25 @@ export type StopWatching = () => void
 
 /**
  * Watches `dir` and everything under it, calling `onChange` with the changed
- * paths and whether the change can have altered a directory listing. Rejects
- * when the platform or the app's filesystem scope refuses the watch.
+ * paths, whether the change can have altered a directory listing, and the
+ * rename it was, if it was one. Rejects when the platform or the app's
+ * filesystem scope refuses the watch.
  *
  * @param dir - The directory to watch, recursively.
  * @param onChange - Called with the batch of changed paths the native
- *   watcher's own debounce coalesced, and whether that change can have
- *   altered what a directory lists (see {@link changesListing}).
+ *   watcher's own debounce coalesced, whether that change can have altered
+ *   what a directory lists (see {@link changesListing}), and its old and new
+ *   paths when it was one rename reported whole (see {@link renamePairOf}),
+ *   `null` otherwise.
  * @returns A function that stops the watch.
  */
 export async function watchDirectory(
     dir: string,
-    onChange: (paths: string[], listingChanged: boolean) => void,
+    onChange: (paths: string[], listingChanged: boolean, renamed: RenamePair | null) => void,
 ): Promise<StopWatching> {
     return watch(dir, event => {
         if (isContentChangeKind(event.type)) {
-            onChange(event.paths, changesListing(event.type, event.paths))
+            onChange(event.paths, changesListing(event.type, event.paths), renamePairOf(event.type, event.paths))
         }
     }, { recursive: true, delayMs: FS_WATCH_DELAY_MS })
 }

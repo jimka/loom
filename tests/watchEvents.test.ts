@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     refreshTargets, mergeRefreshTargets, isContentChangeKind, isListingChangeKind, changesListing, externalChangeOutcome,
+    renamePairOf,
 } from '../src/data/watchEvents'
 
 describe('refreshTargets', () => {
@@ -202,6 +203,34 @@ describe('changesListing', () => {
 
     it('is true when any path in a data-modify batch is a .gitignore', () => {
         expect(changesListing({ modify: { kind: 'data', mode: 'any' } }, ['/p/a.ts', '/p/.gitignore'])).toBe(true)
+    })
+})
+
+describe('renamePairOf', () => {
+    it('pairs the two paths of a rename reported as one event', () => {
+        expect(renamePairOf({ modify: { kind: 'rename', mode: 'both' } }, ['/p/a', '/p/b'])).toEqual({ from: '/p/a', to: '/p/b' })
+    })
+
+    it('rejects the "from" half of a rename', () => {
+        expect(renamePairOf({ modify: { kind: 'rename', mode: 'from' } }, ['/p/a'])).toBeNull()
+    })
+
+    it('rejects the "to" half of a rename', () => {
+        expect(renamePairOf({ modify: { kind: 'rename', mode: 'to' } }, ['/p/b'])).toBeNull()
+    })
+
+    it('rejects a "both" rename that names only one path', () => {
+        expect(renamePairOf({ modify: { kind: 'rename', mode: 'both' } }, ['/p/a'])).toBeNull()
+    })
+
+    it('rejects a data modify that names two paths', () => {
+        expect(renamePairOf({ modify: { kind: 'data', mode: 'content' } }, ['/p/a', '/p/b'])).toBeNull()
+    })
+
+    it('rejects every kind that is not a modify', () => {
+        for (const kind of [{ create: { kind: 'folder' } }, 'any', 'other', null]) {
+            expect(renamePairOf(kind, ['/p/a', '/p/b'])).toBeNull()
+        }
     })
 })
 
