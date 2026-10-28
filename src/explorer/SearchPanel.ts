@@ -27,9 +27,9 @@ const SEARCH_LIMITS: SearchLimits = { maxMatches: 200, maxFiles: 2000 }
  *  consistent amount. */
 const PANEL_PAD = 6
 
-/** The status line's colour — the same muted grey `PropertiesPanel` and
- *  `WelcomeScreen` paint their own hint lines. */
-const STATUS_COLOR = 'rgb(140, 140, 140)'
+/** The status line's colour — the theme's muted text colour, read through its
+ *  CSS variable so the line follows a light/dark theme switch. */
+const STATUS_COLOR = 'var(--ts-ui-text-muted-color)'
 
 /** The query field's placeholder text — names the Enter-to-run gesture, since there is no search-as-you-type. */
 const QUERY_PLACEHOLDER = 'Search project (Enter)'

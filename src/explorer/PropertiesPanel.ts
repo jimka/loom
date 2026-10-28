@@ -15,9 +15,9 @@ const GRID_PAGE_ID = 'properties-grid'
 /** Shown while no tree row is selected. */
 const EMPTY_TEXT = 'Select a file or folder in the tree.'
 
-/** The empty line's colour — the muted grey `WelcomeScreen` paints its own hint
- *  line (`src/shell/WelcomeScreen.ts:34`), so the two empty states read alike. */
-const EMPTY_COLOR = 'rgb(140, 140, 140)'
+/** The empty line's colour — the theme's muted text colour, read through its
+ *  CSS variable so the line follows a light/dark theme switch. */
+const EMPTY_COLOR = 'var(--ts-ui-text-muted-color)'
 
 /** Padding around the panel's content, in pixels. Mirrors `FileBreadcrumbs`'s
  *  own `BAND_PAD` (`src/editor/FileBreadcrumbs.ts:24`) so Loom's chrome indents
