@@ -11,7 +11,8 @@ export type RecentDirectoryIntent = 'workspace' | 'expose' | 'cancel'
  * it in the tree that's already open. Same three-button/`onClick`-closure
  * pattern as {@link promptUnsavedChanges} in `unsavedPrompt.ts`:
  * `DialogResult` only distinguishes confirm/cancel/close, too few values for
- * three buttons.
+ * three buttons. Announced as an alert dialog, because it interrupts with a
+ * decision.
  *
  * @param path - The recent directory's path.
  * @returns The user's choice.
@@ -22,6 +23,7 @@ export async function promptRecentDirectoryIntent(path: string): Promise<RecentD
     await Dialog.show({
         title: 'Open Recent',
         message: `"${projectName(path)}" is inside the current workspace. Open it as its own workspace, or reveal it in the tree?`,
+        role: 'alertdialog',
         buttons: [
             {
                 text: 'Cancel',

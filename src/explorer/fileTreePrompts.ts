@@ -145,6 +145,7 @@ export async function confirmDelete(path: string, isDir: boolean): Promise<boole
     const result = await Dialog.show({
         title: `Delete "${name}"?`,
         message,
+        role: 'alertdialog',
         buttons: [
             { text: 'Cancel', result: 'cancel' },
             { text: 'Delete', result: 'confirm', primary: true },

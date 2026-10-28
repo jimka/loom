@@ -20,6 +20,7 @@ export async function confirmReplaceAll(matchCount: number, fileCount: number): 
             + `${pluralize(fileCount, 'file', 'files')}? Files open in a tab are edited there — `
             + `undo with Ctrl/Cmd+Z and save when ready. Files not open are written to disk `
             + `immediately and can't be undone.`,
+        role: 'alertdialog',
         buttons: [
             { text: 'Cancel', result: 'cancel' },
             { text: 'Replace All', result: 'confirm', primary: true },
