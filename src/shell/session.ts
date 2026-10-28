@@ -160,6 +160,7 @@ export function installSessionAutosave(targets: SessionTargets): SessionAutosave
     targets.controller.dock.on('move', schedule)
     targets.controller.dock.on('focus', schedule)
     targets.controller.dock.on('close', schedule)
+    targets.controller.dock.on('splitresize', schedule)
     targets.split.on('paneresize', schedule)
     targets.split.on('panecollapse', schedule)
 
