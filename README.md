@@ -34,9 +34,11 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   folder; saving a file, from Loom or anywhere else, leaves the tree as it
   is. A re-listed folder changes in place: new entries appear and vanished
   ones disappear, while open folders stay open, the selected row stays
-  selected, and the scroll position holds. A renamed entry counts as a new
-  one, so a renamed folder comes back collapsed. A single
-  click opens a file in a reusable temp tab; a double click, or Enter on the
+  selected, and the scroll position holds. A renamed or moved folder keeps
+  its row: it stays open, with everything loaded under it, and a selected
+  row stays selected. This holds after the tree's own *Rename* and after a
+  rename or move made outside Loom. A file renamed outside Loom counts as a
+  new entry. A single click opens a file in a reusable temp tab; a double click, or Enter on the
   selected row, opens it permanently. Right-clicking a directory, a file, or
   empty tree space — or pressing Shift+F10 or the ContextMenu key on the
   selected row — opens a context menu offering New File/New Folder, Rename,
@@ -102,7 +104,8 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   reloads, and one with unsaved changes asks whether to reload from disk or
   keep them. Every editor on screen — the one showing in each split group
   or floating window, not only the focused one — catches up at once; a
-  background tab catches up when it is next shown.
+  background tab catches up when it is next shown. A tab whose file sits
+  inside a folder renamed or moved outside Loom follows it to the new path.
 - **Split editor groups** — drag a tab onto the edge of the editor area to
   split it, and the dragged file opens in the new group beside the first;
   drag a tab between groups to move it, or off a strip entirely to tear it
