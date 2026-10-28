@@ -113,8 +113,13 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   inside a folder renamed or moved outside Loom follows it to the new path.
 - **Split editor groups** — drag a tab onto the edge of the editor area to
   split it, and the dragged file opens in the new group beside the first;
-  drag a tab between groups to move it, or off a strip entirely to tear it
-  off into a floating window. The window title, the status bar, and
+  or use *View > Split and Move Editor Right* (Ctrl/Cmd+\\) or *Split and
+  Move Editor Down*, also in the command palette, to do the same for the
+  active file. Loom keeps one editor per file, so the file moves into the
+  new group rather than opening a second time, and both commands are greyed
+  out while it is the only tab in its group or sits in a tab-strip floating
+  window. Drag a tab between groups to move it, or off a strip entirely to
+  tear it off into a floating window. The window title, the status bar, and
   *Find…* all follow whichever group has focus. Group layout, each group's
   tab order and active tab, and every floating window's position come back
   on the next launch.

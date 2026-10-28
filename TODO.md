@@ -10,9 +10,6 @@ nothing below has a plan yet.
 
 - **IntelliSense / LSP** or any language service.
 - **Git integration**, including a dirty-vs-committed indicator in the tree.
-- **A *Split Editor* command.** Splitting the editor area is a drag gesture
-  only — `Dock` exposes no programmatic split, so there is no menu item,
-  palette command, or shortcut for it.
 - **Re-saving the dock layout on a gutter drag.** `Dock` emits nothing when
   a split ratio changes, so a gutter drag inside the editor area is only
   persisted at the next dock event or on exit.
