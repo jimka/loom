@@ -53,12 +53,13 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   an entry directly inside it is created, deleted, or renamed.
 - **Command palette** — Ctrl/Cmd+P opens a fuzzy file finder over every file
   in the project; the first match is highlighted as soon as you type, so
-  Enter opens it directly; arrow keys only move the highlight, and nothing
-  opens or runs until you activate a result with Enter or a click. Typing `>`
-  switches to a list of app commands — Save, Format Document, Toggle
-  Explorer, and the rest of the menu bar — instead, with a command that can't
-  run right now (Save with nothing to save, Find… with no file open) listed
-  greyed out and doing nothing when activated, just as in the menu bar.
+  Enter opens it directly; the arrow keys and PageUp/PageDown only move the
+  highlight, and nothing opens or runs until you activate a result with
+  Enter or a click. Typing `>` switches to a list of app commands — Save,
+  Format Document, Toggle Explorer, and the rest of the menu bar — instead,
+  with a command that can't run right now (Save with nothing to save, Find…
+  with no file open) listed greyed out and doing nothing when activated, just
+  as in the menu bar.
 - **Find & replace** — Ctrl/Cmd+F, *Edit > Find…* or the matching
   command-palette entry opens the editor's search panel, a floating card
   pinned to the active editor's upper-right corner, with the cursor in its
@@ -68,6 +69,9 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   *regular expression* toggles refine the query. Replace one match at a
   time or all of them at once with *replace* and *replace all*; Escape
   closes the panel.
+- **Cut and Copy** — *Edit > Cut* and *Edit > Copy*, and the matching
+  command-palette entries, act on the active editor's selection and are
+  greyed out when nothing is selected. Pasting is Ctrl/Cmd+V.
 - **Project search** — Ctrl/Cmd+Shift+F switches the sidebar to its
   **Search** view, and Enter runs the query over every file the command
   palette lists, as a plain substring or — with the *regexp* toggle — a

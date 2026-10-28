@@ -147,20 +147,6 @@ nothing below has a plan yet.
   on the `javascript` language, like `sql`'s `dialect`, which Loom would
   pass for `.jsx`/`.tsx`; and the TypeScript false positives in the
   grammar itself.
-- **Three hint labels stay a hardcoded mid-grey under both themes.**
-  `SearchPanel.ts`, `PropertiesPanel.ts`, and `WelcomeScreen.ts` each paint a
-  de-emphasised hint text `rgb(140, 140, 140)`, and the `Theme` interface has
-  no muted/secondary-text token to replace it with — the nearest candidates
-  (`button.description.foreground`, the various `disabledColor`s) are
-  semantically wrong for a hint. Left alone, but not because it is
-  accessible: mid-grey falls short of WCAG 2.1's 4.5:1 body-text contrast
-  threshold in five of the six label/background/theme combinations — as low
-  as 3.08:1 for `SearchPanel.ts`'s status text against the light theme's
-  toolbar background — and clears it only for `PropertiesPanel.ts`'s hint
-  against the plain dark-theme background (4.96:1). This is a known,
-  pre-existing readability gap, not a deliberate tradeoff; fixing it
-  properly needs a `text.muted` token in the library first, not a
-  Loom-side color pick.
 - **A file renamed outside Loom comes back as a new row.** A rename made
   outside Loom is followed only for a folder: its row keeps its expansion,
   its loaded children and its selection, and open tabs under it follow. A
@@ -175,6 +161,18 @@ nothing below has a plan yet.
   the next dock event or on exit, because `Dock` emits no event for either
   — by design, per its *Saving and restoring* docs. A gutter drag between
   groups is saved as soon as it ends (`splitresize`).
+- **No Edit > Paste, and the editor's right-click Paste is refused on Linux.**
+  The library's `CodeEditor.paste()` — behind both a would-be *Edit > Paste*
+  and the editor's own right-click *Paste* — reads the clipboard with
+  `navigator.clipboard.readText()`. WebKitGTK refuses that read unless the
+  webview has clipboard access, which Tauri enables only through
+  `enable_clipboard_access()` on a window built in Rust; Loom's main window
+  is created from `tauri.conf.json`, which has no setting for it. Writing
+  the clipboard is allowed, so *Edit > Cut* and *Edit > Copy* work.
+  Ctrl/Cmd+V works too, because it is a native paste that needs no
+  permission. Open question: turn on clipboard access in the Tauri host, add
+  a library seam for the clipboard read, or keep Ctrl/Cmd+V as the only way
+  to paste.
 
 ## Notes
 
