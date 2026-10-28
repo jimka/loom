@@ -1151,3 +1151,31 @@ Recorded for the user to decide on; this plan works around neither.
     nested block, so this is the same file's own pattern applied one level
     up. Existing `parseSettingsOverride` tests compare with `toEqual`, so the
     changed key order in the result does not affect them.
+
+---
+
+## Implementation Notes
+
+- **`parseSettingsOverride`'s accumulator type.** The plan declared it
+  `Record<string, unknown>`; `tsc` rejects the closing
+  `as SettingsOverride` cast from that type (TS2352, `version` missing). It
+  is declared `{ version: 1 } & Record<string, unknown>` instead, which
+  keeps the single cast the plan intended with no `as unknown` double cast.
+- **`withSettingFields`' comment.** The plan's comment text read "as
+  `withTheme` had it", which would have failed the plan's own
+  `grep -rn "withTheme\|saveGlobalTheme" src tests` check. Reworded to say
+  the same thing without naming the deleted function.
+- **Palette count.** The split-editor branch landed after the plan was
+  drafted and added two palette commands, so E7's fixed-order cases went
+  from fifteen to sixteen ids (not thirteen to fourteen), and their test
+  names say "sixteen".
+- **By-eye run.** Port 1438 instead of 1431, per the run's environment.
+  M0–M6 all passed, with one probe caveat: the JSON parse error in
+  `broken.json` (M3) renders as a zero-width point diagnostic
+  (`.cm-lintPoint-error` plus a gutter `.cm-lint-marker-error`), not a
+  `.cm-lintRange-error`, so the reading script's `lintErrors` stayed 0 for
+  that file while the error was visibly reported. The `let done!` false
+  positive in `wide.ts` (M2) does count as a range. The drag probe drove
+  the explorer gutter in both modes: `outline` held the editor width during
+  the drag and moved it by 120 on release; `live` moved it during the drag,
+  including after switching back from `tuned` to `plain`.
