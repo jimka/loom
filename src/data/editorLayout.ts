@@ -185,10 +185,10 @@ function normalizeRatios(ratios: number[]): number[] {
 /**
  * Remaps a window node: a node with `content` keeps it when the content
  * survives remapping, a legacy `panelId`-only node survives only when its id
- * maps, and a node that survives neither way drops. `serializeLayout`
- * captures every open `Window`, not only the dock's own floats, so a
- * `LayoutState` could in principle carry a window whose content tree
- * contains no panel id the mapping knows — such a window drops here too.
+ * maps, and a node that survives neither way drops. A state saved before
+ * typescript-ui recorded only the dock's own floats can carry a window whose
+ * content tree holds no panel id the mapping knows — such a window drops here
+ * too.
  */
 function remapWindow(window: WindowNode, mapping: ReadonlyMap<string, string>): WindowNode | null {
     if (window.content !== undefined) {
@@ -230,7 +230,11 @@ function isLayoutNode(value: unknown): value is LayoutNode {
     return false
 }
 
-/** Whether `value` is a well-shaped {@link WindowNode} — either a `content` subtree or a legacy `panelId`, both optional but validated when present. */
+/**
+ * Whether `value` is a well-shaped {@link WindowNode} — either a `content`
+ * subtree or a legacy `panelId`, both optional but validated when present. A
+ * present `windowMode` must be `'bare'` or `'strip'`.
+ */
 function isWindowNode(value: unknown): value is WindowNode {
     if (typeof value !== 'object' || value === null) {
         return false
@@ -243,6 +247,10 @@ function isWindowNode(value: unknown): value is WindowNode {
     }
 
     if (node.panelId !== undefined && typeof node.panelId !== 'string') {
+        return false
+    }
+
+    if (node.windowMode !== undefined && node.windowMode !== 'bare' && node.windowMode !== 'strip') {
         return false
     }
 
