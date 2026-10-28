@@ -83,6 +83,58 @@ export function panelOrder(state: LayoutState): string[] {
     return order
 }
 
+/**
+ * Whether `Dock.splitPanel(panelId, panelId, side)` would move `panelId` into a
+ * new group: the panel sits in a `tab` node with at least one other tab, and
+ * not in a tab-strip (`windowMode: 'strip'`) window. Side-independent.
+ *
+ * @param state - The dock's live layout, as `Dock.getLayoutState()` returns it.
+ * @param panelId - The panel to move out of its group.
+ * @returns `true` when the split would go ahead.
+ */
+export function canSplitPanel(state: LayoutState, panelId: string): boolean {
+    const tiled = tabSizeHolding(state.root, panelId)
+
+    if (tiled !== null) {
+        return tiled >= 2
+    }
+
+    for (const window of state.windows) {
+        if (window.content === undefined) {
+            continue
+        }
+
+        const size = tabSizeHolding(window.content, panelId)
+
+        if (size !== null) {
+            return window.windowMode !== 'strip' && size >= 2
+        }
+    }
+
+    return false
+}
+
+/** The child count of the `tab` node directly holding `panelId` under `node`, or `null` when no tab node holds it. */
+function tabSizeHolding(node: LayoutNode, panelId: string): number | null {
+    if (node.kind === 'panel') {
+        return null
+    }
+
+    if (node.kind === 'tab' && node.children.some(child => child.kind === 'panel' && child.panelId === panelId)) {
+        return node.children.length
+    }
+
+    for (const child of node.children) {
+        const size = tabSizeHolding(child, panelId)
+
+        if (size !== null) {
+            return size
+        }
+    }
+
+    return null
+}
+
 /** Appends every panel id under `node`, depth-first, to `order`. */
 function collectPanelIds(node: LayoutNode, order: string[]): void {
     if (node.kind === 'panel') {

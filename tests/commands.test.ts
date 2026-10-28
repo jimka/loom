@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { buildPaletteCommands } from '../src/shell/commands'
 import type { PaletteCommandActions, PaletteCommand } from '../src/shell/commands'
+import { SPLIT_EDITOR_RIGHT_SHORTCUT } from '../src/shell/shortcuts'
 
 /** Builds a `PaletteCommandActions` with every predicate `false` and every callback a no-op, overridable per test. */
 const actions = (over: Partial<PaletteCommandActions> = {}): PaletteCommandActions => ({
@@ -16,6 +17,9 @@ const actions = (over: Partial<PaletteCommandActions> = {}): PaletteCommandActio
     onFormat: () => {},
     onFind: () => {},
     onGoToLine: () => {},
+    canSplitActive: () => false,
+    onSplitEditorRight: () => {},
+    onSplitEditorDown: () => {},
     hasProjectRoot: () => false,
     onFindInFiles: () => {},
     isShowingHidden: () => false,
@@ -37,22 +41,24 @@ const findCommand = (commands: PaletteCommand[], id: string): PaletteCommand => 
 }
 
 describe('buildPaletteCommands', () => {
-    it('returns all thirteen commands in a fixed order when nothing is available', () => {
+    it('returns all fifteen commands in a fixed order when nothing is available', () => {
         const commands = buildPaletteCommands(actions())
 
         expect(commands.map(c => c.id)).toEqual([
             'new-file', 'open-folder', 'toggle-explorer', 'exit',
             'save', 'save-as', 'close-file', 'find', 'go-to-line', 'format-document',
+            'split-move-editor-right', 'split-move-editor-down',
             'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme',
         ])
     })
 
-    it('returns the same thirteen ids in the same order when everything is available', () => {
-        const commands = buildPaletteCommands(actions({ canSaveActive: () => true, hasActiveFile: () => true }))
+    it('returns the same fifteen ids in the same order when everything is available', () => {
+        const commands = buildPaletteCommands(actions({ canSaveActive: () => true, hasActiveFile: () => true, canSplitActive: () => true }))
 
         expect(commands.map(c => c.id)).toEqual([
             'new-file', 'open-folder', 'toggle-explorer', 'exit',
             'save', 'save-as', 'close-file', 'find', 'go-to-line', 'format-document',
+            'split-move-editor-right', 'split-move-editor-down',
             'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme',
         ])
     })
@@ -143,6 +149,43 @@ describe('buildPaletteCommands', () => {
         command.run()
 
         expect(onGoToLine).toHaveBeenCalledOnce()
+    })
+
+    it('greys out both split commands when the active file cannot move into a new group', () => {
+        const commands = buildPaletteCommands(actions({ hasActiveFile: () => true, canSplitActive: () => false }))
+
+        expect(findCommand(commands, 'split-move-editor-right').enabled).toBe(false)
+        expect(findCommand(commands, 'split-move-editor-down').enabled).toBe(false)
+    })
+
+    it('enables both split commands when the active file can move into a new group', () => {
+        const commands = buildPaletteCommands(actions({ canSplitActive: () => true }))
+
+        expect(findCommand(commands, 'split-move-editor-right').enabled).toBe(true)
+        expect(findCommand(commands, 'split-move-editor-down').enabled).toBe(true)
+    })
+
+    it('titles the split commands, with a shortcut on Right only', () => {
+        const commands = buildPaletteCommands(actions())
+        const right = findCommand(commands, 'split-move-editor-right')
+        const down = findCommand(commands, 'split-move-editor-down')
+
+        expect(right.title).toBe('Split and Move Editor Right')
+        expect(right.shortcut).toBe(SPLIT_EDITOR_RIGHT_SHORTCUT)
+        expect(down.title).toBe('Split and Move Editor Down')
+        expect(down.shortcut).toBeUndefined()
+    })
+
+    it('runs each split command\'s own callback, also while disabled', () => {
+        const onSplitEditorRight = vi.fn()
+        const onSplitEditorDown = vi.fn()
+        const commands = buildPaletteCommands(actions({ onSplitEditorRight, onSplitEditorDown }))
+
+        findCommand(commands, 'split-move-editor-right').run()
+        findCommand(commands, 'split-move-editor-down').run()
+
+        expect(onSplitEditorRight).toHaveBeenCalledOnce()
+        expect(onSplitEditorDown).toHaveBeenCalledOnce()
     })
 
     it('omits Find in Files outright with no project root open', () => {

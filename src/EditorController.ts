@@ -3,6 +3,7 @@ import { Text, Link } from '@jimka/typescript-ui/component/input'
 import { Dialog, Tooltip, Dock } from '@jimka/typescript-ui/overlay'
 import type { DockPanelEvent, DockCloseController, DockFocusPanelOptions } from '@jimka/typescript-ui/overlay'
 import type { LayoutState } from '@jimka/typescript-ui/layout'
+import type { Edge } from '@jimka/typescript-ui/primitive'
 import type { FormatOptions, CodeEditorCursorPosition } from '@jimka/typescript-ui/component/editor'
 import { FileEditor } from './editor/FileEditor'
 import { cursorLabel } from './editor/cursorLabel'
@@ -19,7 +20,7 @@ import { promptUnsavedChanges } from './shell/unsavedPrompt'
 import { promptExternalChange } from './shell/externalChangePrompt'
 import { APP_NAME } from './appIdentity'
 import { withRecent } from './data/session'
-import { remapPanelIds } from './data/editorLayout'
+import { remapPanelIds, canSplitPanel } from './data/editorLayout'
 import type { Settings } from './data/settings'
 import { DEFAULT_SETTINGS, renderTitle } from './data/settings'
 import { ensureGlobalSettingsFile, ensureWorkspaceSettingsFile } from './shell/settings'
@@ -59,8 +60,9 @@ const WIDEST_SELECTION = { characters: WIDEST_CURSOR_POSITION.offset, lines: WID
 const WIDEST_LANGUAGE_ID = 'javascript'
 
 /**
- * The options every `dock.focusPanel` call passes: activate the tab and raise
- * a floating window that holds it, without moving keyboard focus. A
+ * The options every `dock.focusPanel` and `dock.splitPanel` call passes:
+ * activate the tab and raise a floating window that holds it, without moving
+ * keyboard focus. A
  * selection-driven open (a tree or search-results click or arrow key) must
  * leave focus where it is, and an open the user asked for moves focus into
  * the editor itself through `FileEditor.focusEditor` — never onto a tab
@@ -280,6 +282,13 @@ class EditorController {
     /** Whether the active file needs saving — read by the File menu's Save item. */
     canSaveActive(): boolean {
         return this.getActiveFile()?.needsSave() ?? false
+    }
+
+    /** Whether the active file can be moved into a new group — read by the View menu and the palette. */
+    canSplitActive(): boolean {
+        const file = this.getActiveFile()
+
+        return file !== null && canSplitPanel(this.dock.getLayoutState(), file.getPanelId())
     }
 
     /**
@@ -1113,6 +1122,27 @@ class EditorController {
     /** Opens the search card over the active file's editor, with its find field focused. */
     findInActive(): void {
         this.getActiveFile()?.openFind()
+    }
+
+    /**
+     * Moves the active file's tab into a new group on `side` of its current group,
+     * then focuses its editor. A no-op with no active file, or when the dock refuses
+     * the split (the file is its group's only tab, or sits in a tab-strip window).
+     *
+     * @param side - The edge of the file's current group the new group goes on.
+     */
+    splitActive(side: Edge): void {
+        const file = this.getActiveFile()
+
+        if (file === null) {
+            return
+        }
+
+        const id = file.getPanelId()
+
+        if (this.dock.splitPanel(id, id, side, ACTIVATE_WITHOUT_FOCUS)) {
+            file.focusEditor()
+        }
     }
 
     /**

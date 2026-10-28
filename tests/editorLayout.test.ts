@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { readLayoutState, remapPanelIds, panelOrder } from '../src/data/editorLayout'
+import { readLayoutState, remapPanelIds, panelOrder, canSplitPanel } from '../src/data/editorLayout'
 import type { LayoutState, LayoutNode, PanelNode, WindowNode } from '@jimka/typescript-ui/layout'
 
 const PANEL = (id: string): PanelNode => ({ kind: 'panel', panelId: id })
@@ -206,5 +206,51 @@ describe('panelOrder', () => {
         const state = STATE(TABS([PANEL('buf-1')], 0), [STRIP(TABS([PANEL('buf-2'), PANEL('buf-3')], 0))])
 
         expect(panelOrder(state)).toEqual(['buf-1', 'buf-2', 'buf-3'])
+    })
+})
+
+describe('canSplitPanel', () => {
+    const TWO_GROUPS = STATE(SPLIT([TABS([PANEL('a')], 0), TABS([PANEL('b'), PANEL('c')], 1)], [0.5, 0.5]))
+
+    it('allows a panel sharing its tiled group with another tab', () => {
+        expect(canSplitPanel(STATE(TABS([PANEL('a'), PANEL('b')], 0)), 'a')).toBe(true)
+    })
+
+    it('refuses the only tab of a tiled group', () => {
+        expect(canSplitPanel(STATE(TABS([PANEL('a')], 0)), 'a')).toBe(false)
+    })
+
+    it('refuses a lone tab beside another group', () => {
+        expect(canSplitPanel(TWO_GROUPS, 'a')).toBe(false)
+    })
+
+    it('allows a tab of a multi-tab group beside another group', () => {
+        expect(canSplitPanel(TWO_GROUPS, 'c')).toBe(true)
+    })
+
+    it('allows a tab of a multi-tab header-window float', () => {
+        expect(canSplitPanel(STATE(TABS([PANEL('a')], 0), [FLOAT(TABS([PANEL('b'), PANEL('c')], 0))]), 'b')).toBe(true)
+    })
+
+    it('refuses the only tab of a header-window float', () => {
+        expect(canSplitPanel(STATE(TABS([PANEL('a')], 0), [FLOAT(TABS([PANEL('b')], 0))]), 'b')).toBe(false)
+    })
+
+    it('refuses a tab of a tab-strip window', () => {
+        expect(canSplitPanel(STATE(TABS([PANEL('a')], 0), [STRIP(TABS([PANEL('b'), PANEL('c')], 0))]), 'b')).toBe(false)
+    })
+
+    it('refuses a legacy panelId-only window', () => {
+        const legacy: WindowNode = { kind: 'window', panelId: 'b', header: 'b', rect: R, state: 'normal', restoreRect: null }
+
+        expect(canSplitPanel(STATE(TABS([PANEL('a')], 0), [legacy]), 'b')).toBe(false)
+    })
+
+    it('refuses a bare panel root, which no tab node holds', () => {
+        expect(canSplitPanel(STATE(PANEL('a')), 'a')).toBe(false)
+    })
+
+    it('refuses a panel id the state does not hold', () => {
+        expect(canSplitPanel(STATE(TABS([PANEL('a'), PANEL('b')], 0)), 'zzz')).toBe(false)
     })
 })

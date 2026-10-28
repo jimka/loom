@@ -4,6 +4,7 @@
 import {
     NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
     FORMAT_SHORTCUT, FIND_SHORTCUT, FIND_IN_FILES_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT,
+    SPLIT_EDITOR_RIGHT_SHORTCUT,
 } from './shortcuts'
 
 /** One entry in the command palette's `>`-mode list. */
@@ -46,6 +47,9 @@ export interface PaletteCommandActions {
     onFormat: () => void
     onFind: () => void
     onGoToLine: () => void
+    canSplitActive: () => boolean
+    onSplitEditorRight: () => void
+    onSplitEditorDown: () => void
     hasProjectRoot: () => boolean
     onFindInFiles: () => void
     isShowingHidden: () => boolean
@@ -72,6 +76,7 @@ export function buildPaletteCommands(actions: PaletteCommandActions): PaletteCom
     // snapshot of the shell's state.
     const hasActiveFile = actions.hasActiveFile()
     const canSaveActive = actions.canSaveActive()
+    const canSplitActive = actions.canSplitActive()
 
     const commands: PaletteCommand[] = [
         { id: 'new-file',        title: 'New File',        shortcut: NEW_FILE_SHORTCUT,        enabled: true,          run: actions.onNewFile },
@@ -84,6 +89,8 @@ export function buildPaletteCommands(actions: PaletteCommandActions): PaletteCom
         { id: 'find',            title: 'Find…',           shortcut: FIND_SHORTCUT,            enabled: hasActiveFile, run: actions.onFind },
         { id: 'go-to-line',      title: 'Go to Line…',     enabled: hasActiveFile, run: actions.onGoToLine },
         { id: 'format-document', title: 'Format Document', shortcut: FORMAT_SHORTCUT,          enabled: hasActiveFile, run: actions.onFormat },
+        { id: 'split-move-editor-right', title: 'Split and Move Editor Right', shortcut: SPLIT_EDITOR_RIGHT_SHORTCUT, enabled: canSplitActive, run: actions.onSplitEditorRight },
+        { id: 'split-move-editor-down',  title: 'Split and Move Editor Down',  enabled: canSplitActive, run: actions.onSplitEditorDown },
         {
             id: 'toggle-hidden-files',
             title: actions.isShowingHidden() ? 'Hide Hidden Files' : 'Show Hidden Files',
