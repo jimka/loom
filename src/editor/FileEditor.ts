@@ -308,6 +308,34 @@ class FileEditor extends Container {
         openFindPanel(this._editor)
     }
 
+    /** Whether this file's editor has a non-empty selection that Cut or Copy
+     *  could act on. `false` while the Markdown preview is showing: the preview
+     *  hides the editor, so its selection is out of sight. */
+    hasSelection(): boolean {
+        return !this._previewing && this._editor.getSelection().characterCount > 0
+    }
+
+    /** Copies this file's editor selection to the clipboard and removes it. A
+     *  no-op while the Markdown preview is showing, so a cut never deletes text
+     *  the user cannot see. */
+    cutSelection(): void {
+        if (this._previewing) {
+            return
+        }
+
+        this._editor.cut()
+    }
+
+    /** Copies this file's editor selection to the clipboard. A no-op while the
+     *  Markdown preview is showing, as {@link cutSelection} is. */
+    copySelection(): void {
+        if (this._previewing) {
+            return
+        }
+
+        this._editor.copy()
+    }
+
     /** Moves keyboard focus into this file's editor once the editor has laid
      *  out. `CodeEditor.focus()` does nothing before the editor mounts its
      *  view (on its first sized layout) or while its tab page is hidden, and

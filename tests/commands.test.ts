@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { buildPaletteCommands } from '../src/shell/commands'
 import type { PaletteCommandActions, PaletteCommand } from '../src/shell/commands'
-import { SPLIT_EDITOR_RIGHT_SHORTCUT } from '../src/shell/shortcuts'
+import { SPLIT_EDITOR_RIGHT_SHORTCUT, CUT_SHORTCUT, COPY_SHORTCUT } from '../src/shell/shortcuts'
 
 /** Builds a `PaletteCommandActions` with every predicate `false` and every callback a no-op, overridable per test. */
 const actions = (over: Partial<PaletteCommandActions> = {}): PaletteCommandActions => ({
@@ -12,8 +12,11 @@ const actions = (over: Partial<PaletteCommandActions> = {}): PaletteCommandActio
     canSaveActive: () => false,
     onSave: () => {},
     hasActiveFile: () => false,
+    hasActiveSelection: () => false,
     onSaveAs: () => {},
     onCloseFile: () => {},
+    onCut: () => {},
+    onCopy: () => {},
     onFormat: () => {},
     onFind: () => {},
     onGoToLine: () => {},
@@ -43,23 +46,23 @@ const findCommand = (commands: PaletteCommand[], id: string): PaletteCommand => 
 }
 
 describe('buildPaletteCommands', () => {
-    it('returns all sixteen commands in a fixed order when nothing is available', () => {
+    it('returns all eighteen commands in a fixed order when nothing is available', () => {
         const commands = buildPaletteCommands(actions())
 
         expect(commands.map(c => c.id)).toEqual([
             'new-file', 'open-folder', 'toggle-explorer', 'exit',
-            'save', 'save-as', 'close-file', 'find', 'go-to-line', 'format-document',
+            'save', 'save-as', 'close-file', 'cut', 'copy', 'find', 'go-to-line', 'format-document',
             'split-move-editor-right', 'split-move-editor-down',
             'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme', 'toggle-word-wrap',
         ])
     })
 
-    it('returns the same sixteen ids in the same order when everything is available', () => {
-        const commands = buildPaletteCommands(actions({ canSaveActive: () => true, hasActiveFile: () => true, canSplitActive: () => true }))
+    it('returns the same eighteen ids in the same order when everything is available', () => {
+        const commands = buildPaletteCommands(actions({ canSaveActive: () => true, hasActiveFile: () => true, hasActiveSelection: () => true, canSplitActive: () => true }))
 
         expect(commands.map(c => c.id)).toEqual([
             'new-file', 'open-folder', 'toggle-explorer', 'exit',
-            'save', 'save-as', 'close-file', 'find', 'go-to-line', 'format-document',
+            'save', 'save-as', 'close-file', 'cut', 'copy', 'find', 'go-to-line', 'format-document',
             'split-move-editor-right', 'split-move-editor-down',
             'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme', 'toggle-word-wrap',
         ])
@@ -68,7 +71,7 @@ describe('buildPaletteCommands', () => {
     it('marks the per-file commands disabled when no file is active and saving is unavailable', () => {
         const commands = buildPaletteCommands(actions())
 
-        for (const id of ['save', 'save-as', 'close-file', 'find', 'go-to-line', 'format-document']) {
+        for (const id of ['save', 'save-as', 'close-file', 'cut', 'copy', 'find', 'go-to-line', 'format-document']) {
             expect(findCommand(commands, id).enabled).toBe(false)
         }
     })
@@ -170,6 +173,42 @@ describe('buildPaletteCommands', () => {
         command.run()
 
         expect(onGoToLine).toHaveBeenCalledOnce()
+    })
+
+    it.each([
+        { hasActiveFile: false, hasActiveSelection: false, enabled: false },
+        { hasActiveFile: true,  hasActiveSelection: false, enabled: false },
+        { hasActiveFile: true,  hasActiveSelection: true,  enabled: true },
+    ])('enables Cut and Copy only with a selection (file $hasActiveFile, selection $hasActiveSelection)', ({ hasActiveFile, hasActiveSelection, enabled }) => {
+        const commands = buildPaletteCommands(actions({ hasActiveFile: () => hasActiveFile, hasActiveSelection: () => hasActiveSelection }))
+
+        expect(findCommand(commands, 'cut').enabled).toBe(enabled)
+        expect(findCommand(commands, 'copy').enabled).toBe(enabled)
+    })
+
+    it('titles Cut and Copy with their display-only shortcuts', () => {
+        const commands = buildPaletteCommands(actions())
+        const cut = findCommand(commands, 'cut')
+        const copy = findCommand(commands, 'copy')
+
+        expect(cut.title).toBe('Cut')
+        expect(cut.shortcut).toBe('Ctrl/Cmd+X')
+        expect(cut.shortcut).toBe(CUT_SHORTCUT)
+        expect(copy.title).toBe('Copy')
+        expect(copy.shortcut).toBe('Ctrl/Cmd+C')
+        expect(copy.shortcut).toBe(COPY_SHORTCUT)
+    })
+
+    it('runs Cut\'s and Copy\'s own callbacks, also while disabled', () => {
+        const onCut = vi.fn()
+        const onCopy = vi.fn()
+        const commands = buildPaletteCommands(actions({ onCut, onCopy }))
+
+        findCommand(commands, 'cut').run()
+        findCommand(commands, 'copy').run()
+
+        expect(onCut).toHaveBeenCalledOnce()
+        expect(onCopy).toHaveBeenCalledOnce()
     })
 
     it('greys out both split commands when the active file cannot move into a new group', () => {

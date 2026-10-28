@@ -204,4 +204,15 @@ describe('dispatchAccelerator', () => {
 
         expect(calls).toEqual([])
     })
+
+    it('leaves Cut, Copy and Paste to the native handlers, under Ctrl and Cmd alike', () => {
+        const { actions, calls } = recordingActions()
+
+        for (const key of ['x', 'c', 'v']) {
+            expect(dispatchAccelerator(chord({ ctrlKey: true, key }), actions, false)).toBe(false)
+            expect(dispatchAccelerator(chord({ metaKey: true, key }), actions, false)).toBe(false)
+        }
+
+        expect(calls).toEqual([])
+    })
 })

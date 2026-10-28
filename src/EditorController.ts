@@ -1134,6 +1134,21 @@ class EditorController {
         this.getActiveFile()?.openFind()
     }
 
+    /** Whether the active file's editor has a selection Cut or Copy could act on. */
+    hasActiveSelection(): boolean {
+        return this.getActiveFile()?.hasSelection() ?? false
+    }
+
+    /** Cuts the active file's editor selection to the clipboard. */
+    cutInActive(): void {
+        this.getActiveFile()?.cutSelection()
+    }
+
+    /** Copies the active file's editor selection to the clipboard. */
+    copyInActive(): void {
+        this.getActiveFile()?.copySelection()
+    }
+
     /**
      * Moves the active file's tab into a new group on `side` of its current group,
      * then focuses its editor. A no-op with no active file, or when the dock refuses
