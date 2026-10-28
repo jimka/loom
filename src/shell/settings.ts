@@ -1,8 +1,8 @@
 // Tauri-backed load and lazy-create calls for settings — pure shape and
 // parsing live in `../data/settings`; this module is where that shape meets
 // the app-wide and per-workspace files on disk, mirroring `./session`.
-import { resolveSettings, parseSettingsOverride, serializeSettingsOverride, emptySettingsOverride, withTheme } from '../data/settings'
-import type { Settings, ThemeName } from '../data/settings'
+import { resolveSettings, parseSettingsOverride, serializeSettingsOverride, emptySettingsOverride, withSettingFields } from '../data/settings'
+import type { Settings, SettingsFields } from '../data/settings'
 import {
     readSettingsText, writeSettingsText, globalSettingsPath,
     readWorkspaceSettingsText, writeWorkspaceSettingsText, workspaceSettingsPath,
@@ -54,11 +54,11 @@ export async function ensureWorkspaceSettingsFile(root: string): Promise<string>
 }
 
 /**
- * Records `theme` in the app-wide settings file, creating it if absent.
+ * Records `fields` in the app-wide settings file, creating it if absent.
  * Never touches a project's own settings file.
  *
- * @param theme - The theme to record.
+ * @param fields - The fields to record; every other field in the file is kept.
  */
-export async function saveGlobalTheme(theme: ThemeName): Promise<void> {
-    await writeSettingsText(withTheme(await readSettingsText(), theme))
+export async function saveGlobalSettingFields(fields: SettingsFields): Promise<void> {
+    await writeSettingsText(withSettingFields(await readSettingsText(), fields))
 }

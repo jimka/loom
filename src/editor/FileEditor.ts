@@ -5,6 +5,8 @@ import { CodeEditor } from '@jimka/typescript-ui/component/editor'
 import { ToggleButton } from '@jimka/typescript-ui/component/button'
 import { MarkdownViewer } from '@jimka/typescript-ui/component/display'
 import { baseName } from '../data/paths'
+import { placeholderForBuffer } from '../data/settings'
+import type { EditorSettings } from '../data/settings'
 import type { MatchLocation } from '../data/projectSearch'
 import { languageForPath, isMarkdownPath } from './languages'
 import { FileBreadcrumbs } from './FileBreadcrumbs'
@@ -39,6 +41,8 @@ export interface FileEditorParams {
     text: string
     /** The open project folder, or `null` when none is open. */
     projectRoot: string | null
+    /** The editor options to apply on construction. */
+    editorSettings: EditorSettings
 }
 
 /**
@@ -110,6 +114,9 @@ class FileEditor extends Container {
         this._card = card
         this._previewToggle = previewToggle
 
+        // Before mount, each setter only caches its value, and the mount
+        // builds the editor's configuration from those cached values.
+        this.applyEditorSettings(params.editorSettings)
         editor.on('change', this.handleChange)
         previewToggle.on('action', this.handlePreviewToggle)
         this.syncPreviewAvailability()
@@ -229,8 +236,48 @@ class FileEditor extends Container {
         this._path = path
         this._name = baseName(path)
         this._editor.setLanguage(languageForPath(path))
+        // A saved buffer is no longer untitled, so it loses the untitled hint.
+        this._editor.setPlaceholder(null)
         this._breadcrumbs.setPath(path)
         this.syncPreviewAvailability()
+    }
+
+    /**
+     * Applies each editor option whose live value differs from `settings`.
+     * Skipping a matching option keeps a one-field change (the Word Wrap
+     * toggle) from reconfiguring the other options or reloading the lint
+     * source of every open editor. The placeholder applies only while this
+     * buffer has no path; {@link setPath} clears it.
+     *
+     * @param settings - The editor options to apply.
+     */
+    applyEditorSettings(settings: EditorSettings): void {
+        const editor = this._editor
+        const placeholder = placeholderForBuffer(this._path, settings.untitledPlaceholder)
+
+        if (editor.getTabSize() !== settings.tabSize) {
+            editor.setTabSize(settings.tabSize)
+        }
+
+        if (editor.getLineWrap() !== settings.lineWrap) {
+            editor.setLineWrap(settings.lineWrap)
+        }
+
+        if (editor.getLineNumbers() !== settings.lineNumbers) {
+            editor.setLineNumbers(settings.lineNumbers)
+        }
+
+        if (editor.getLint() !== settings.lint) {
+            editor.setLint(settings.lint)
+        }
+
+        if (editor.getHighlightWhitespace() !== settings.highlightWhitespace) {
+            editor.setHighlightWhitespace(settings.highlightWhitespace)
+        }
+
+        if (editor.getPlaceholder() !== placeholder) {
+            editor.setPlaceholder(placeholder)
+        }
     }
 
     /** Repoints the breadcrumb band at a new project folder. */

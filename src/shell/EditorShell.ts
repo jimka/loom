@@ -1,4 +1,4 @@
-import { Container, callable } from '@jimka/typescript-ui/core'
+import { Body, Container, callable } from '@jimka/typescript-ui/core'
 import { Insets, Placement } from '@jimka/typescript-ui/primitive'
 import { Accordion, AccordionConstraints, Border as BorderLayout, Card, Split } from '@jimka/typescript-ui/layout'
 import type { SectionToggleCallback } from '@jimka/typescript-ui/layout'
@@ -127,6 +127,10 @@ interface MenuBarActions extends AcceleratorActions {
     isDarkTheme: () => boolean
     /** Switches theme and records the choice in the app-wide settings file. */
     onToggleDarkTheme: (value: boolean) => void
+    /** Whether editors wrap long lines — read live each time the menu or the palette opens. */
+    isWordWrap: () => boolean
+    /** Turns word wrap on or off and records the choice in the app-wide settings file. */
+    onToggleWordWrap: (value: boolean) => void
     /** Opens the app-wide settings file, creating it first if needed. */
     onOpenSettings: () => void
     /** Opens the open project's own settings file, creating it first if needed. */
@@ -377,6 +381,8 @@ class EditorShell extends Container {
             onToggleIgnored: (value: boolean) => { void tree.setShowIgnored(value) },
             isDarkTheme: () => currentThemeName() === 'dark',
             onToggleDarkTheme: (value: boolean) => { void selectTheme(value ? 'dark' : 'light') },
+            isWordWrap: () => controller.isLineWrapping(),
+            onToggleWordWrap: (value: boolean) => { void controller.selectLineWrap(value) },
             hasProjectRoot: () => tree.getProjectRoot() !== null,
             onOpenSettings: () => { void controller.openGlobalSettings() },
             onOpenWorkspaceSettings: () => {
@@ -478,8 +484,8 @@ class EditorShell extends Container {
      * and the grant is harmlessly redundant when one does — points the tree
      * at the newly chosen folder, reloads and reapplies that folder's own
      * resolved settings (the tree's Show Hidden/Show Ignored defaults, the
-     * controller's format-on-save/title template/tab width, and the live
-     * theme), restores that folder's saved tree expansion (if
+     * controller's format-on-save/title template/tab width and editor
+     * options, the live theme, and the resize mode), restores that folder's saved tree expansion (if
      * it has any), then schedules a session save. Settings reapplication is
      * `await`ed and finishes *before* the expansion restore starts, not just
      * ordered before it in source: `FileTree.setShowHidden`/`setShowIgnored`
@@ -508,6 +514,7 @@ class EditorShell extends Container {
         await this._tree.setShowIgnored(resolved.showIgnoredFiles)
         this._controller.applySettings(resolved)
         applyTheme(resolved.theme)
+        Body.getInstance().setResizeMode(resolved.resizeMode)
 
         const workspace = await loadWorkspaceState(root)
 
@@ -748,6 +755,14 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
                         const row = CheckboxMenuRow({ text: 'Dark Theme', checked: actions.isDarkTheme() })
 
                         row.on('action', () => { actions.onToggleDarkTheme(row.isChecked()) })
+
+                        return row
+                    } },
+                { separator: true },
+                { row: () => {
+                        const row = CheckboxMenuRow({ text: 'Word Wrap', checked: actions.isWordWrap() })
+
+                        row.on('action', () => { actions.onToggleWordWrap(row.isChecked()) })
 
                         return row
                     } },

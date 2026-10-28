@@ -58,6 +58,8 @@ export interface PaletteCommandActions {
     onToggleIgnored: (value: boolean) => void
     isDarkTheme: () => boolean
     onToggleDarkTheme: (value: boolean) => void
+    isWordWrap: () => boolean
+    onToggleWordWrap: (value: boolean) => void
 }
 
 /**
@@ -108,6 +110,12 @@ export function buildPaletteCommands(actions: PaletteCommandActions): PaletteCom
             title: actions.isDarkTheme() ? 'Switch to Light Theme' : 'Switch to Dark Theme',
             enabled: true,
             run: () => actions.onToggleDarkTheme(!actions.isDarkTheme()),
+        },
+        {
+            id: 'toggle-word-wrap',
+            title: actions.isWordWrap() ? 'Turn Off Word Wrap' : 'Turn On Word Wrap',
+            enabled: true,
+            run: () => actions.onToggleWordWrap(!actions.isWordWrap()),
         },
     ]
 
