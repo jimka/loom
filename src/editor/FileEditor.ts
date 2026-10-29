@@ -29,6 +29,10 @@ const PREVIEW_GLYPH = 'eye'
  *  inside the band's fixed height. */
 const PREVIEW_LABEL = 'Preview'
 
+/** The deck's page keys: the source editor, and the lazily built Markdown preview. */
+const SOURCE_PAGE_KEY = 'source'
+const PREVIEW_PAGE_KEY = 'preview'
+
 /** Constructor parameters for {@link FileEditor}. */
 export interface FileEditorParams {
     /** The dock panel id minted for this buffer, fixed for its whole life. */
@@ -77,6 +81,8 @@ class FileEditor extends Container {
     private readonly _body: Container
     private readonly _card: Card
     private readonly _previewToggle: ToggleButton
+    /** The Markdown preview, or `null` until built. Set by {@link buildPreview},
+     *  which the `Card` runs the first time {@link PREVIEW_PAGE_KEY} is selected. */
     private _preview: MarkdownViewer | null = null
     private _previewing = false
     private _refreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -94,7 +100,7 @@ class FileEditor extends Container {
         const card = new Card()
         const body = Container({ layoutManager: card })
 
-        body.addComponent(editor)
+        body.addComponent(editor, { key: SOURCE_PAGE_KEY })
 
         super({
             layoutManager: new BorderLayout({ spacing: 0 }),
@@ -113,6 +119,9 @@ class FileEditor extends Container {
         this._body = body
         this._card = card
         this._previewToggle = previewToggle
+
+        // Registered after `super()`, since the factory closes over `this`.
+        this._body.addComponent(() => this.buildPreview(), { key: PREVIEW_PAGE_KEY })
 
         // Before mount, each setter only caches its value, and the mount
         // builds the editor's configuration from those cached values.
@@ -147,26 +156,28 @@ class FileEditor extends Container {
         this._previewing = previewing
 
         if (!previewing) {
-            this._card.setVisibleComponentId(this._editor.getId())
+            this._card.setVisibleKey(SOURCE_PAGE_KEY)
 
             return
         }
 
-        const preview = this.ensurePreview()
-
+        // Before the selection: on a first visit `_preview` is still `null`, so
+        // this does nothing and `setVisibleKey` builds a viewer seeded with the
+        // current text; on a later visit it brings the built viewer up to date.
         this.refreshPreview()
-        this._card.setVisibleComponentId(preview.getId())
+        this._card.setVisibleKey(PREVIEW_PAGE_KEY)
     }
 
-    /** Builds the preview page on first use and adds it to the deck. */
-    private ensurePreview(): MarkdownViewer {
-        if (this._preview !== null) {
-            return this._preview
-        }
-
+    /**
+     * The preview page's factory, which the `Card` runs the first time the
+     * preview key is selected — so a tab that never previews never pays for a
+     * `MarkdownViewer`.
+     *
+     * @returns The viewer, seeded with the editor's current text.
+     */
+    private buildPreview(): MarkdownViewer {
         const preview = MarkdownViewer({ markdown: this._editor.getValue() })
 
-        this._body.addComponent(preview)
         this._preview = preview
 
         return preview
@@ -306,6 +317,34 @@ class FileEditor extends Container {
         }
 
         openFindPanel(this._editor)
+    }
+
+    /** Whether this file's editor has a non-empty selection that Cut or Copy
+     *  could act on. `false` while the Markdown preview is showing: the preview
+     *  hides the editor, so its selection is out of sight. */
+    hasSelection(): boolean {
+        return !this._previewing && this._editor.getSelection().characterCount > 0
+    }
+
+    /** Copies this file's editor selection to the clipboard and removes it. A
+     *  no-op while the Markdown preview is showing, so a cut never deletes text
+     *  the user cannot see. */
+    cutSelection(): void {
+        if (this._previewing) {
+            return
+        }
+
+        this._editor.cut()
+    }
+
+    /** Copies this file's editor selection to the clipboard. A no-op while the
+     *  Markdown preview is showing, as {@link cutSelection} is. */
+    copySelection(): void {
+        if (this._previewing) {
+            return
+        }
+
+        this._editor.copy()
     }
 
     /** Moves keyboard focus into this file's editor once the editor has laid

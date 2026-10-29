@@ -22,6 +22,7 @@ export async function promptExternalChange(name: string): Promise<ExternalChange
     await Dialog.show({
         title: 'File changed on disk',
         message: `"${name}" changed on disk while you have unsaved changes here. Reload it from disk and lose your changes, or keep yours?`,
+        role: 'alertdialog',
         buttons: [
             {
                 text: 'Reload from Disk',

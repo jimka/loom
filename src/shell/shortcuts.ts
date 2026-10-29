@@ -15,6 +15,9 @@
 // while the caret is in the document (see the plan's "Potential Challenges"
 // note on Ctrl+S). Every chord does nothing while a modal dialog is open (see
 // dispatchAccelerator), as SqlAdminShell.ts's installAccelerators does.
+// Cut and Copy have display labels but no accelerator: CodeMirror and the
+// webview already handle Ctrl/Cmd+X/C/V natively, so binding them here would
+// run each action twice.
 
 import { LayerManager } from '@jimka/typescript-ui/core'
 
@@ -31,6 +34,15 @@ export const COMMAND_PALETTE_SHORTCUT = 'Ctrl/Cmd+P'
 export const FIND_SHORTCUT = 'Ctrl/Cmd+F'
 export const FIND_IN_FILES_SHORTCUT = 'Ctrl/Cmd+Shift+F'
 export const SPLIT_EDITOR_RIGHT_SHORTCUT = 'Ctrl/Cmd+\\'
+
+/**
+ * Display-only labels for *Edit › Cut* and *Edit › Copy*. CodeMirror and the
+ * webview handle these keys natively — in the editor and in every text field —
+ * so they have no `isXChord` helper and no accelerator: a window listener
+ * would run the menu action on top of the native one, cutting or copying twice.
+ */
+export const CUT_SHORTCUT = 'Ctrl/Cmd+X'
+export const COPY_SHORTCUT = 'Ctrl/Cmd+C'
 
 /**
  * Whether a keydown is a `Ctrl/Cmd(+Shift)+<key>` chord with no other

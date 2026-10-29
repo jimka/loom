@@ -192,14 +192,16 @@ class CommandPalette extends PopupPanel {
     }
 
     /**
-     * Forwards ArrowUp/ArrowDown/Enter into the list's keyboard reducer —
-     * navigation only moves the highlight; Enter commits through the list's
-     * `"action"` event (see {@link handleCommit}).
+     * Forwards ArrowUp/ArrowDown/PageUp/PageDown/Enter into the list's
+     * keyboard reducer — the four navigation keys only move the highlight (a
+     * page key by the rows in view, skipping disabled ones); Enter commits
+     * through the list's `"action"` event (see {@link handleCommit}). Home and
+     * End are not forwarded: they stay with the query field's caret.
      *
      * @param e - The query field's keydown event.
      */
     private handleKeyDown(e: KeyboardEvent): void {
-        const isNavKey = e.key === 'ArrowDown' || e.key === 'ArrowUp'
+        const isNavKey = e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'PageDown' || e.key === 'PageUp'
         const isCommitKey = e.key === 'Enter'
 
         if (!isNavKey && !isCommitKey) {

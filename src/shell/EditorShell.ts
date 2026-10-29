@@ -32,6 +32,7 @@ import { installFileDrop } from './fileDrop'
 import {
     NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
     FORMAT_SHORTCUT, FIND_SHORTCUT, FIND_IN_FILES_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, COMMAND_PALETTE_SHORTCUT, installAccelerators,
+    CUT_SHORTCUT, COPY_SHORTCUT,
     SPLIT_EDITOR_RIGHT_SHORTCUT,
 } from './shortcuts'
 import type { AcceleratorActions } from './shortcuts'
@@ -103,6 +104,12 @@ interface MenuBarActions extends AcceleratorActions {
     onGoToLine: () => void
     /** Whether the active file needs saving — the Save item is greyed out when not. */
     canSaveActive: () => boolean
+    /** Whether the active file's editor has a selection — greys out Cut and Copy when not. */
+    hasActiveSelection: () => boolean
+    /** Cuts the active file's editor selection to the clipboard. */
+    onCut: () => void
+    /** Copies the active file's editor selection to the clipboard. */
+    onCopy: () => void
     /** Whether the active file can move into a new group — greys out the split items when not. */
     canSplitActive: () => boolean
     /** Moves the active file into a new group below its current one. */
@@ -370,6 +377,9 @@ class EditorShell extends Container {
             onSplitEditorDown: () => controller.splitActive('bottom'),
             hasActiveFile: () => controller.hasActiveFile(),
             canSaveActive: () => controller.canSaveActive(),
+            hasActiveSelection: () => controller.hasActiveSelection(),
+            onCut: () => controller.cutInActive(),
+            onCopy: () => controller.copyInActive(),
             canSplitActive: () => controller.canSplitActive(),
             getRecentProjects: () => controller.getRecentProjects(),
             getRecentFiles: () => controller.getRecentFiles(),
@@ -722,6 +732,9 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
                 { text: 'Exit', glyph: 'right-from-bracket', shortcut: EXIT_SHORTCUT, action: actions.onExit },
             ] },
             { label: 'Edit', glyph: 'code', items: () => [
+                { text: 'Cut', glyph: 'scissors', shortcut: CUT_SHORTCUT, enabled: actions.hasActiveSelection(), action: actions.onCut },
+                { text: 'Copy', glyph: 'copy', shortcut: COPY_SHORTCUT, enabled: actions.hasActiveSelection(), action: actions.onCopy },
+                { separator: true },
                 { text: 'Find…', glyph: 'magnifying-glass', shortcut: FIND_SHORTCUT, enabled: actions.hasActiveFile(), action: actions.onFind },
                 { text: 'Find in Files…', glyph: 'magnifying-glass', shortcut: FIND_IN_FILES_SHORTCUT, enabled: actions.hasProjectRoot(), action: actions.onFindInFiles },
                 { text: 'Go to Line…', glyph: 'list-ol', enabled: actions.hasActiveFile(), action: actions.onGoToLine },

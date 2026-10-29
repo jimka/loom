@@ -33,8 +33,10 @@ const HEADING_FONT_SIZE = 20
 /** The vertical gap between the heading, hint, and button, in pixels — tight enough to read as one group, loose enough not to crowd. */
 const CONTENT_SPACING = 12
 
-/** The hint `Text`'s colour — a muted grey so it reads as secondary to the heading. */
-const HINT_COLOR = 'rgb(140, 140, 140)'
+/** The hint `Text`'s colour — the theme's muted text colour, so it reads as
+ *  secondary to the heading, read through its CSS variable so it follows a
+ *  light/dark theme switch. */
+const HINT_COLOR = 'var(--ts-ui-text-muted-color)'
 
 /**
  * Spacing between the recent-projects heading and each button, in pixels —

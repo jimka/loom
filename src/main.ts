@@ -21,6 +21,7 @@ import { list_ol } from '@jimka/typescript-ui/glyphs/solid/list_ol'
 import { right_left } from '@jimka/typescript-ui/glyphs/solid/right_left'
 import { square_caret_right } from '@jimka/typescript-ui/glyphs/solid/square_caret_right'
 import { square_caret_down } from '@jimka/typescript-ui/glyphs/solid/square_caret_down'
+import { scissors } from '@jimka/typescript-ui/glyphs/solid/scissors'
 import { APP_FAVICON } from './appIdentity'
 import { FILE_ICON_GLYPHS } from './fileIcons'
 import { EditorController } from './EditorController'
@@ -37,7 +38,7 @@ import { applyWorkspaceOverlay } from './data/workspaceState'
 Glyph.register(
     folder, folder_plus, file_circle_plus, floppy_disk, times, pen_to_square, trash, copy, eye, bars, code,
     right_from_bracket, clock_rotate_left, magnifying_glass, gear, circle_info, list_ol, right_left,
-    square_caret_right, square_caret_down, ...FILE_ICON_GLYPHS,
+    square_caret_right, square_caret_down, scissors, ...FILE_ICON_GLYPHS,
 )
 
 // Started here rather than inside `start`, and awaited there: the options are

@@ -4,7 +4,7 @@
 import {
     NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
     FORMAT_SHORTCUT, FIND_SHORTCUT, FIND_IN_FILES_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT,
-    SPLIT_EDITOR_RIGHT_SHORTCUT,
+    SPLIT_EDITOR_RIGHT_SHORTCUT, CUT_SHORTCUT, COPY_SHORTCUT,
 } from './shortcuts'
 
 /** One entry in the command palette's `>`-mode list. */
@@ -42,8 +42,11 @@ export interface PaletteCommandActions {
     canSaveActive: () => boolean
     onSave: () => void
     hasActiveFile: () => boolean
+    hasActiveSelection: () => boolean
     onSaveAs: () => void
     onCloseFile: () => void
+    onCut: () => void
+    onCopy: () => void
     onFormat: () => void
     onFind: () => void
     onGoToLine: () => void
@@ -77,6 +80,7 @@ export function buildPaletteCommands(actions: PaletteCommandActions): PaletteCom
     // Read once so every command below is built against one consistent
     // snapshot of the shell's state.
     const hasActiveFile = actions.hasActiveFile()
+    const hasActiveSelection = actions.hasActiveSelection()
     const canSaveActive = actions.canSaveActive()
     const canSplitActive = actions.canSplitActive()
 
@@ -88,6 +92,8 @@ export function buildPaletteCommands(actions: PaletteCommandActions): PaletteCom
         { id: 'save',            title: 'Save',            shortcut: SAVE_SHORTCUT,            enabled: canSaveActive, run: actions.onSave },
         { id: 'save-as',         title: 'Save As…',        shortcut: SAVE_AS_SHORTCUT,         enabled: hasActiveFile, run: actions.onSaveAs },
         { id: 'close-file',      title: 'Close File',      shortcut: CLOSE_FILE_SHORTCUT,      enabled: hasActiveFile, run: actions.onCloseFile },
+        { id: 'cut',             title: 'Cut',             shortcut: CUT_SHORTCUT,             enabled: hasActiveSelection, run: actions.onCut },
+        { id: 'copy',            title: 'Copy',            shortcut: COPY_SHORTCUT,            enabled: hasActiveSelection, run: actions.onCopy },
         { id: 'find',            title: 'Find…',           shortcut: FIND_SHORTCUT,            enabled: hasActiveFile, run: actions.onFind },
         { id: 'go-to-line',      title: 'Go to Line…',     enabled: hasActiveFile, run: actions.onGoToLine },
         { id: 'format-document', title: 'Format Document', shortcut: FORMAT_SHORTCUT,          enabled: hasActiveFile, run: actions.onFormat },
