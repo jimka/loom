@@ -4,8 +4,9 @@
 // batch of listing-changing paths means the tree must re-list
 // (`refreshTargets`/`mergeRefreshTargets`); `src/data/workspace.ts`'s
 // `watchDirectory` asks *whether* one native event is relevant at all
-// (`isContentChangeKind`) and whether it can have changed a directory
-// listing (`changesListing`), since that is the only other place a
+// (`isContentChangeKind`), whether it can have changed a directory
+// listing (`changesListing`), and whether it is one rename with both of
+// its paths (`renamePairOf`), since that is the only other place a
 // `WatchEvent` is ever seen; `EditorController`'s external-change
 // resolution asks what a change to an already-open file means for its
 // buffer (`externalChangeOutcome`).
@@ -188,6 +189,38 @@ export function isListingChangeKind(kind: unknown): boolean {
  */
 export function changesListing(kind: unknown, paths: string[]): boolean {
     return isListingChangeKind(kind) || paths.some(path => baseName(path) === GITIGNORE_NAME)
+}
+
+/** The two ends of a rename the watcher reported as one event. */
+export interface RenamePair {
+    from: string
+    to: string
+}
+
+/**
+ * The two paths of a native watch event that reports one rename whole — a
+ * modify of kind `'rename'` and mode `'both'`, naming the old path and then
+ * the new one. The native watcher's debounce joins a rename's two halves into
+ * such an event when it can match them; a half it could not match arrives on
+ * its own, as mode `'from'` or `'to'`, and is no pair. Takes the kind as
+ * `unknown` for the same reason {@link isContentChangeKind} does.
+ *
+ * @param kind - The event's own reported kind.
+ * @param paths - The paths the event names.
+ * @returns The rename's old and new paths, or `null` when the event is not one whole rename.
+ */
+export function renamePairOf(kind: unknown, paths: readonly string[]): RenamePair | null {
+    if (typeof kind !== 'object' || kind === null || !('modify' in kind) || paths.length !== 2) {
+        return null
+    }
+
+    const modify = kind.modify
+
+    if (typeof modify !== 'object' || modify === null || !('kind' in modify) || !('mode' in modify)) {
+        return null
+    }
+
+    return modify.kind === 'rename' && modify.mode === 'both' ? { from: paths[0], to: paths[1] } : null
 }
 
 /** What a watcher-reported change to an open file means for its buffer. */

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-    baseName, extensionOf, joinPath, sortDirEntries, isUnderRoot, projectName, pathSegments, relativeTo, parentDir,
+    baseName, extensionOf, joinPath, sortDirEntries, compareDirEntries, isUnderRoot, projectName, pathSegments, relativeTo, parentDir,
     relativePath, isValidEntryName, relocatePath,
 } from '../src/data/paths'
 
@@ -81,6 +81,27 @@ describe('sortDirEntries', () => {
         ]
 
         expect(sortDirEntries(input).map(e => e.name)).toEqual(['Test', 'test'])
+    })
+})
+
+describe('compareDirEntries', () => {
+    it('puts a folder before a file', () => {
+        const folder = { name: 'src', isDir: true }
+        const file = { name: 'a.ts', isDir: false }
+
+        expect(compareDirEntries(folder, file)).toBeLessThan(0)
+        expect(compareDirEntries(file, folder)).toBeGreaterThan(0)
+    })
+
+    it('compares names case-insensitively', () => {
+        expect(compareDirEntries({ name: 'b.ts', isDir: false }, { name: 'A.ts', isDir: false })).toBeGreaterThan(0)
+    })
+
+    it('breaks a case-insensitive tie with the raw name, and gives 0 for an entry against itself', () => {
+        const entry = { name: 'Test', isDir: false }
+
+        expect(compareDirEntries(entry, { name: 'test', isDir: false })).toBeLessThan(0)
+        expect(compareDirEntries(entry, entry)).toBe(0)
     })
 })
 

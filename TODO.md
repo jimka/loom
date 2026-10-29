@@ -148,15 +148,15 @@ nothing below has a plan yet.
   pre-existing readability gap, not a deliberate tradeoff; fixing it
   properly needs a `text.muted` token in the library first, not a
   Loom-side color pick.
-- **A renamed or moved folder comes back collapsed.** A re-listed folder
-  keeps every entry that is still there, matched by path and kind, but a
-  rename or move changes the path, so the entry is a new one: collapsed,
-  with nothing loaded under it, and — when the rename came from outside
-  Loom — unselected. Keeping it open would mean carrying the old node, and
-  the path of everything loaded under it, over to the new name. `Tree` has
-  no move primitive (`removeNode` then `insertNode` drops the node's state
-  in between), and the watcher hands the tree plain paths, not rename
-  pairs.
+- **A file renamed outside Loom comes back as a new row.** A rename made
+  outside Loom is followed only for a folder: its row keeps its expansion,
+  its loaded children and its selection, and open tabs under it follow. A
+  renamed file is a new row, unselected, and an open tab on it keeps the old
+  path. Editors save by renaming (vim, for one, renames the file to a backup
+  before writing the new one), and the watcher reports that as a rename too,
+  so following file renames would move the selection and the tab onto the
+  backup. A folder rename the watcher does not report as a single rename
+  event still comes back collapsed, as before.
 
 ## Notes
 

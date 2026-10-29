@@ -294,24 +294,36 @@ class EditorController {
 
     /**
      * Repoints every open tab under `oldPath` (inclusive) onto its new
-     * location after the tree renames a file or folder. Keeps each buffer's
-     * content and dirty state; only the tracked path, tab label, and icon
-     * change.
+     * location after the tree renames a file or folder, or after the watcher
+     * reports a folder renamed outside Loom. Keeps each buffer's content and
+     * dirty state; only the tracked path, tab label, and icon change. Re-syncs
+     * the window title, status bar and tree selection only when the active
+     * tab was one of those repointed, so a call that moves nothing on screen
+     * (the watcher's echo of the tree's own rename) leaves the selection be.
      *
      * @param oldPath - The renamed entry's previous path.
      * @param newPath - The renamed entry's new path.
      */
     relocateOpenFiles(oldPath: string, newPath: string): void {
+        const active = this.getActiveFile()
+        let activeMoved = false
+
         for (const file of this._openFiles.values()) {
             const filePath = file.getPath()
 
             if (filePath !== null && isUnderRoot(oldPath, filePath)) {
                 this.repointFile(file, relocatePath(filePath, oldPath, newPath))
                 this.dock.setPanelTitle(file.getPanelId(), file.getName())
+
+                if (file === active) {
+                    activeMoved = true
+                }
             }
         }
 
-        this.syncActive()
+        if (activeMoved) {
+            this.syncActive()
+        }
     }
 
     /**

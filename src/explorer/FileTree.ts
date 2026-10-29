@@ -5,13 +5,14 @@ import { Menu, Notification, Dialog } from '@jimka/typescript-ui/overlay'
 import type { MenuItemConfig } from '@jimka/typescript-ui/component/container'
 import {
     listDirectory, tryReadTextFile, pathExists, watchDirectory, writeFileText, createDirectory, renamePath, removePath,
+    isDirectory,
 } from '../data/workspace'
 import type { DirectoryItem, StopWatching } from '../data/workspace'
 import { expansionOrder } from '../data/session'
 import { refreshTargets, mergeRefreshTargets } from '../data/watchEvents'
-import type { RefreshTarget } from '../data/watchEvents'
+import type { RefreshTarget, RenamePair } from '../data/watchEvents'
 import { glyphNameForPath } from '../fileIcons'
-import { joinPath, parentDir } from '../data/paths'
+import { joinPath, parentDir, baseName, isUnderRoot } from '../data/paths'
 import {
     GITIGNORE_NAME, EMPTY_IGNORE_CHAIN, isHiddenName, extendIgnoreChain, isIgnoredByChain, buildRootIgnoreChain,
 } from '../data/gitignore'
@@ -19,7 +20,7 @@ import type { IgnoreChain } from '../data/gitignore'
 import { messageOf } from '../errors'
 import { promptNewEntryName, promptRenameName, confirmDelete } from './fileTreePrompts'
 import type { SelectedEntry } from './entryProperties'
-import { reconcileChildren, findNodeByPath } from './fileTreeNodes'
+import { reconcileChildren, findNodeByPath, relocateLoadedPaths, sortedChildIndex } from './fileTreeNodes'
 import type { FileTreeNodeData } from './fileTreeNodes'
 
 /** How long changed paths accumulate before the tree refreshes, in
@@ -45,7 +46,7 @@ export interface FileTreeParams {
     onOpenFile: (path: string) => void
     /** Called after the tree deletes a file or folder, with its path. */
     onPathDeleted: (path: string) => void
-    /** Called after the tree renames a file or folder, with its old and new paths. */
+    /** Called after the tree renames a file or folder, or after the watcher reports a folder renamed outside Loom, with its old and new paths. */
     onPathRenamed: (oldPath: string, newPath: string) => void
     /** Called with the raw batch of changed paths the watcher reported, before any tree filtering, and
      *  whether the batch can have changed what a directory lists — `false` for a file whose content was
@@ -73,9 +74,10 @@ class FileTree extends Tree {
     private _pendingTargets: RefreshTarget[] = []
     private _refreshTimer: ReturnType<typeof setTimeout> | null = null
     /** Every refresh — the watcher's, the tree's own actions', a Save As's,
-     *  and the Show Hidden/Show Ignored toggles' — chains onto this so they
-     *  run one at a time: each reconciles against the children the previous
-     *  one installed, and an older listing never lands over a newer one. */
+     *  and the Show Hidden/Show Ignored toggles' — and every move of a
+     *  renamed node chains onto this so they run one at a time: each
+     *  reconciles against the children the previous one installed, and an
+     *  older listing never lands over a newer one. */
     private _refreshChain: Promise<void> = Promise.resolve()
 
     constructor(params: FileTreeParams) {
@@ -251,6 +253,7 @@ class FileTree extends Tree {
     }
 
     /** Prompts for `path`'s new name, renames it on disk, relocates any open tab under it, and refreshes the tree and selects the renamed entry.
+     *  The renamed entry keeps its row, its expansion and its loaded children (see {@link moveLoadedNode}).
      *
      * @param path - The file or folder to rename.
      * @param isDir - Whether `path` is a directory.
@@ -270,8 +273,19 @@ class FileTree extends Tree {
             return
         }
 
+        // The move runs before _onPathRenamed: relocateOpenFiles can re-sync
+        // the active tab, whose listener selects its path in this tree, and
+        // with the node already moved that lookup finds the moved row.
+        await this.queueOnRefreshChain(() => { this.moveLoadedNode(path, newPath) })
         this._onPathRenamed(path, newPath)
         await this.refreshDirectory(parentDir(path))
+
+        // A deep re-list of the new path rewrites the ignore chains of every
+        // loaded folder under it, which the move leaves as they were.
+        if (isDir) {
+            await this.queueRefresh({ path: newPath, deep: true })
+        }
+
         await this.selectPath(newPath)
     }
 
@@ -387,7 +401,18 @@ class FileTree extends Tree {
      * @returns A promise that settles, with the refresh's own outcome, once it has run.
      */
     private queueRefresh(target: RefreshTarget): Promise<void> {
-        const run = this._refreshChain.then(() => this.performRefresh(target))
+        return this.queueOnRefreshChain(() => this.performRefresh(target))
+    }
+
+    /**
+     * Runs `work` after every step already queued on {@link _refreshChain}.
+     * A step that fails leaves the chain running for the next one.
+     *
+     * @param work - The step to run.
+     * @returns A promise that settles, with the step's own outcome, once it has run.
+     */
+    private queueOnRefreshChain(work: () => Promise<void> | void): Promise<void> {
+        const run = this._refreshChain.then(work)
 
         this._refreshChain = run.then(() => undefined, () => undefined)
 
@@ -612,6 +637,95 @@ class FileTree extends Tree {
     }
 
     /**
+     * The loaded folder `dir`: its node (`null` for the project root) and its
+     * child list. Performs no I/O.
+     *
+     * @param dir - The folder's absolute path.
+     * @returns The folder, or `null` when `dir` is neither the project root nor a folder that has loaded its children.
+     */
+    private findLoadedFolder(dir: string): { node: TreeNode | null, children: TreeNode[] } | null {
+        if (dir === this._root) {
+            return { node: null, children: this.getNodes() }
+        }
+
+        const node = this.findLoadedNode(dir)
+
+        if (node === null || node.children === undefined) {
+            return null
+        }
+
+        return { node, children: node.children }
+    }
+
+    /**
+     * Carries the loaded node for `oldPath` over to `newPath` with
+     * `Tree.moveNode`, so it keeps its expansion, its loaded children and its
+     * selection: rewrites the paths under it in place, relabels it, moves it
+     * to its sorted place in its new parent folder, and repaints it. Leaves
+     * the ignore chains to the re-list that always follows. Reports the
+     * selection again when the selected row is the moved node or sits under
+     * it, since its path changed. Does nothing, and leaves the tree to that
+     * re-list, when no node is loaded at `oldPath` (which includes the
+     * watcher's echo of the tree's own rename), when a node is already
+     * loaded at `newPath`, or when `newPath`'s parent folder is neither the
+     * project root nor a loaded folder (`moveNode` into an unloaded lazy
+     * folder would make the node that folder's only child).
+     *
+     * @param oldPath - The entry's path before the rename.
+     * @param newPath - Its path after the rename.
+     */
+    private moveLoadedNode(oldPath: string, newPath: string): void {
+        const node = this.findLoadedNode(oldPath)
+        const folder = this.findLoadedFolder(parentDir(newPath))
+
+        if (node === null || folder === null || this.findLoadedNode(newPath) !== null) {
+            return
+        }
+
+        relocateLoadedPaths(node, oldPath, newPath)
+        node.label = baseName(newPath)
+        this.moveNode(node, folder.node, sortedChildIndex(folder.children, node))
+        this.notifyNodeChanged(node)
+
+        const selected = this.getSelectedNode()?.data as FileTreeNodeData | undefined
+
+        if (selected !== undefined && isUnderRoot(newPath, selected.path)) {
+            this.notifySelectedEntry()
+        }
+    }
+
+    /**
+     * Follows a folder renamed or moved outside Loom: moves its loaded node
+     * (see {@link moveLoadedNode}) and repoints open tabs under it through
+     * {@link _onPathRenamed}. Queued on {@link _refreshChain}, ahead of the
+     * watcher's debounced re-list. Follows only a folder, and only when both
+     * paths sit strictly inside the project root. A file renamed outside
+     * Loom is left as a new entry, because editors save by renaming: following
+     * it would move the selection and an open tab onto a backup file (see
+     * TODO.md, *A file renamed outside Loom comes back as a new row*).
+     *
+     * @param rename - The old and new paths the watcher paired.
+     */
+    private followExternalRename(rename: RenamePair): void {
+        const root = this._root
+
+        void this.queueOnRefreshChain(async () => {
+            if (root === null || this._root !== root) {
+                return
+            }
+
+            const inside = (path: string): boolean => path !== root && isUnderRoot(root, path)
+
+            if (!inside(rename.from) || !inside(rename.to) || !(await isDirectory(rename.to))) {
+                return
+            }
+
+            this.moveLoadedNode(rename.from, rename.to)
+            this._onPathRenamed(rename.from, rename.to)
+        })
+    }
+
+    /**
      * Lists `dir`, extends `parentChain` with `dir`'s own `.gitignore` when it
      * has one, and keeps the entries the current toggles don't exclude.
      * `dir`'s listing is checked for a `.gitignore` entry before issuing the
@@ -705,7 +819,7 @@ class FileTree extends Tree {
     private startWatching(root: string): void {
         this.stopWatching()
 
-        void watchDirectory(root, (paths, listingChanged) => { this.handleFileSystemChange(paths, listingChanged) })
+        void watchDirectory(root, (paths, listingChanged, renamed) => { this.handleFileSystemChange(paths, listingChanged, renamed) })
             .then(stop => {
                 if (this._root === root) {
                     this._stopWatching = stop
@@ -735,13 +849,20 @@ class FileTree extends Tree {
      *
      * @param paths - The changed paths the watcher reported.
      * @param listingChanged - Whether the batch can have changed what a directory lists.
+     * @param renamed - The rename's old and new paths when the batch was one rename reported whole, followed
+     *   for a folder (see {@link followExternalRename}); `null` otherwise.
      */
-    private handleFileSystemChange(paths: string[], listingChanged: boolean): void {
+    private handleFileSystemChange(paths: string[], listingChanged: boolean, renamed: RenamePair | null): void {
         if (this._root === null) {
             return
         }
 
         this._onPathsChanged(paths, listingChanged)
+
+        // Queued before the re-list below is armed, so the move runs first.
+        if (renamed !== null) {
+            this.followExternalRename(renamed)
+        }
 
         if (!listingChanged) {
             return

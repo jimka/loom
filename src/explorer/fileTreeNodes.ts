@@ -1,13 +1,15 @@
 // The file tree's node payload and its pure node-list rules — matching a
-// fresh directory listing against the nodes already shown, and finding a
-// loaded node by path — split out of FileTree.ts so they stay unit testable in
-// vitest's `node` environment: FileTree.ts imports ../data/workspace, the
-// app's Tauri entry point. The same split searchResults.ts makes for
-// SearchPanel.ts.
+// fresh directory listing against the nodes already shown, finding a loaded
+// node by path, rewriting a moved node's paths, and finding where a moved
+// node sorts among its new siblings — split out of FileTree.ts so they stay
+// unit testable in vitest's `node` environment: FileTree.ts imports
+// ../data/workspace, the app's Tauri entry point. The same split
+// searchResults.ts makes for SearchPanel.ts.
 import type { TreeNode } from '@jimka/typescript-ui/component/tree'
 import type { DirectoryItem } from '../data/workspace'
 import type { IgnoreChain } from '../data/gitignore'
-import { relativeTo } from '../data/paths'
+import { relativeTo, relocatePath, compareDirEntries } from '../data/paths'
+import type { SortableEntry } from '../data/paths'
 
 /** Domain payload `FileTree` attaches to every node via `TreeNode.data`. */
 export interface FileTreeNodeData {
@@ -96,4 +98,53 @@ export function findNodeByPath(nodes: readonly TreeNode[], path: string): TreeNo
  */
 function isSameOrAncestor(candidate: string, path: string): boolean {
     return candidate === path || relativeTo(candidate, path) !== null
+}
+
+/**
+ * Rewrites the path of `node`, and of every loaded node under it, from
+ * `oldPath` onto `newPath` (see `relocatePath`, the rule open tabs follow
+ * too). Writes `data.path` in place and never replaces a `data` object: a
+ * folder's `loadChildren` holds its own `data` and reads `data.path` when it
+ * runs, so only an in-place write makes a folder that has not loaded yet list
+ * its new path. Leaves `label` and `parentChain` alone.
+ *
+ * @param node - The node that moved.
+ * @param oldPath - Its path before the move.
+ * @param newPath - Its path after the move.
+ */
+export function relocateLoadedPaths(node: TreeNode, oldPath: string, newPath: string): void {
+    const data = node.data as FileTreeNodeData
+
+    data.path = relocatePath(data.path, oldPath, newPath)
+
+    for (const child of node.children ?? []) {
+        relocateLoadedPaths(child, oldPath, newPath)
+    }
+}
+
+/**
+ * Where `node` belongs among `siblings` by the directory listing's own sort
+ * rule (`compareDirEntries`, on each node's label and kind): the number of
+ * siblings, other than `node` itself, that sort before it. That is the index
+ * `Tree.moveNode` takes, and counting rather than searching for the first
+ * sibling after `node` does not rely on `siblings` already being sorted.
+ *
+ * @param siblings - The children of the folder `node` ends up in; may include `node`.
+ * @param node - The node being placed, already relabelled.
+ * @returns The index `node` should end up at.
+ */
+export function sortedChildIndex(siblings: readonly TreeNode[], node: TreeNode): number {
+    const entry = sortableEntryOf(node)
+
+    return siblings.filter(sibling => sibling !== node && compareDirEntries(sortableEntryOf(sibling), entry) < 0).length
+}
+
+/**
+ * The name and kind `compareDirEntries` sorts `node` by.
+ *
+ * @param node - A file tree node.
+ * @returns Its label as the name, and its kind.
+ */
+function sortableEntryOf(node: TreeNode): SortableEntry {
+    return { name: node.label, isDir: (node.data as FileTreeNodeData).isDir }
 }

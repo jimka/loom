@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import type { TreeNode } from '@jimka/typescript-ui/component/tree'
-import { reconcileChildren, findNodeByPath } from '../src/explorer/fileTreeNodes'
+import { reconcileChildren, findNodeByPath, relocateLoadedPaths, sortedChildIndex } from '../src/explorer/fileTreeNodes'
 import type { FileTreeNodeData } from '../src/explorer/fileTreeNodes'
 import type { DirectoryItem } from '../src/data/workspace'
 import { EMPTY_IGNORE_CHAIN } from '../src/data/gitignore'
@@ -168,5 +168,121 @@ describe('findNodeByPath', () => {
         const folder = node('C:\\p\\src', true, [file])
 
         expect(findNodeByPath([node('C:\\p\\readme.md', false), folder], 'C:\\p\\src\\a.ts')).toBe(file)
+    })
+})
+
+describe('relocateLoadedPaths', () => {
+    /**
+     * Every node in the subtree under `root`, `root` first, depth-first.
+     *
+     * @param root - The subtree's top node.
+     * @returns The nodes in depth-first order.
+     */
+    function subtree(root: TreeNode): TreeNode[] {
+        return [root, ...(root.children ?? []).flatMap(subtree)]
+    }
+
+    /**
+     * The folder `/p/src` with `util/b.ts` and `a.ts` loaded under it.
+     *
+     * @returns The folder node.
+     */
+    function srcTree(): TreeNode {
+        return node('/p/src', true, [
+            node('/p/src/util', true, [node('/p/src/util/b.ts', false)]),
+            node('/p/src/a.ts', false),
+        ])
+    }
+
+    it('rewrites the path of the node and of every loaded node under it', () => {
+        const src = srcTree()
+
+        relocateLoadedPaths(src, '/p/src', '/p/lib')
+
+        expect(subtree(src).map(pathOf)).toEqual(['/p/lib', '/p/lib/util', '/p/lib/util/b.ts', '/p/lib/a.ts'])
+    })
+
+    it('keeps every data object and every parent chain by reference', () => {
+        const src = srcTree()
+        const before = subtree(src).map(each => each.data as FileTreeNodeData)
+        const chains = before.map(data => data.parentChain)
+
+        relocateLoadedPaths(src, '/p/src', '/p/lib')
+
+        const after = subtree(src).map(each => each.data as FileTreeNodeData)
+
+        after.forEach((data, index) => {
+            expect(data).toBe(before[index])
+            expect(data.parentChain).toBe(chains[index])
+        })
+    })
+
+    it('rewrites only its own path for a folder that has not loaded', () => {
+        const src = node('/p/src', true)
+
+        relocateLoadedPaths(src, '/p/src', '/p/lib')
+
+        expect(pathOf(src)).toBe('/p/lib')
+        expect(src.children).toBeUndefined()
+    })
+
+    it('rewrites a file\'s path and leaves its label alone', () => {
+        const file = node('/p/a.ts', false)
+
+        relocateLoadedPaths(file, '/p/a.ts', '/p/b.ts')
+
+        expect(pathOf(file)).toBe('/p/b.ts')
+        expect(file.label).toBe('a.ts')
+    })
+
+    it('rewrites a Windows-shaped tree', () => {
+        const src = node('C:\\p\\src', true, [node('C:\\p\\src\\a.ts', false)])
+
+        relocateLoadedPaths(src, 'C:\\p\\src', 'C:\\p\\lib')
+
+        expect(subtree(src).map(pathOf)).toEqual(['C:\\p\\lib', 'C:\\p\\lib\\a.ts'])
+    })
+})
+
+describe('sortedChildIndex', () => {
+    /**
+     * `treeNode` with its label changed to `label`, as `FileTree` relabels a
+     * renamed node before placing it.
+     *
+     * @param treeNode - The node to relabel.
+     * @param label - Its new label.
+     * @returns The same node.
+     */
+    function relabelled(treeNode: TreeNode, label: string): TreeNode {
+        treeNode.label = label
+
+        return treeNode
+    }
+
+    it('places a folder renamed to sort first at the front, skipping itself', () => {
+        const src = node('/p/src', true)
+        const siblings = [node('/p/lib', true), src, node('/p/a.ts', false), node('/p/c.ts', false)]
+
+        expect(sortedChildIndex(siblings, relabelled(src, 'app'))).toBe(0)
+    })
+
+    it('places a file renamed to sort last at the end, skipping itself', () => {
+        const a = node('/p/a.ts', false)
+        const siblings = [node('/p/lib', true), node('/p/src', true), a, node('/p/c.ts', false)]
+
+        expect(sortedChildIndex(siblings, relabelled(a, 'd.ts'))).toBe(3)
+    })
+
+    it('places a folder arriving from another folder after the folders', () => {
+        const siblings = [node('/p/lib', true), node('/p/src', true), node('/p/a.ts', false)]
+
+        expect(sortedChildIndex(siblings, node('/q/zeta', true))).toBe(2)
+    })
+
+    it('places a file arriving from another folder case-insensitively, and first among no siblings', () => {
+        const siblings = [node('/p/a.ts', false), node('/p/c.ts', false)]
+
+        expect(sortedChildIndex(siblings, node('/q/B.ts', false))).toBe(1)
+        expect(sortedChildIndex([], node('/q/B.ts', false))).toBe(0)
     })
 })
