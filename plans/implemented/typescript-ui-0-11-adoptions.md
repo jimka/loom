@@ -1076,3 +1076,39 @@ Saves are no-ops in the browser shell, so no case saves.
     `selection` would not avoid it. After a search preview the caret sits on
     the previewed match, which `revealRange` scrolled to the centre, so the
     common case does not scroll.
+
+---
+
+## Implementation Notes
+
+The code follows the plan as written, with one wording change. The plan's
+doc sentence for `replaceMatch` said the replace "leaves the caret and scroll
+position where they were" without a condition. That contradicts the plan's
+own Potential Challenges entry: `replaceRange` dispatches with
+`scrollIntoView: true`, so an off-screen caret is scrolled back into view. The
+audit caught this, and the comment now says the scroll position is kept only
+while the caret is on screen. The rest of these notes cover how the manual
+checks were run where the plan's wording could not be followed literally.
+
+- **Red baseline (step 3).** Both checks failed against the unmodified code,
+  as the plan expected. In M1 the readout jumped from `Ln 40, Col 13` to
+  `Ln 1, Col 1` and the editor scrolled from 568 to 0 after **Replace**. In M5
+  the command palette opened over Go to Line.
+- **Pointer input the chrome-devtools tools lack.** The tools have no
+  right-click, no click at a text position, and no wheel scroll. So the
+  context menu was opened by dispatching `pointerdown`/`mousedown`/`pointerup`/
+  `mouseup`/`contextmenu` on the result row. The caret was placed with a
+  CodeMirror `dispatch({ selection })` on the visible editor's view (reached
+  through `.cm-content`'s `cmTile.view`). The results tree was scrolled with
+  synthetic `wheel` events. Typing, Ctrl/Cmd+Z, the chords, the menu item
+  clicks and the tab tear-off all went through real input.
+- **M6** switched the sidebar to the Files view before opening About, so a
+  Ctrl+Shift+F that leaked through would have changed the view visibly.
+- **M9** was run as M7's closing step: the ✕ click and *Cancel* there left
+  `notes.txt` open with its dirty dot.
+- **M4** showed the dirty dot on `back.txt` and `two BAR` on switching to it.
+  The pre-mount gap did not show up, as expected for a tab that had been
+  shown once.
+- Every M1–M10 case passed. The console showed only the browser shell's usual
+  500s from `/__fsops` for files the scratch project lacks, and the existing
+  `Split: paneSizes discarded` warning.

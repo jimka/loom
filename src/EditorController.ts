@@ -1,8 +1,8 @@
 import { StatusBar } from '@jimka/typescript-ui/component/container'
 import { Text, Link } from '@jimka/typescript-ui/component/input'
 import { Dialog, Tooltip, Dock } from '@jimka/typescript-ui/overlay'
-import type { DockPanelEvent } from '@jimka/typescript-ui/overlay'
-import type { TabCloseController, LayoutState } from '@jimka/typescript-ui/layout'
+import type { DockPanelEvent, DockCloseController } from '@jimka/typescript-ui/overlay'
+import type { LayoutState } from '@jimka/typescript-ui/layout'
 import type { FormatOptions, CodeEditorCursorPosition } from '@jimka/typescript-ui/component/editor'
 import { FileEditor } from './editor/FileEditor'
 import { cursorLabel } from './editor/cursorLabel'
@@ -11,7 +11,7 @@ import { promptGoToLine } from './editor/goToLinePrompt'
 import { countLines } from './editor/lineNumber'
 import { languageForPath, hasFormatter } from './editor/languages'
 import type { MatchLocation, SearchMatch, CompiledQuery } from './data/projectSearch'
-import { replaceAllInText, replaceOneInText, isProbablyBinary } from './data/projectSearch'
+import { replaceAllInText, replaceOneInText, replacementEditAt, editBetween, isProbablyBinary } from './data/projectSearch'
 import { glyphNameForPath } from './fileIcons'
 import { baseName, joinPath, isUnderRoot, relocatePath } from './data/paths'
 import { readFileText, writeFileText, pickProjectFolder, pickSaveTarget, setWindowTitle, closeWindow, onCloseRequested } from './data/workspace'
@@ -818,8 +818,11 @@ class EditorController {
      * Shared write for {@link replaceInFile} and {@link replaceEverywhere}: reads
      * `path`'s current content — the live buffer when it's open, disk otherwise —
      * replaces every occurrence `compiled` finds, and writes the result back the
-     * same way it was read. Skipped entirely when nothing matched, so a file with
-     * no remaining occurrences is never touched. A read failure (deleted, now
+     * same way it was read. An open file takes the change as one
+     * `CodeEditor.replaceRange` over the smallest span covering every replaced
+     * match, so the whole pass is one undo step there and a caret outside that
+     * span stays where it was. Skipped entirely when nothing matched, so a file
+     * with no remaining occurrences is never touched. A read failure (deleted, now
      * over the size limit) is swallowed and reports `0`; a write failure
      * propagates, for the two public callers to handle differently.
      *
@@ -832,10 +835,13 @@ class EditorController {
         const open = this.findByPath(path)
 
         if (open) {
-            const { text, count } = replaceAllInText(open.getEditor().getValue(), compiled, replacement)
+            const editor = open.getEditor()
+            const current = editor.getValue()
+            const { text, count } = replaceAllInText(current, compiled, replacement)
+            const edit = editBetween(current, text)
 
-            if (count > 0) {
-                open.getEditor().setValue(text)
+            if (edit !== null) {
+                editor.replaceRange(edit.from, edit.to, edit.insert)
             }
 
             return count
@@ -927,10 +933,14 @@ class EditorController {
     /**
      * Replaces the single occurrence `match` names — through the live buffer
      * when its file is open, straight to disk otherwise — verifying it is
-     * still there first. A stale match (the file's content moved since the
-     * search that found it ran) makes no change and resolves `false`
-     * silently; a failed disk write shows a `Dialog.error` like {@link save}'s
-     * own and resolves `false`.
+     * still there first. An open file takes it as one `CodeEditor.replaceRange`
+     * over the match's own range: an undo step of its own that leaves the caret
+     * where it was, and the scroll position too while the caret is on screen
+     * (`replaceRange` scrolls an off-screen caret back into view), and turns a
+     * selection covering the match into one covering the replacement. A stale
+     * match (the file's content moved since the search that found it ran)
+     * makes no change and resolves `false` silently; a failed disk write shows
+     * a `Dialog.error` like {@link save}'s own and resolves `false`.
      *
      * @param match - The match to replace.
      * @param compiled - The query `match` was found with.
@@ -941,13 +951,14 @@ class EditorController {
         const open = this.findByPath(match.path)
 
         if (open) {
-            const text = replaceOneInText(open.getEditor().getValue(), match, compiled, replacement)
+            const editor = open.getEditor()
+            const edit = replacementEditAt(editor.getValue(), match, compiled, replacement)
 
-            if (text === null) {
+            if (edit === null) {
                 return false
             }
 
-            open.getEditor().setValue(text)
+            editor.replaceRange(edit.from, edit.to, edit.insert)
 
             return true
         }
@@ -1388,9 +1399,13 @@ class EditorController {
      * `"beforeclose"`: a clean file closes immediately. A dirty file vetoes
      * the close and starts the unsaved-changes prompt instead. Fires for
      * every user-initiated destroy — a tab ✕ and a float window's chrome
-     * ✕ — while `removePanel` stays the unguarded programmatic path.
+     * ✕ — while `removePanel` stays the unguarded programmatic path. A
+     * float's chrome ✕ fires it once for every panel the window holds, all
+     * sharing one controller, so vetoing for any dirty panel keeps the whole
+     * window open, its clean panels included, and each dirty panel raises its
+     * own prompt.
      */
-    private handleBeforePanelClose = (event: DockPanelEvent, controller: TabCloseController): void => {
+    private handleBeforePanelClose = (event: DockPanelEvent, controller: DockCloseController): void => {
         const file = this._openFiles.get(event.id)
 
         if (!file || !file.isDirty()) {
