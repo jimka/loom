@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
     DEFAULT_SETTINGS, emptySettingsOverride, parseSettingsOverride, serializeSettingsOverride,
-    resolveSettings, renderTitle, withTheme,
+    resolveSettings, renderTitle, withSettingFields, editorSettingsOf, placeholderForBuffer,
 } from '../src/data/settings'
 import type { SettingsOverride } from '../src/data/settings'
 
@@ -87,6 +87,105 @@ describe('parseSettingsOverride', () => {
 
     it('drops theme when it has the wrong type', () => {
         expect(parseSettingsOverride('{"version":1,"theme":3}')).toEqual({ version: 1 })
+    })
+})
+
+describe('parseSettingsOverride editor and resize fields', () => {
+    it('takes a positive whole tabSize', () => {
+        expect(parseSettingsOverride('{"version":1,"tabSize":4}')).toEqual({ version: 1, tabSize: 4 })
+    })
+
+    it('drops a fractional tabSize', () => {
+        expect(parseSettingsOverride('{"version":1,"tabSize":2.5}')).toEqual({ version: 1 })
+    })
+
+    it('drops a zero tabSize', () => {
+        expect(parseSettingsOverride('{"version":1,"tabSize":0}')).toEqual({ version: 1 })
+    })
+
+    it('drops tabSize when it is a string, not a number', () => {
+        expect(parseSettingsOverride('{"version":1,"tabSize":"4"}')).toEqual({ version: 1 })
+    })
+
+    it('takes a valid lineWrap', () => {
+        expect(parseSettingsOverride('{"version":1,"lineWrap":true}')).toEqual({ version: 1, lineWrap: true })
+    })
+
+    it('drops lineWrap when it is not a boolean', () => {
+        expect(parseSettingsOverride('{"version":1,"lineWrap":"yes"}')).toEqual({ version: 1 })
+    })
+
+    it('takes a valid lineNumbers', () => {
+        expect(parseSettingsOverride('{"version":1,"lineNumbers":false}')).toEqual({ version: 1, lineNumbers: false })
+    })
+
+    it('takes a valid lint', () => {
+        expect(parseSettingsOverride('{"version":1,"lint":true}')).toEqual({ version: 1, lint: true })
+    })
+
+    it('takes a valid highlightWhitespace', () => {
+        expect(parseSettingsOverride('{"version":1,"highlightWhitespace":true}')).toEqual({
+            version: 1,
+            highlightWhitespace: true,
+        })
+    })
+
+    it('takes an empty untitledPlaceholder, which hides the hint', () => {
+        expect(parseSettingsOverride('{"version":1,"untitledPlaceholder":""}')).toEqual({
+            version: 1,
+            untitledPlaceholder: '',
+        })
+    })
+
+    it('takes a non-empty untitledPlaceholder', () => {
+        expect(parseSettingsOverride('{"version":1,"untitledPlaceholder":"Hi"}')).toEqual({
+            version: 1,
+            untitledPlaceholder: 'Hi',
+        })
+    })
+
+    it('drops untitledPlaceholder when it is not a string', () => {
+        expect(parseSettingsOverride('{"version":1,"untitledPlaceholder":3}')).toEqual({ version: 1 })
+    })
+
+    it('takes a valid resizeMode', () => {
+        expect(parseSettingsOverride('{"version":1,"resizeMode":"outline"}')).toEqual({
+            version: 1,
+            resizeMode: 'outline',
+        })
+    })
+
+    it('drops resizeMode when its capitalisation does not match a listed choice', () => {
+        expect(parseSettingsOverride('{"version":1,"resizeMode":"Outline"}')).toEqual({ version: 1 })
+    })
+
+    it('drops resizeMode when it has the wrong type', () => {
+        expect(parseSettingsOverride('{"version":1,"resizeMode":true}')).toEqual({ version: 1 })
+    })
+
+    it('parses every new field while dropping a bad sibling field', () => {
+        const text = JSON.stringify({
+            version: 1,
+            formatOnSave: 'no',
+            tabSize: 8,
+            lineWrap: true,
+            lineNumbers: false,
+            lint: true,
+            highlightWhitespace: true,
+            untitledPlaceholder: 'Scratch',
+            resizeMode: 'outline',
+        })
+
+        expect(parseSettingsOverride(text)).toEqual({
+            version: 1,
+            tabSize: 8,
+            lineWrap: true,
+            lineNumbers: false,
+            lint: true,
+            highlightWhitespace: true,
+            untitledPlaceholder: 'Scratch',
+            resizeMode: 'outline',
+        })
     })
 })
 
@@ -324,23 +423,103 @@ describe('resolveSettings', () => {
     it('inherits the global theme through a bare workspace override', () => {
         expect(resolveSettings({ version: 1, theme: 'dark' }, { version: 1 }).theme).toBe('dark')
     })
+
+    it('keeps every new editor and resize default at the library default', () => {
+        expect(DEFAULT_SETTINGS).toMatchObject({
+            tabSize: null,
+            lineWrap: false,
+            lineNumbers: true,
+            lint: false,
+            highlightWhitespace: false,
+            resizeMode: 'live',
+        })
+    })
+
+    it('has a non-empty untitledPlaceholder default', () => {
+        expect(typeof DEFAULT_SETTINGS.untitledPlaceholder).toBe('string')
+        expect(DEFAULT_SETTINGS.untitledPlaceholder.length).toBeGreaterThan(0)
+    })
+
+    it('takes a global-only lineWrap', () => {
+        expect(resolveSettings({ version: 1, lineWrap: true }, null).lineWrap).toBe(true)
+    })
+
+    it('lets the workspace lineWrap win over the global one', () => {
+        expect(resolveSettings({ version: 1, lineWrap: true }, { version: 1, lineWrap: false }).lineWrap).toBe(false)
+    })
+
+    it('inherits the global lineWrap through a bare workspace override', () => {
+        expect(resolveSettings({ version: 1, lineWrap: true }, { version: 1 }).lineWrap).toBe(true)
+    })
+
+    it('takes a global-only tabSize', () => {
+        expect(resolveSettings({ version: 1, tabSize: 4 }, null).tabSize).toBe(4)
+    })
+
+    it('leaves tabSize unset when neither layer sets it', () => {
+        expect(resolveSettings(null, null).tabSize).toBeNull()
+    })
+
+    it('lets an empty workspace untitledPlaceholder hide the global one', () => {
+        const result = resolveSettings({ version: 1, untitledPlaceholder: 'Hi' }, { version: 1, untitledPlaceholder: '' })
+
+        expect(result.untitledPlaceholder).toBe('')
+    })
+
+    it('merges resizeMode and lint from separate layers', () => {
+        const result = resolveSettings({ version: 1, resizeMode: 'outline' }, { version: 1, lint: true })
+
+        expect(result.resizeMode).toBe('outline')
+        expect(result.lint).toBe(true)
+    })
 })
 
-describe('withTheme', () => {
+describe('editorSettingsOf', () => {
+    it('picks exactly the editor options out of a resolved snapshot', () => {
+        expect(editorSettingsOf({ ...DEFAULT_SETTINGS, tabSize: 4, lint: true })).toEqual({
+            tabSize: 4,
+            lineWrap: false,
+            lineNumbers: true,
+            lint: true,
+            highlightWhitespace: false,
+            untitledPlaceholder: DEFAULT_SETTINGS.untitledPlaceholder,
+        })
+    })
+})
+
+describe('placeholderForBuffer', () => {
+    it('shows the hint in an untitled buffer', () => {
+        expect(placeholderForBuffer(null, 'Hint')).toBe('Hint')
+    })
+
+    it('shows nothing in an untitled buffer when the hint is empty', () => {
+        expect(placeholderForBuffer(null, '')).toBeNull()
+    })
+
+    it('shows nothing in a file on disk', () => {
+        expect(placeholderForBuffer('/p/a.ts', 'Hint')).toBeNull()
+    })
+
+    it('shows nothing in a file on disk when the hint is empty', () => {
+        expect(placeholderForBuffer('/p/a.ts', '')).toBeNull()
+    })
+})
+
+describe('withSettingFields', () => {
     it('creates a fresh document when text is null', () => {
-        expect(JSON.parse(withTheme(null, 'dark'))).toEqual({ version: 1, theme: 'dark' })
+        expect(JSON.parse(withSettingFields(null, { theme: 'dark' }))).toEqual({ version: 1, theme: 'dark' })
     })
 
     it('creates a fresh document when text is not JSON', () => {
-        expect(JSON.parse(withTheme('not json', 'dark'))).toEqual({ version: 1, theme: 'dark' })
+        expect(JSON.parse(withSettingFields('not json', { theme: 'dark' }))).toEqual({ version: 1, theme: 'dark' })
     })
 
     it('creates a fresh document when the top level is an array', () => {
-        expect(JSON.parse(withTheme('[]', 'dark'))).toEqual({ version: 1, theme: 'dark' })
+        expect(JSON.parse(withSettingFields('[]', { theme: 'dark' }))).toEqual({ version: 1, theme: 'dark' })
     })
 
     it('keeps sibling fields untouched', () => {
-        expect(JSON.parse(withTheme('{"version":1,"formatOnSave":false}', 'dark'))).toEqual({
+        expect(JSON.parse(withSettingFields('{"version":1,"formatOnSave":false}', { theme: 'dark' }))).toEqual({
             version: 1,
             formatOnSave: false,
             theme: 'dark',
@@ -348,14 +527,14 @@ describe('withTheme', () => {
     })
 
     it('replaces an existing theme rather than duplicating it', () => {
-        expect(JSON.parse(withTheme('{"version":1,"theme":"dark"}', 'light'))).toEqual({
+        expect(JSON.parse(withSettingFields('{"version":1,"theme":"dark"}', { theme: 'light' }))).toEqual({
             version: 1,
             theme: 'light',
         })
     })
 
     it('keeps a field parseSettingsOverride would drop, since it merges onto the raw document', () => {
-        expect(JSON.parse(withTheme('{"version":1,"madeUpField":7}', 'dark'))).toEqual({
+        expect(JSON.parse(withSettingFields('{"version":1,"madeUpField":7}', { theme: 'dark' }))).toEqual({
             version: 1,
             madeUpField: 7,
             theme: 'dark',
@@ -363,10 +542,33 @@ describe('withTheme', () => {
     })
 
     it('normalises a document carrying some other version to version 1', () => {
-        expect(JSON.parse(withTheme('{"version":2,"formatOnSave":false}', 'dark'))).toEqual({
+        expect(JSON.parse(withSettingFields('{"version":2,"formatOnSave":false}', { theme: 'dark' }))).toEqual({
             version: 1,
             formatOnSave: false,
             theme: 'dark',
+        })
+    })
+
+    it('adds lineWrap beside an existing theme', () => {
+        expect(JSON.parse(withSettingFields('{"version":1,"theme":"dark"}', { lineWrap: true }))).toEqual({
+            version: 1,
+            theme: 'dark',
+            lineWrap: true,
+        })
+    })
+
+    it('writes a false lineWrap rather than dropping it', () => {
+        expect(JSON.parse(withSettingFields('{"version":1,"lineWrap":true}', { lineWrap: false }))).toEqual({
+            version: 1,
+            lineWrap: false,
+        })
+    })
+
+    it('sets several fields at once in a fresh document', () => {
+        expect(JSON.parse(withSettingFields(null, { theme: 'dark', lineWrap: true }))).toEqual({
+            version: 1,
+            theme: 'dark',
+            lineWrap: true,
         })
     })
 })

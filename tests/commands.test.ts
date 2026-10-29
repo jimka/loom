@@ -28,6 +28,8 @@ const actions = (over: Partial<PaletteCommandActions> = {}): PaletteCommandActio
     onToggleIgnored: () => {},
     isDarkTheme: () => false,
     onToggleDarkTheme: () => {},
+    isWordWrap: () => false,
+    onToggleWordWrap: () => {},
     ...over,
 })
 
@@ -41,25 +43,25 @@ const findCommand = (commands: PaletteCommand[], id: string): PaletteCommand => 
 }
 
 describe('buildPaletteCommands', () => {
-    it('returns all fifteen commands in a fixed order when nothing is available', () => {
+    it('returns all sixteen commands in a fixed order when nothing is available', () => {
         const commands = buildPaletteCommands(actions())
 
         expect(commands.map(c => c.id)).toEqual([
             'new-file', 'open-folder', 'toggle-explorer', 'exit',
             'save', 'save-as', 'close-file', 'find', 'go-to-line', 'format-document',
             'split-move-editor-right', 'split-move-editor-down',
-            'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme',
+            'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme', 'toggle-word-wrap',
         ])
     })
 
-    it('returns the same fifteen ids in the same order when everything is available', () => {
+    it('returns the same sixteen ids in the same order when everything is available', () => {
         const commands = buildPaletteCommands(actions({ canSaveActive: () => true, hasActiveFile: () => true, canSplitActive: () => true }))
 
         expect(commands.map(c => c.id)).toEqual([
             'new-file', 'open-folder', 'toggle-explorer', 'exit',
             'save', 'save-as', 'close-file', 'find', 'go-to-line', 'format-document',
             'split-move-editor-right', 'split-move-editor-down',
-            'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme',
+            'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme', 'toggle-word-wrap',
         ])
     })
 
@@ -74,7 +76,7 @@ describe('buildPaletteCommands', () => {
     it('marks the always-available commands enabled regardless of state', () => {
         const commands = buildPaletteCommands(actions())
 
-        for (const id of ['new-file', 'open-folder', 'toggle-explorer', 'exit', 'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme']) {
+        for (const id of ['new-file', 'open-folder', 'toggle-explorer', 'exit', 'toggle-hidden-files', 'toggle-ignored-files', 'toggle-dark-theme', 'toggle-word-wrap']) {
             expect(findCommand(commands, id).enabled).toBe(true)
         }
     })
@@ -128,6 +130,25 @@ describe('buildPaletteCommands', () => {
         onToggleDarkTheme.mockClear()
         findCommand(buildPaletteCommands(actions({ isDarkTheme: () => true, onToggleDarkTheme })), 'toggle-dark-theme').run()
         expect(onToggleDarkTheme).toHaveBeenCalledWith(false)
+    })
+
+    it('labels the word-wrap toggle by the current wrap state', () => {
+        expect(findCommand(buildPaletteCommands(actions({ isWordWrap: () => false })), 'toggle-word-wrap').title)
+            .toBe('Turn On Word Wrap')
+
+        expect(findCommand(buildPaletteCommands(actions({ isWordWrap: () => true })), 'toggle-word-wrap').title)
+            .toBe('Turn Off Word Wrap')
+    })
+
+    it('toggles word wrap to the opposite of the live state', () => {
+        const onToggleWordWrap = vi.fn()
+
+        findCommand(buildPaletteCommands(actions({ isWordWrap: () => false, onToggleWordWrap })), 'toggle-word-wrap').run()
+        expect(onToggleWordWrap).toHaveBeenCalledWith(true)
+
+        onToggleWordWrap.mockClear()
+        findCommand(buildPaletteCommands(actions({ isWordWrap: () => true, onToggleWordWrap })), 'toggle-word-wrap').run()
+        expect(onToggleWordWrap).toHaveBeenCalledWith(false)
     })
 
     it('keeps a working run callback on a disabled command', () => {

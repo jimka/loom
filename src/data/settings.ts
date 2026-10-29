@@ -3,6 +3,7 @@
 // Tauri-backed read/write and the two-layer resolution this module's shape
 // feeds, mirroring the `session`/`workspaceState` split.
 import type { FormatOptions } from '@jimka/typescript-ui/component/editor'
+import type { ResizeMode } from '@jimka/typescript-ui/core'
 
 /** The app's theme choices: `'light'` is the library's own default look. */
 export type ThemeName = 'light' | 'dark'
@@ -23,6 +24,20 @@ export interface Settings {
     tabMaxWidthPx: number
     /** Which of the library's built-in themes the app is painted with. */
     theme: ThemeName
+    /** Tab-stop and Tab-key indent width, in columns; `null` leaves CodeMirror's own defaults. */
+    tabSize: number | null
+    /** Whether long lines wrap instead of scrolling horizontally. */
+    lineWrap: boolean
+    /** Whether the line-number gutter is shown. */
+    lineNumbers: boolean
+    /** Whether parse errors are underlined. */
+    lint: boolean
+    /** Whether spaces, tabs and trailing whitespace are drawn visibly. */
+    highlightWhitespace: boolean
+    /** The hint an empty untitled buffer shows; `''` shows none. */
+    untitledPlaceholder: string
+    /** Whether gutter and window-edge drags reflow live or move an outline. */
+    resizeMode: ResizeMode
 }
 
 /** One settings file's contents: every field optional, `undefined` meaning "inherit from the next layer down." */
@@ -35,6 +50,13 @@ export interface SettingsOverride {
     titleBarTemplate?: string
     tabMaxWidthPx?: number
     theme?: ThemeName
+    tabSize?: number
+    lineWrap?: boolean
+    lineNumbers?: boolean
+    lint?: boolean
+    highlightWhitespace?: boolean
+    untitledPlaceholder?: string
+    resizeMode?: ResizeMode
 }
 
 /** What every setting is when no file overrides it — today's exact hardcoded behaviour. */
@@ -54,6 +76,22 @@ export const DEFAULT_SETTINGS: Settings = {
     // The library's own default look — a fresh install with no settings file
     // at all looks exactly as it did before this setting existed.
     theme: 'light',
+    // Unset: CodeMirror's own defaults (4-column tab stops, a 2-space indent
+    // unit), which is what every editor used before this setting existed.
+    tabSize: null,
+    // The library's own default, unchanged from before this setting existed.
+    lineWrap: false,
+    // The library's own default, unchanged from before this setting existed.
+    lineNumbers: true,
+    // Off: the `javascript` grammar marks some valid TypeScript, and all JSX,
+    // as parse errors (see TODO.md), so on-by-default would flag correct code.
+    lint: false,
+    // The library's own default, unchanged from before this setting existed.
+    highlightWhitespace: false,
+    // An untitled buffer has no language until it is saved; this says so.
+    untitledPlaceholder: 'Plain text until saved — the file name you save it under picks the language',
+    // The library's own default — panes reflow on every frame of a drag.
+    resizeMode: 'live',
 }
 
 /** A freshly-created settings file's contents: no field set, so everything inherits. */
@@ -81,7 +119,49 @@ export function resolveSettings(global: SettingsOverride | null, workspace: Sett
         titleBarTemplate: workspace?.titleBarTemplate ?? global?.titleBarTemplate ?? DEFAULT_SETTINGS.titleBarTemplate,
         tabMaxWidthPx: workspace?.tabMaxWidthPx ?? global?.tabMaxWidthPx ?? DEFAULT_SETTINGS.tabMaxWidthPx,
         theme: workspace?.theme ?? global?.theme ?? DEFAULT_SETTINGS.theme,
+        tabSize: workspace?.tabSize ?? global?.tabSize ?? DEFAULT_SETTINGS.tabSize,
+        lineWrap: workspace?.lineWrap ?? global?.lineWrap ?? DEFAULT_SETTINGS.lineWrap,
+        lineNumbers: workspace?.lineNumbers ?? global?.lineNumbers ?? DEFAULT_SETTINGS.lineNumbers,
+        lint: workspace?.lint ?? global?.lint ?? DEFAULT_SETTINGS.lint,
+        highlightWhitespace: workspace?.highlightWhitespace ?? global?.highlightWhitespace ?? DEFAULT_SETTINGS.highlightWhitespace,
+        untitledPlaceholder: workspace?.untitledPlaceholder ?? global?.untitledPlaceholder ?? DEFAULT_SETTINGS.untitledPlaceholder,
+        resizeMode: workspace?.resizeMode ?? global?.resizeMode ?? DEFAULT_SETTINGS.resizeMode,
     }
+}
+
+/** The subset of {@link Settings} each open editor applies to its own `CodeEditor`. */
+export type EditorSettings = Pick<Settings, 'tabSize' | 'lineWrap' | 'lineNumbers' | 'lint' | 'highlightWhitespace' | 'untitledPlaceholder'>
+
+/** Every top-level field a settings file can carry, except `version`. */
+export type SettingsFields = Omit<SettingsOverride, 'version'>
+
+/**
+ * Picks the editor options out of a resolved settings snapshot.
+ *
+ * @param settings - The resolved settings.
+ * @returns Just the fields each open editor applies.
+ */
+export function editorSettingsOf(settings: Settings): EditorSettings {
+    return {
+        tabSize: settings.tabSize,
+        lineWrap: settings.lineWrap,
+        lineNumbers: settings.lineNumbers,
+        lint: settings.lint,
+        highlightWhitespace: settings.highlightWhitespace,
+        untitledPlaceholder: settings.untitledPlaceholder,
+    }
+}
+
+/**
+ * The placeholder a buffer shows: the hint for a buffer never yet saved,
+ * nothing for a file on disk or when the hint is empty.
+ *
+ * @param path - The buffer's path, or `null` while it has never been saved.
+ * @param hint - The `untitledPlaceholder` setting.
+ * @returns The placeholder text, or `null` for none.
+ */
+export function placeholderForBuffer(path: string | null, hint: string): string | null {
+    return path === null && hint !== '' ? hint : null
 }
 
 /**
@@ -121,44 +201,27 @@ export function parseSettingsOverride(text: string): SettingsOverride | null {
         return null
     }
 
-    const override: SettingsOverride = { version: 1 }
-    const formatOnSave = readOptionalBoolean(doc.formatOnSave)
-    const formatting = parseFormatting(doc.formatting)
-    const showHiddenFiles = readOptionalBoolean(doc.showHiddenFiles)
-    const showIgnoredFiles = readOptionalBoolean(doc.showIgnoredFiles)
-    const titleBarTemplate = readOptionalNonEmptyString(doc.titleBarTemplate)
-    const tabMaxWidthPx = readOptionalPositiveNumber(doc.tabMaxWidthPx)
-    const theme = readOptionalChoice(doc.theme, THEME_CHOICES)
+    const override: { version: 1 } & Record<string, unknown> = { version: 1 }
 
-    if (formatOnSave !== undefined) {
-        override.formatOnSave = formatOnSave
+    for (const [field, read] of Object.entries(SETTINGS_READERS)) {
+        const parsed = read(doc[field])
+
+        // Assigned only when defined, so the override never holds a key whose
+        // value is `undefined` — `resolveSettings`' `??` chain depends on it.
+        if (parsed !== undefined) {
+            override[field] = parsed
+        }
     }
+
+    const formatting = parseFormatting(doc.formatting)
 
     if (formatting !== undefined) {
         override.formatting = formatting
     }
 
-    if (showHiddenFiles !== undefined) {
-        override.showHiddenFiles = showHiddenFiles
-    }
-
-    if (showIgnoredFiles !== undefined) {
-        override.showIgnoredFiles = showIgnoredFiles
-    }
-
-    if (titleBarTemplate !== undefined) {
-        override.titleBarTemplate = titleBarTemplate
-    }
-
-    if (tabMaxWidthPx !== undefined) {
-        override.tabMaxWidthPx = tabMaxWidthPx
-    }
-
-    if (theme !== undefined) {
-        override.theme = theme
-    }
-
-    return override
+    // The reader table is the type bridge, as in `parseFormatting`: each key
+    // was written by the reader declared for that exact field.
+    return override as SettingsOverride
 }
 
 /**
@@ -183,7 +246,7 @@ function parseDocument(text: string): Record<string, unknown> | null {
 /**
  * Parses `text` as JSON and validates only that the top level is a plain
  * object — no `version` check, unlike {@link parseDocument}. Split out for
- * {@link withTheme}, which merges onto whatever fields a document already
+ * {@link withSettingFields}, which merges onto whatever fields a document already
  * has regardless of its version, rather than onto `parseSettingsOverride`'s
  * sanitized result.
  *
@@ -207,22 +270,23 @@ function parseJsonObject(text: string): Record<string, unknown> | null {
 }
 
 /**
- * Renders the settings-file text with `theme` set, every other field left as
- * it was. Merges onto the file's **raw** parsed object rather than
+ * Renders the settings-file text with `fields` set, every other field left
+ * as it was. Merges onto the file's **raw** parsed object rather than
  * `parseSettingsOverride`'s sanitized result, so a field the parser doesn't
  * recognise or rejects survives the write instead of being silently dropped.
  *
  * @param text - The settings file's current raw text, or `null` when the file doesn't exist yet.
- * @param theme - The theme to record.
+ * @param fields - The fields to record.
  * @returns The settings-file text to write.
  */
-export function withTheme(text: string | null, theme: ThemeName): string {
+export function withSettingFields(text: string | null, fields: SettingsFields): string {
     const doc = text === null ? null : parseJsonObject(text)
 
     // `version: 1` after the spread: a file carrying some other version keeps
-    // every field it had and starts being read again. Indented to 2 spaces to
+    // every field it had and starts being read again. Before `fields`, which
+    // cannot carry `version` (its type omits it). Indented to 2 spaces to
     // match `serializeSettingsOverride`.
-    return JSON.stringify({ ...(doc ?? {}), version: 1, theme }, null, 2)
+    return JSON.stringify({ ...(doc ?? {}), version: 1, ...fields }, null, 2)
 }
 
 /**
@@ -243,6 +307,16 @@ function readOptionalBoolean(value: unknown): boolean | undefined {
  */
 function readOptionalNonEmptyString(value: unknown): string | undefined {
     return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+/**
+ * Reads a field expected to be a string, the empty string included.
+ *
+ * @param value - The field's raw value.
+ * @returns The string, or `undefined` when absent or the wrong type.
+ */
+function readOptionalString(value: unknown): string | undefined {
+    return typeof value === 'string' ? value : undefined
 }
 
 /**
@@ -286,6 +360,33 @@ const KEYWORD_CASE_CHOICES = ['preserve', 'upper', 'lower'] as const
 
 /** The top-level `theme` field's allowed values — kept as a choice list, like the `formatting` block's enum fields above, rather than a boolean, so a third theme can join later with no schema change. */
 const THEME_CHOICES: readonly ThemeName[] = ['light', 'dark']
+
+/** The top-level `resizeMode` field's allowed values — the library's `ResizeMode`. */
+const RESIZE_MODE_CHOICES: readonly ResizeMode[] = ['live', 'outline']
+
+/** Every top-level field except `version` and the nested `formatting` block. */
+type ScalarSettingsFields = Omit<SettingsOverride, 'version' | 'formatting'>
+
+/**
+ * Every top-level scalar field, mapped to the reader that validates it. The
+ * `satisfies` clause makes the table exhaustive, as {@link FORMATTING_READERS}
+ * does for the `formatting` block.
+ */
+const SETTINGS_READERS = {
+    formatOnSave: readOptionalBoolean,
+    showHiddenFiles: readOptionalBoolean,
+    showIgnoredFiles: readOptionalBoolean,
+    titleBarTemplate: readOptionalNonEmptyString,
+    tabMaxWidthPx: readOptionalPositiveNumber,
+    theme: (value: unknown) => readOptionalChoice(value, THEME_CHOICES),
+    tabSize: readOptionalPositiveInteger,
+    lineWrap: readOptionalBoolean,
+    lineNumbers: readOptionalBoolean,
+    lint: readOptionalBoolean,
+    highlightWhitespace: readOptionalBoolean,
+    untitledPlaceholder: readOptionalString,
+    resizeMode: (value: unknown) => readOptionalChoice(value, RESIZE_MODE_CHOICES),
+} satisfies { [K in keyof ScalarSettingsFields]-?: (value: unknown) => ScalarSettingsFields[K] | undefined }
 
 /**
  * Every {@link FormatOptions} field, mapped to the reader that validates it.

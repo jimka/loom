@@ -8,7 +8,7 @@ import { ThemeManager, ModernTheme, DarkTheme } from '@jimka/typescript-ui/core'
 import type { Theme } from '@jimka/typescript-ui/core'
 import { Dialog } from '@jimka/typescript-ui/overlay'
 import type { ThemeName } from '../data/settings'
-import { saveGlobalTheme } from './settings'
+import { saveGlobalSettingFields } from './settings'
 import { messageOf } from '../errors'
 
 /** Each `theme` value's library theme. `ModernTheme` is the library's own default. */
@@ -48,7 +48,7 @@ export async function selectTheme(theme: ThemeName): Promise<void> {
     applyTheme(theme)
 
     try {
-        await saveGlobalTheme(theme)
+        await saveGlobalSettingFields({ theme })
     } catch (error) {
         await Dialog.error('Could not save the theme', messageOf(error))
     }

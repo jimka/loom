@@ -44,7 +44,8 @@ Glyph.register(
 // applied on this tick, so the theme's web font begins activating while the
 // session and settings are still being read. No component may be constructed
 // until this resolves, or its text is measured against the fallback face and
-// keeps that width for the life of the page.
+// keeps that width for the life of the page. The resize mode is applied
+// once settings are read, since `Body.init` runs before they are.
 const bodyReady = Body.init({ layoutManager: Fit(), favicon: APP_FAVICON })
 
 /**
@@ -71,6 +72,8 @@ async function start(): Promise<void> {
     applyTheme(settings.theme)
 
     const body = await bodyReady
+
+    body.setResizeMode(settings.resizeMode)
 
     const controller = new EditorController()
 

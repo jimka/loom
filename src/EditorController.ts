@@ -21,9 +21,9 @@ import { promptExternalChange } from './shell/externalChangePrompt'
 import { APP_NAME } from './appIdentity'
 import { withRecent } from './data/session'
 import { remapPanelIds, canSplitPanel } from './data/editorLayout'
-import type { Settings } from './data/settings'
-import { DEFAULT_SETTINGS, renderTitle } from './data/settings'
-import { ensureGlobalSettingsFile, ensureWorkspaceSettingsFile } from './shell/settings'
+import type { Settings, EditorSettings } from './data/settings'
+import { DEFAULT_SETTINGS, renderTitle, editorSettingsOf } from './data/settings'
+import { ensureGlobalSettingsFile, ensureWorkspaceSettingsFile, saveGlobalSettingFields } from './shell/settings'
 import { externalChangeOutcome } from './data/watchEvents'
 import { messageOf } from './errors'
 
@@ -118,6 +118,8 @@ class EditorController {
     private _formatOnSave: boolean = DEFAULT_SETTINGS.formatOnSave
     private _formatting: FormatOptions = DEFAULT_SETTINGS.formatting
     private _titleBarTemplate: string = DEFAULT_SETTINGS.titleBarTemplate
+    /** The editor options every open and future `FileEditor` gets — set by {@link applySettings} and {@link selectLineWrap}. */
+    private _editorSettings: EditorSettings = editorSettingsOf(DEFAULT_SETTINGS)
 
     constructor() {
         this.dock = new Dock({
@@ -488,6 +490,7 @@ class EditorController {
             name: `Untitled-${this._untitledCount}`,
             text: '',
             projectRoot: this._projectRoot,
+            editorSettings: this._editorSettings,
         })
 
         file.onDirtyChange(() => this.handleDirtyChange(file))
@@ -630,7 +633,14 @@ class EditorController {
         this._panelIdSeq += 1
 
         const panelId = `buf-${this._panelIdSeq}`
-        const file = FileEditor({ panelId, path, name: baseName(path), text, projectRoot: this._projectRoot })
+        const file = FileEditor({
+            panelId,
+            path,
+            name: baseName(path),
+            text,
+            projectRoot: this._projectRoot,
+            editorSettings: this._editorSettings,
+        })
 
         file.setTemporary(temporary)
         file.onDirtyChange(() => this.handleDirtyChange(file))
@@ -1167,7 +1177,8 @@ class EditorController {
 
     /**
      * Applies a resolved settings snapshot: format-on-save, the formatting
-     * options, the title template, and the tab width cap. Callable more than
+     * options, the title template, the tab width cap, and the editor options
+     * every open file applies to its own `CodeEditor`. Callable more than
      * once — again on every project switch, each time with that project's
      * own resolved settings.
      *
@@ -1178,7 +1189,46 @@ class EditorController {
         this._formatting = settings.formatting
         this._titleBarTemplate = settings.titleBarTemplate
         this.dock.setTabOptions({ maxWidth: settings.tabMaxWidthPx })
+        this.pushEditorSettings(editorSettingsOf(settings))
         this.syncActive()
+    }
+
+    /** Whether editors currently wrap long lines. */
+    isLineWrapping(): boolean {
+        return this._editorSettings.lineWrap
+    }
+
+    /**
+     * Applies `wrap` to every open editor, then records it in the app-wide
+     * settings file. Applied first, so a failed write still leaves the
+     * editors switched and reports only that the choice was not remembered —
+     * the order `selectTheme` uses.
+     *
+     * @param wrap - Whether long lines should wrap.
+     */
+    async selectLineWrap(wrap: boolean): Promise<void> {
+        this.pushEditorSettings({ ...this._editorSettings, lineWrap: wrap })
+
+        try {
+            await saveGlobalSettingFields({ lineWrap: wrap })
+        } catch (error) {
+            await Dialog.error('Could not save the word wrap setting', messageOf(error))
+        }
+    }
+
+    /**
+     * Stores `settings` as the options every future `FileEditor` gets, and
+     * applies them to every file already open — hidden tabs included, so a
+     * background tab is up to date when it is next shown.
+     *
+     * @param settings - The editor options to apply.
+     */
+    private pushEditorSettings(settings: EditorSettings): void {
+        this._editorSettings = settings
+
+        for (const file of this._openFiles.values()) {
+            file.applyEditorSettings(settings)
+        }
     }
 
     /** Opens the app-wide settings file, creating it first if needed. */
