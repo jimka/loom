@@ -38,11 +38,13 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   its row: it stays open, with everything loaded under it, and a selected
   row stays selected. This holds after the tree's own *Rename* and after a
   rename or move made outside Loom. A file renamed outside Loom counts as a
-  new entry. A single click opens a file in a reusable temp tab; a double click, or Enter on the
-  selected row, opens it permanently. Right-clicking a directory, a file, or
-  empty tree space — or pressing Shift+F10 or the ContextMenu key on the
-  selected row — opens a context menu offering New File/New Folder, Rename,
-  Delete, and Copy Path.
+  new entry. A single click, or an arrow-key move, opens a file in a
+  reusable temp tab and leaves keyboard focus in the tree, also when the
+  file's tab sits in a floating window; a double click, or Enter on the
+  selected row, opens it permanently with the caret in its editor.
+  Right-clicking a directory, a file, or empty tree space — or pressing
+  Shift+F10 or the ContextMenu key on the selected row — opens a context
+  menu offering New File/New Folder, Rename, Delete, and Copy Path.
 - **Properties** — a second, collapsible section under the file tree,
   showing the selected file or folder's name, path, type, size, and
   last-modified time. Selecting a row with a click or the arrow keys updates
@@ -57,9 +59,11 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   Explorer, and the rest of the menu bar — instead, with a command that can't
   run right now (Save with nothing to save, Find… with no file open) listed
   greyed out and doing nothing when activated, just as in the menu bar.
-- **Find & replace** — Ctrl/Cmd+F opens the editor's search panel, a
-  floating card pinned to the active editor's upper-right corner; every
-  match in the document highlights as you type, Enter and Shift+Enter walk
+- **Find & replace** — Ctrl/Cmd+F, *Edit > Find…* or the matching
+  command-palette entry opens the editor's search panel, a floating card
+  pinned to the active editor's upper-right corner, with the cursor in its
+  find field, which starts out holding the selected text; every match in
+  the document highlights as you type, Enter and Shift+Enter walk
   to the next and previous match, and the *match case*, *whole word*, and
   *regular expression* toggles refine the query. Replace one match at a
   time or all of them at once with *replace* and *replace all*; Escape
@@ -74,9 +78,10 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   a tree grouped by folder, with each matching file as a branch (labeled
   with its match count) and each line match as a leaf under it. As in the
   file tree, a single click (or an arrow-key move) previews a row in the
-  reusable temp tab — a file branch opens the file, a match opens it with
-  that match selected — and a double click, or Enter, opens it
-  permanently. A file too
+  reusable temp tab while keeping focus in the results — a file branch
+  opens the file, a match opens it with that match selected — and a double
+  click, or Enter, opens it permanently with the caret in its editor. A
+  file too
   large to open, or that looks binary (a NUL byte in its first
   8000 characters, git's own rule), is skipped. A **Replace** field below the
   toggles holds the replacement text; right-clicking a match leaf offers
@@ -139,7 +144,8 @@ known limitations are tracked in [`TODO.md`](TODO.md).
   raising the same prompts a Recent Projects entry does when a workspace is
   already open.
 - **New files** — *File > New File* (Ctrl/Cmd+N) opens an empty, untitled
-  tab; *Save* prompts for a location the first time it's saved.
+  tab with the caret in it; *Save* prompts for a location the first time
+  it's saved.
 - **Save / Save As**, with an unsaved-changes prompt on closing a modified
   file or exiting with modified files open.
 - **Syntax highlighting** for JavaScript/TypeScript (and their JSX/module

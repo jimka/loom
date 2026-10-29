@@ -248,17 +248,29 @@ class FileEditor extends Container {
         return this._editor
     }
 
-    /** Opens the find/replace bar over this file's editor. A no-op while the
-     *  Markdown preview is showing: `Card` hides the editor with
-     *  `setVisible(false)`, which leaves it laid out but invisible, so the
-     *  panel and its focused find field would open where the user can't see
-     *  them. */
+    /** Opens the search card over this file's editor and focuses its find
+     *  field. A no-op while the Markdown preview is showing: `Card` hides the
+     *  editor with `setVisible(false)`, which leaves it laid out but
+     *  invisible, so the card and its focused find field would open where the
+     *  user can't see them. */
     openFind(): void {
         if (this._previewing) {
             return
         }
 
         openFindPanel(this._editor)
+    }
+
+    /** Moves keyboard focus into this file's editor once the editor has laid
+     *  out. `CodeEditor.focus()` does nothing before the editor mounts its
+     *  view (on its first sized layout) or while its tab page is hidden, and
+     *  a tab opened or activated a moment ago is still in one of those two
+     *  states — so the focus waits for `onFirstLayout`, as
+     *  `SearchPanel.focusQuery` does for its query field. */
+    focusEditor(): void {
+        this._editor.onFirstLayout(() => {
+            this._editor.focus()
+        })
     }
 
     /** Selects and scrolls to `at` in this file's editor, dropping out of the
