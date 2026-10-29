@@ -10,9 +10,10 @@
 // Every chord but Format rides Ctrl/Cmd, matching the OS-conventional
 // Open/Save/Close family; Format uses Alt+Shift so it can't collide with a
 // browser or OS binding on the Ctrl/Cmd+S family. CodeMirror's default
-// keymap binds none of these, so the window listener sees them even while
-// the caret is in the document (see the plan's "Potential Challenges" note
-// on Ctrl+S). Every chord does nothing while a modal dialog is open (see
+// keymap binds none of these — `Mod-\` is free there, while `Mod-Alt-\` and
+// `Shift-Mod-\` are CodeMirror's own — so the window listener sees them even
+// while the caret is in the document (see the plan's "Potential Challenges"
+// note on Ctrl+S). Every chord does nothing while a modal dialog is open (see
 // dispatchAccelerator), as SqlAdminShell.ts's installAccelerators does.
 
 import { LayerManager } from '@jimka/typescript-ui/core'
@@ -29,6 +30,7 @@ export const EXIT_SHORTCUT = 'Ctrl/Cmd+Q'
 export const COMMAND_PALETTE_SHORTCUT = 'Ctrl/Cmd+P'
 export const FIND_SHORTCUT = 'Ctrl/Cmd+F'
 export const FIND_IN_FILES_SHORTCUT = 'Ctrl/Cmd+Shift+F'
+export const SPLIT_EDITOR_RIGHT_SHORTCUT = 'Ctrl/Cmd+\\'
 
 /**
  * Whether a keydown is a `Ctrl/Cmd(+Shift)+<key>` chord with no other
@@ -95,6 +97,20 @@ export function isToggleExplorerChord(event: KeyboardEvent): boolean {
     return isCtrlChord(event, 'b')
 }
 
+/**
+ * Whether a keydown is the Split-and-Move-Editor-Right chord (Ctrl/Cmd + the
+ * physical Backslash key). Matched on `event.code`, not `event.key`, so
+ * layouts that type `\` only through AltGr (Swedish, German) can still press
+ * it; Shift and Alt are excluded because CodeMirror binds `Shift-Mod-\` and
+ * `Mod-Alt-\`.
+ */
+export function isSplitEditorRightChord(event: KeyboardEvent): boolean {
+    return (event.ctrlKey || event.metaKey)
+        && !event.altKey
+        && !event.shiftKey
+        && event.code === 'Backslash'
+}
+
 /** Whether a keydown is the Exit chord (Ctrl/Cmd+Q). */
 export function isExitChord(event: KeyboardEvent): boolean {
     return isCtrlChord(event, 'q')
@@ -129,6 +145,8 @@ export interface AcceleratorActions {
     onExit: () => void
     /** Ctrl/Cmd+P — opens the command palette. */
     onOpenCommandPalette: () => void
+    /** Ctrl/Cmd+\ — moves the active file into a new group on the right. */
+    onSplitEditorRight: () => void
 }
 
 /**
@@ -150,6 +168,7 @@ function acceleratorFor(event: KeyboardEvent, actions: AcceleratorActions): (() 
         [isFindInFilesChord, actions.onFindInFiles],
         [isFindChord, actions.onFind],
         [isToggleExplorerChord, actions.onToggleExplorer],
+        [isSplitEditorRightChord, actions.onSplitEditorRight],
         [isCommandPaletteChord, actions.onOpenCommandPalette],
         [isExitChord, actions.onExit],
     ]

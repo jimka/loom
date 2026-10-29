@@ -32,6 +32,7 @@ import { installFileDrop } from './fileDrop'
 import {
     NEW_FILE_SHORTCUT, OPEN_FOLDER_SHORTCUT, SAVE_SHORTCUT, SAVE_AS_SHORTCUT, CLOSE_FILE_SHORTCUT,
     FORMAT_SHORTCUT, FIND_SHORTCUT, FIND_IN_FILES_SHORTCUT, TOGGLE_EXPLORER_SHORTCUT, EXIT_SHORTCUT, COMMAND_PALETTE_SHORTCUT, installAccelerators,
+    SPLIT_EDITOR_RIGHT_SHORTCUT,
 } from './shortcuts'
 import type { AcceleratorActions } from './shortcuts'
 
@@ -102,6 +103,10 @@ interface MenuBarActions extends AcceleratorActions {
     onGoToLine: () => void
     /** Whether the active file needs saving — the Save item is greyed out when not. */
     canSaveActive: () => boolean
+    /** Whether the active file can move into a new group — greys out the split items when not. */
+    canSplitActive: () => boolean
+    /** Moves the active file into a new group below its current one. */
+    onSplitEditorDown: () => void
     /** Recently opened project folders, most-recent first — read by the Open Recent submenu. */
     getRecentProjects: () => string[]
     /** Recently opened files, most-recent first — read by the Open Recent submenu. */
@@ -357,8 +362,11 @@ class EditorShell extends Container {
             onToggleExplorer: () => split.setPaneCollapsed(EXPLORER_PANE_INDEX, !split.isPaneCollapsed(EXPLORER_PANE_INDEX)),
             onExit: () => { void controller.exitApp() },
             onOpenCommandPalette: () => { void this.openCommandPalette() },
+            onSplitEditorRight: () => controller.splitActive('right'),
+            onSplitEditorDown: () => controller.splitActive('bottom'),
             hasActiveFile: () => controller.hasActiveFile(),
             canSaveActive: () => controller.canSaveActive(),
+            canSplitActive: () => controller.canSplitActive(),
             getRecentProjects: () => controller.getRecentProjects(),
             getRecentFiles: () => controller.getRecentFiles(),
             onOpenRecentProject: (path: string) => { void this.confirmAndOpenProject(path) },
@@ -717,6 +725,9 @@ function buildMenuBar(actions: MenuBarActions): MenuBar {
                 { text: 'Command Palette…', glyph: 'magnifying-glass', shortcut: COMMAND_PALETTE_SHORTCUT, action: actions.onOpenCommandPalette },
                 { separator: true },
                 { text: 'Toggle Explorer', glyph: 'bars', shortcut: TOGGLE_EXPLORER_SHORTCUT, action: actions.onToggleExplorer },
+                { separator: true },
+                { text: 'Split and Move Editor Right', glyph: 'square-caret-right', shortcut: SPLIT_EDITOR_RIGHT_SHORTCUT, enabled: actions.canSplitActive(), action: actions.onSplitEditorRight },
+                { text: 'Split and Move Editor Down', glyph: 'square-caret-down', enabled: actions.canSplitActive(), action: actions.onSplitEditorDown },
                 { separator: true },
                 { row: () => {
                         const row = CheckboxMenuRow({ text: 'Show Hidden Files', checked: actions.isShowingHidden() })
