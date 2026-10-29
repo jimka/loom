@@ -131,7 +131,7 @@ class FileTree extends Tree {
         }
     }
 
-    /** `Tree`'s own `"contextmenu"` event: fires only when a row is right-clicked, with that row's node already resolved. */
+    /** `Tree`'s own `"contextmenu"` event: fires for a right-click on a row, and for Shift+F10 or the ContextMenu key on the current row, with that row's node already resolved. */
     private handleNodeContextMenu = (node: TreeNode, event: MouseEvent): void => {
         const data = node.data as FileTreeNodeData
         const items = data.isDir ? this.buildDirectoryMenuItems(data.path) : this.buildFileMenuItems(data.path)

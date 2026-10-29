@@ -79,21 +79,28 @@ nothing below has a plan yet.
   in proportion to everything mounted *and visible* — each split group's
   active editor, a populated tree — so any per-keystroke or per-mousemove
   event wired to a layout-forcing read (`getBoundingClientRect`,
-  `offsetWidth`, a `Text`/`Component` auto-measure, `Tree`/table
-  virtualization math) pays that once per event. Two instances were found
-  in the status bar, both a `Text` left on its default auto-measure
-  (`Text.setText` → `calculateSize` → synchronous reflow): the caret
-  readout, re-measured on every `cursorchange` during a drag-select, and
-  the language readout, re-set on every active-tab switch — `Tab.closeEntry`
-  switches tabs on every close, so closing N tabs forced N extra reflows,
-  visible as frame times staying elevated for seconds after closing tabs
-  back down to one. Both are fixed the same way (measure the widest value
-  once at startup, pin the preferred size, `setAutoMeasure(false)`; see
-  `WIDEST_CURSOR_POSITION` / `WIDEST_LANGUAGE_ID` in `EditorController.ts`),
-  and a before/after trace confirmed the clustered forced layouts gone. Any
-  new readout fed from a frequent event needs the same treatment. Split
-  editor groups multiply the visible-editor count, so they raise the
-  per-event cost rather than lowering it.
+  `offsetWidth`, a `Text` measured through the library's off-screen probe,
+  `Tree`/table virtualization math) pays that once per event. Two instances
+  were found in the status bar, both a `Text` left on its default
+  auto-measure, which at the time measured every `setText` through that
+  probe and forced a synchronous reflow: the caret readout, re-measured on
+  every `cursorchange` during a drag-select, and the language readout,
+  re-set on every active-tab switch — `Tab.closeEntry` switches tabs on
+  every close, so closing N tabs forced N extra reflows, visible as frame
+  times staying elevated for seconds after closing tabs back down to one.
+  Both are fixed the same way (measure the widest value once at startup,
+  pin the preferred size, `setAutoMeasure(false)`; see
+  `WIDEST_CURSOR_POSITION` / `WIDEST_SELECTION` / `WIDEST_LANGUAGE_ID` in
+  `EditorController.ts`), and a before/after trace confirmed the clustered
+  forced layouts gone. Since `typescript-ui` 0.10 an auto-measured `Text`
+  measures a single line on a canvas, with no forced layout, so the pins
+  may no longer be needed; they stay until a WebKitGTK Timeline recording
+  of `npm run tauri:dev` shows they buy nothing. The probe is still used
+  for wrapped text, text with leading, trailing or repeated whitespace, and
+  a font the canvas cannot reproduce, so a new readout fed from a frequent
+  event should be pinned the same way until then. Split editor groups
+  multiply the visible-editor count, so they raise the per-event cost
+  rather than lowering it.
 - **A remembered tab outside the project root stays closed.** Launch
   restore grants the remembered project root and its subtree, nothing
   else, so a tab remembered from outside that root *and* outside
